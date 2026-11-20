@@ -1,0 +1,92 @@
+# ═══════════════════════════════════════════════════════════════
+#  docker-compose.yml — Hotspot Fichas ROYOTA  Fase 1
+#  Probado en: GitHub Codespaces · VPS Ubuntu · Docker Desktop
+# ═══════════════════════════════════════════════════════════════
+version: '3.9'
+
+services:
+
+  # ── Aplicación principal ─────────────────────────────────────
+  hotspot-fichas:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime           # Usa solo la etapa runtime
+    container_name: hotspot-fichas
+    hostname: fichas-app
+    restart: unless-stopped
+
+    ports:
+      - "${PORT:-3000}:3000"    # Mapear puerto (configurable en .env)
+
+    volumes:
+      # Volumen nombrado para la BD SQLite (persiste entre reinicios)
+      - fichas-data:/app/data
+      # Logs opcionales en host (comenta si no los necesitas)
+      # - ./logs:/app/logs
+
+    env_file:
+      - .env                    # Carga todas las variables del archivo .env
+
+    environment:
+      - NODE_ENV=production
+      - TZ=America/Bogota       # Zona horaria (ajustar según país)
+
+    networks:
+      - fichas-net
+
+    # Límites de recursos (apropiado para VPS pequeño)
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          memory: 64M
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ── Tailscale sidecar (OPCIONAL — túnel seguro al MikroTik) ──
+  # Descomenta si tu servidor está en la nube y el router en LAN.
+  #
+  # tailscale:
+  #   image: tailscale/tailscale:stable
+  #   container_name: tailscale-fichas
+  #   hostname: fichas-ts
+  #   restart: unless-stopped
+  #   environment:
+  #     - TS_AUTHKEY=${TS_AUTHKEY}          # Auth key de Tailscale
+  #     - TS_STATE_DIR=/var/lib/tailscale
+  #     - TS_USERSPACE=false
+  #   volumes:
+  #     - tailscale-state:/var/lib/tailscale
+  #     - /dev/net/tun:/dev/net/tun
+  #   cap_add:
+  #     - NET_ADMIN
+  #     - SYS_MODULE
+  #   network_mode: host           # Comparte red con el host
+  #   networks: []
+
+# ── Volúmenes ─────────────────────────────────────────────────
+volumes:
+  fichas-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${DATA_DIR:-./data}   # Carpeta ./data en el host (fácil de backupear)
+
+  # tailscale-state:
+  #   driver: local
+
+# ── Redes ─────────────────────────────────────────────────────
+networks:
+  fichas-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24

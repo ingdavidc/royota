@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel Admin — Hotspot ROYOTA</title>
+  <link rel="stylesheet" href="./css/admin.css">
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="./js/config.js"></script>
+  <script src="./js/firebase-db.js"></script>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📶</text></svg>">
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════════════════
+     TOPBAR
+══════════════════════════════════════════════════════════ -->
+<header class="topbar" role="banner">
+  <div class="topbar-brand">
+    <span class="topbar-icon">📶</span>
+    <span class="topbar-title" id="topbarTitle">Hotspot Fichas</span>
+  </div>
+  <div class="topbar-right">
+    <span class="topbar-user" id="adminName">—</span>
+    <button class="btn btn-sm btn-ghost" onclick="logout()">Salir</button>
+  </div>
+</header>
+
+<!-- ══════════════════════════════════════════════════════════
+     LAYOUT
+══════════════════════════════════════════════════════════ -->
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <nav class="sidebar" id="sidebar" role="navigation">
+    <ul class="nav-list">
+      <li><a class="nav-link active" data-sec="dashboard"  href="#dashboard">  <span class="nav-icon">📊</span><span class="nav-label">Dashboard</span></a></li>
+      <li><a class="nav-link"        data-sec="generate"   href="#generate">   <span class="nav-icon">🎫</span><span class="nav-label">Generar Fichas</span></a></li>
+      <li><a class="nav-link"        data-sec="vouchers"   href="#vouchers">   <span class="nav-icon">📋</span><span class="nav-label">Fichas</span></a></li>
+      <li><a class="nav-link"        data-sec="plans"      href="#plans">      <span class="nav-icon">⚙️</span><span class="nav-label">Planes</span></a></li>
+      <li><a class="nav-link"        data-sec="mikrotik"   href="#mikrotik">   <span class="nav-icon">🌐</span><span class="nav-label">MikroTik</span></a></li>
+      <li><a class="nav-link"        data-sec="portal"     href="#portal">     <span class="nav-icon">🏖️</span><span class="nav-label">Portal & Info</span></a></li>
+    </ul>
+  </nav>
+
+  <!-- CONTENIDO PRINCIPAL -->
+  <main class="main" role="main">
+
+    <!-- ═══ DASHBOARD ══════════════════════════════════════ -->
+    <section id="sec-dashboard" class="sec">
+      <h2 class="sec-title">Dashboard</h2>
+
+      <div class="stats-grid" id="statsGrid">
+        <div class="stat-card"><div class="stat-label">Disponibles</div><div class="stat-val c-cyan"   id="st-available">—</div></div>
+        <div class="stat-card"><div class="stat-label">Vendidas</div>  <div class="stat-val c-yellow"  id="st-sold">—</div></div>
+        <div class="stat-card"><div class="stat-label">Activas</div>   <div class="stat-val c-green"   id="st-active">—</div></div>
+        <div class="stat-card"><div class="stat-label">Expiradas</div> <div class="stat-val c-muted"   id="st-expired">—</div></div>
+        <div class="stat-card"><div class="stat-label">Ingresos Hoy</div> <div class="stat-val c-green" id="st-today">—</div></div>
+        <div class="stat-card"><div class="stat-label">Mes Actual</div>   <div class="stat-val c-cyan"  id="st-month">—</div></div>
+      </div>
+
+      <div class="panel" style="margin-top:20px">
+        <div class="panel-hd"><span class="panel-title">Top planes del mes</span></div>
+        <div class="panel-body">
+          <table class="tbl"><thead><tr><th>Plan</th><th>Ventas</th><th>Ingresos</th></tr></thead>
+          <tbody id="topPlansBody"></tbody></table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ GENERAR FICHAS ═════════════════════════════════ -->
+    <section id="sec-generate" class="sec" hidden>
+      <h2 class="sec-title">Generar Fichas</h2>
+
+      <div class="two-col">
+        <!-- Formulario de generación -->
+        <div class="panel">
+          <div class="panel-hd"><span class="panel-title">⚙️ Configuración del lote</span></div>
+          <div class="panel-body">
+            <form id="genForm" autocomplete="off">
+
+              <div class="fg">
+                <label class="flabel">Plan de Internet <span class="req">*</span></label>
+                <select id="gPlanId" class="finput" required>
+                  <option value="">— Selecciona un plan —</option>
+                </select>
+                <div class="plan-preview" id="planPreview" hidden>
+                  <span id="pvDuration">—</span> · <span id="pvSpeed">—</span> · <span id="pvPrice">—</span>
+                </div>
+              </div>
+
+              <div class="fg-row">
+                <div class="fg">
+                  <label class="flabel">Cantidad</label>
+                  <input type="number" id="gQty" class="finput" value="10" min="1" max="1000">
+                  <span class="fhint">Máx. 1000 por lote</span>
+                </div>
+                <div class="fg">
+                  <label class="flabel">Longitud del código</label>
+                  <select id="gCodeLen" class="finput">
+                    <option value="6">6 caracteres</option>
+                    <option value="8" selected>8 caracteres (recomendado)</option>
+                    <option value="10">10 caracteres</option>
+                    <option value="12">12 caracteres</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="fg-row">
+                <div class="fg">
+                  <label class="flabel">Tipo de código</label>
+                  <select id="gCharset" class="finput">
+                    <option value="full" selected>Alfanumérico (A-Z, 2-9)</option>
+                    <option value="numeric">Solo números (2-9)</option>
+                    <option value="alpha">Solo letras (A-Z)</option>
+                  </select>
+                </div>
+                <div class="fg">
+                  <label class="flabel">Separador de grupos</label>
+                  <select id="gGroupSize" class="finput">
+                    <option value="0" selected>Sin separador (ABCDEFGH)</option>
+                    <option value="4">Grupos de 4 (ABCD-EFGH)</option>
+                    <option value="3">Grupos de 3 (ABC-DEF-GHI)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="fg">
+                <label class="flabel">Prefijo (opcional)</label>
+                <input type="text" id="gPrefix" class="finput" maxlength="4"
+                       placeholder="Ej: VIP (se agrega al inicio del código)"
+                       autocapitalize="characters" autocorrect="off">
+              </div>
+
+              <div class="fg">
+                <label class="flabel">Nota del lote (opcional)</label>
+                <input type="text" id="gNote" class="finput" maxlength="100"
+                       placeholder="Ej: Lote para evento del 20/11">
+              </div>
+
+              <!-- Vista previa del código -->
+              <div class="code-preview" id="codePreview">
+                Vista previa: <strong id="codePreviewVal">ABCDEFGH</strong>
+              </div>
+
+              <button type="submit" class="btn btn-primary btn-block" id="btnGenerar">
+                🎫 Generar Fichas
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Resultado del lote generado -->
+        <div class="panel" id="resultPanel" hidden>
+          <div class="panel-hd">
+            <span class="panel-title" id="resultTitle">Fichas generadas</span>
+            <div class="panel-actions">
+              <button class="btn btn-sm btn-success" onclick="openPrintPage()">🖨️ Imprimir</button>
+              <button class="btn btn-sm btn-ghost"   onclick="copyCodes()">📋 Copiar</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div id="codesGrid" class="codes-grid"></div>
+          </div>
+        </div>
+
+      </div><!-- .two-col -->
+
+      <!-- Historial de lotes -->
+      <div class="panel" style="margin-top:20px">
+        <div class="panel-hd">
+          <span class="panel-title">📦 Historial de lotes</span>
+          <button class="btn btn-sm btn-ghost" onclick="loadBatches()">↻ Actualizar</button>
+        </div>
+        <div class="panel-body">
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr>
+                <th>Fecha</th><th>Plan</th><th>Total</th>
+                <th>Disponibles</th><th>Vendidas</th><th>Activas</th><th>Nota</th><th></th>
+              </tr></thead>
+              <tbody id="batchesBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ═══ FICHAS ═══════════════════════════════════════════ -->
+    <section id="sec-vouchers" class="sec" hidden>
+      <h2 class="sec-title">Fichas</h2>
+      <div class="panel">
+        <div class="panel-hd">
+          <span class="panel-title">Lista de fichas</span>
+        </div>
+        <div class="panel-body">
+          <div class="filter-bar">
+            <select id="fStatus" class="finput-sm" onchange="loadVouchers()">
+              <option value="">Todos</option>
+              <option value="available">Disponibles</option>
+              <option value="sold">Vendidas</option>
+              <option value="active">Activas</option>
+              <option value="expired">Expiradas</option>
+              <option value="revoked">Revocadas</option>
+            </select>
+            <select id="fPlan" class="finput-sm" onchange="loadVouchers()">
+              <option value="">Todos los planes</option>
+            </select>
+            <input type="text" id="fSearch" class="finput-sm" placeholder="Buscar código…"
+                   oninput="debounceSearch()" maxlength="20" autocapitalize="characters">
+          </div>
+
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr>
+                <th>Código</th><th>Plan</th><th>Estado</th>
+                <th>Creada</th><th>Expira</th><th>Acciones</th>
+              </tr></thead>
+              <tbody id="vouchersBody"></tbody>
+            </table>
+          </div>
+
+          <div class="pager" id="voucherPager"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ PLANES ══════════════════════════════════════════ -->
+    <section id="sec-plans" class="sec" hidden>
+      <h2 class="sec-title">Planes de Conexión</h2>
+      <div class="panel">
+        <div class="panel-hd">
+          <span class="panel-title">Planes</span>
+          <button class="btn btn-primary btn-sm" onclick="openPlanModal()">+ Nuevo plan</button>
+        </div>
+        <div class="panel-body">
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr>
+                <th>Nombre</th><th>Duración</th><th>Velocidad</th>
+                <th>Precio</th><th>Datos</th><th>Usuarios</th><th>Estado</th><th></th>
+              </tr></thead>
+              <tbody id="plansBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MIKROTIK ═════════════════════════════════════════ -->
+    <section id="sec-mikrotik" class="sec" hidden>
+      <h2 class="sec-title">MikroTik</h2>
+
+      <div class="panel">
+        <div class="panel-hd">
+          <span class="panel-title">Conexión al router</span>
+          <button class="btn btn-primary btn-sm" onclick="testMikrotik()">🔌 Probar conexión</button>
+        </div>
+        <div class="panel-body">
+          <div id="mkStatus"></div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:16px">
+        <div class="panel-hd">
+          <span class="panel-title">Usuarios activos ahora</span>
+          <button class="btn btn-sm btn-ghost" onclick="loadActiveUsers()">↻</button>
+        </div>
+        <div class="panel-body">
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th>Usuario</th><th>IP</th><th>Uptime</th><th>Bytes in/out</th></tr></thead>
+              <tbody id="activeBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-top:16px">
+        <div class="panel-hd"><span class="panel-title">Log de sincronización</span></div>
+        <div class="panel-body">
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th>Fecha</th><th>Acción</th><th>Código</th><th>Estado</th><th>ms</th><th>Respuesta</th></tr></thead>
+              <tbody id="syncBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ PORTAL & INFO BALNEARIO ═════════════════════════ -->
+    <section id="sec-portal" class="sec" hidden>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <h2 class="sec-title" style="margin-bottom:0">🏖️ Portal Cautivo & Información</h2>
+        <a href="/" target="_blank" class="btn btn-outline" style="text-decoration:none;">
+          👁️ Ver Portal Cautivo
+        </a>
+      </div>
+
+      <form id="portalSettingsForm" onsubmit="savePortalSettings(event)">
+        <div class="two-col">
+
+          <!-- Identidad y WhatsApp -->
+          <div class="panel">
+            <div class="panel-hd">
+              <span class="panel-title">🌊 Identidad del Balneario & WhatsApp</span>
+            </div>
+            <div class="panel-body">
+              <div class="fg">
+                <label class="flabel">Nombre del Balneario / Negocio <span class="req">*</span></label>
+                <input type="text" id="setBusinessName" class="finput" placeholder="Ej: Balneario Río Royota" required>
+                <span class="fhint">Aparece en la cabecera principal del portal cautivo</span>
+              </div>
+
+              <div class="fg">
+                <label class="flabel">Slogan / Frase de bienvenida</label>
+                <input type="text" id="setBusinessSlogan" class="finput" placeholder="Ej: El paraíso natural junto al río">
+              </div>
+
+              <div class="fg">
+                <label class="flabel">Número de WhatsApp para venta de fichas</label>
+                <input type="text" id="setWhatsappNumber" class="finput" placeholder="Ej: 573123456789">
+                <span class="fhint">Incluye código de país sin '+' ni espacios (Ej: 573123456789)</span>
+              </div>
+
+              <div class="fg">
+                <label class="flabel">Mensaje automático de WhatsApp</label>
+                <textarea id="setWhatsappMessage" class="finput" rows="3" placeholder="Mensaje que el cliente enviará al tocar el botón de WhatsApp"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sección Informativa del Balneario -->
+          <div class="panel">
+            <div class="panel-hd">
+              <span class="panel-title">📢 Sección Informativa (Balneario & Servicios)</span>
+            </div>
+            <div class="panel-body">
+              <div class="fg" style="display:flex; align-items:center; gap:10px; margin-bottom:18px;">
+                <input type="checkbox" id="setInfoActive" style="width:18px; height:18px; cursor:pointer;">
+                <label for="setInfoActive" style="cursor:pointer; font-weight:600; color:#fff;">
+                  Mostrar sección informativa en el portal cautivo
+                </label>
+              </div>
+
+              <div class="fg">
+                <label class="flabel">Etiqueta / Badge superior</label>
+                <input type="text" id="setInfoBadge" class="finput" placeholder="Ej: Avisos & Servicios del Balneario">
+              </div>
+
+              <div class="fg">
+                <label class="flabel">Título de la sección</label>
+                <input type="text" id="setInfoTitle" class="finput" placeholder="Ej: ¡Bienvenidos al Balneario Río Royota!">
+              </div>
+
+              <div class="fg">
+                <label class="flabel">Contenido informativo (horarios, normas, puntos de venta)</label>
+                <textarea id="setInfoContent" class="finput" rows="6" placeholder="Escribe aquí los horarios del río, restaurante, recomendaciones de cuidado ambiental y lugares donde comprar fichas..."></textarea>
+                <span class="fhint">Puedes usar emojis y saltos de línea para que se lea ordenado.</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div style="margin-top:20px; display:flex; justify-content:flex-end;">
+          <button type="submit" id="btnSavePortal" class="btn btn-primary" style="padding:12px 28px; font-size:15px;">
+            💾 Guardar Cambios del Portal
+          </button>
+        </div>
+      </form>
+    </section>
+
+  </main><!-- .main -->
+</div><!-- .layout -->
+
+<!-- ══ MODAL: Nuevo Plan ══════════════════════════════════════ -->
+<div class="modal-bg" id="planModalBg" hidden onclick="closePlanModal(event)">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="planModalTitle">
+    <div class="modal-hd">
+      <h3 class="modal-title" id="planModalTitle">Nuevo Plan</h3>
+      <button class="modal-close" onclick="closePlanModal()">&times;</button>
+    </div>
+    <form id="planForm" onsubmit="savePlan(event)">
+      <div class="fg">
+        <label class="flabel">Nombre <span class="req">*</span></label>
+        <input type="text" id="pName" class="finput" placeholder="Ej: 1 Hora" required>
+      </div>
+      <div class="fg-row">
+        <div class="fg">
+          <label class="flabel">Duración <span class="req">*</span></label>
+          <input type="text" id="pDuration" class="finput" placeholder="30m · 1h · 2h · 1d" required>
+          <span class="fhint">Formato RouterOS: 30m, 1h, 1d, 7d</span>
+        </div>
+        <div class="fg">
+          <label class="flabel">Velocidad (up/down) <span class="req">*</span></label>
+          <input type="text" id="pSpeed" class="finput" placeholder="5M/5M" required>
+        </div>
+      </div>
+      <div class="fg-row">
+        <div class="fg">
+          <label class="flabel">Precio <span class="req">*</span></label>
+          <input type="number" id="pPrice" class="finput" step="0.01" min="0" required>
+        </div>
+        <div class="fg">
+          <label class="flabel">Límite de datos</label>
+          <input type="text" id="pDataLimit" class="finput" placeholder="500M · 1G (vacío = ilimitado)">
+        </div>
+      </div>
+      <div class="fg-row">
+        <div class="fg">
+          <label class="flabel">Usuarios simultáneos</label>
+          <input type="number" id="pShared" class="finput" value="1" min="1" max="10">
+        </div>
+        <div class="fg">
+          <label class="flabel">Perfil en el router</label>
+          <input type="text" id="pProfile" class="finput" placeholder="default" value="default">
+          <span class="fhint">Nombre del perfil Hotspot en MikroTik</span>
+        </div>
+      </div>
+      <div class="fg">
+        <label class="flabel">Descripción</label>
+        <input type="text" id="pDesc" class="finput" placeholder="Descripción opcional">
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" style="margin-top:8px">
+        Guardar Plan
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ══ TOAST ════════════════════════════════════════════════= -->
+<div class="toast-wrap" id="toastWrap" aria-live="polite"></div>
+
+<script src="./js/admin.js"></script>
+</body>
+</html>

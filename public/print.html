@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Imprimir Fichas — ROYOTA</title>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="./js/config.js"></script>
+  <script src="./js/firebase-db.js"></script>
+  <style>
+/* ============================================================
+   VISTA DE IMPRESIÓN — Hotspot Fichas ROYOTA
+   Soporta:
+     · Impresora térmica 58mm  (2¼") — paper-width-58
+     · Impresora térmica 80mm  (3")  — paper-width-80 (default)
+     · Hoja A4 (4 columnas × N filas)
+   ============================================================ */
+
+/* ── Reset y base ─────────────────────────────────────────── */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  font-family: 'Courier New', Courier, monospace;
+  background: #f4f4f4;
+  color: #111;
+  font-size: 12px;
+}
+
+/* ── Controles de pantalla (ocultos al imprimir) ─────────── */
+.screen-ctrl {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: #1c2a3d;
+  color: #e0e9f0;
+  padding: 14px 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.ctrl-title { font-size: 16px; font-weight: 700; color: #00d4ff; }
+.ctrl-info  { font-size: 13px; color: #90a4ae; margin-right: auto; }
+
+.ctrl-group { display: flex; align-items: center; gap: 8px; }
+.ctrl-label { font-size: 12px; color: #90a4ae; }
+
+.ctrl-select, .ctrl-input {
+  padding: 6px 10px;
+  border-radius: 7px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.08);
+  color: #e0e9f0;
+  font-size: 13px;
+  outline: none;
+}
+.ctrl-select:focus, .ctrl-input:focus { border-color: #00d4ff; }
+
+.btn-print, .btn-back {
+  padding: 8px 18px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.btn-print { background: #00c853; color: #000; }
+.btn-back  { background: rgba(255,255,255,0.1); color: #e0e9f0; }
+.btn-print:hover, .btn-back:hover { opacity: 0.85; }
+
+/* ── Estado de carga ─────────────────────────────────────── */
+#loadingMsg {
+  text-align: center;
+  padding: 40px;
+  font-size: 15px;
+  color: #667;
+  font-family: sans-serif;
+}
+
+/* ══════════════════════════════════════════════════════════
+   CONTENEDOR DE TICKETS
+══════════════════════════════════════════════════════════ */
+#ticketContainer {
+  padding: 10px;
+}
+
+/* ── Modos de layout ─────────────────────────────────────── */
+/* Por defecto: A4 — 4 columnas */
+.tickets-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ── TICKET base ─────────────────────────────────────────── */
+.ticket {
+  border: 1px dashed #999;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Modo A4: 4 columnas */
+.mode-a4 .ticket {
+  width: calc(25% - 5px);
+  min-width: 150px;
+  padding: 10px 8px;
+  font-size: 11px;
+}
+
+/* Modo térmica 80mm */
+.mode-80 .tickets-wrap { flex-direction: column; align-items: flex-start; }
+.mode-80 .ticket {
+  width: 72mm;      /* 80mm papel − ~8mm márgenes */
+  padding: 4mm 3mm;
+  font-size: 10pt;
+  margin-bottom: 2mm;
+  page-break-after: always;
+  break-after: page;
+}
+
+/* Modo térmica 58mm */
+.mode-58 .tickets-wrap { flex-direction: column; align-items: flex-start; }
+.mode-58 .ticket {
+  width: 50mm;      /* 58mm papel − ~8mm márgenes */
+  padding: 3mm 2mm;
+  font-size: 9pt;
+  margin-bottom: 2mm;
+  page-break-after: always;
+  break-after: page;
+}
+
+/* ── Contenido interno del ticket ────────────────────────── */
+.tk-header {
+  text-align: center;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 4px;
+}
+.tk-biz-name {
+  font-size: 1.1em;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.tk-label {
+  font-size: 0.8em;
+  color: #555;
+  margin-top: 1px;
+}
+
+.tk-code-wrap {
+  text-align: center;
+  margin: 6px 0;
+  padding: 6px 4px;
+  background: #f9f9f9;
+  border-radius: 4px;
+}
+.tk-code {
+  font-size: 1.8em;
+  font-weight: 900;
+  letter-spacing: 4px;
+  word-break: break-all;
+  line-height: 1.1;
+}
+
+.tk-details {
+  margin-top: 5px;
+  font-size: 0.85em;
+}
+.tk-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 1px 0;
+  border-bottom: 1px dotted #ddd;
+}
+.tk-row:last-child { border-bottom: none; }
+.tk-k { color: #555; }
+.tk-v { font-weight: 700; }
+
+.tk-footer {
+  text-align: center;
+  margin-top: 5px;
+  font-size: 0.75em;
+  color: #888;
+  border-top: 1px dashed #bbb;
+  padding-top: 4px;
+}
+
+/* Número de ficha (para A4) */
+.tk-num {
+  position: absolute;
+  top: 4px; right: 6px;
+  font-size: 9px;
+  color: #bbb;
+}
+
+/* ── Modo compacto: solo código (sin detalles) ──────────── */
+.mode-compact .tk-details { display: none; }
+.mode-compact .tk-footer  { display: none; }
+
+/* ══════════════════════════════════════════════════════════
+   REGLAS @media print
+══════════════════════════════════════════════════════════ */
+@media print {
+  .screen-ctrl { display: none !important; }
+  #loadingMsg  { display: none !important; }
+
+  html, body {
+    background: #fff;
+    color: #000;
+  }
+
+  #ticketContainer {
+    padding: 0;
+    margin: 0;
+  }
+
+  /* A4 */
+  .mode-a4 {
+    width: 210mm;
+  }
+  .mode-a4 .tickets-wrap {
+    gap: 3mm;
+    padding: 5mm;
+  }
+  .mode-a4 .ticket {
+    width: calc(25% - 3mm);
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Térmica 80mm */
+  .mode-80 {
+    width: 80mm;
+  }
+  .mode-80 .ticket {
+    width: 72mm;
+    border: none;
+    border-bottom: 1px dashed #000;
+  }
+
+  /* Térmica 58mm */
+  .mode-58 {
+    width: 58mm;
+  }
+  .mode-58 .ticket {
+    width: 50mm;
+    border: none;
+    border-bottom: 1px dashed #000;
+  }
+
+  .ticket { border-color: #ccc; }
+}
+  </style>
+</head>
+<body>
+
+<!-- ══ Controles de pantalla ══════════════════════════════════ -->
+<div class="screen-ctrl">
+  <span class="ctrl-title">🖨️ Imprimir Fichas</span>
+  <span class="ctrl-info" id="ctrlInfo">Cargando…</span>
+
+  <div class="ctrl-group">
+    <label class="ctrl-label" for="selPaper">Papel:</label>
+    <select id="selPaper" class="ctrl-select" onchange="changePaper()">
+      <option value="a4">A4 (4 columnas)</option>
+      <option value="80">Térmica 80mm</option>
+      <option value="58">Térmica 58mm</option>
+    </select>
+  </div>
+
+  <div class="ctrl-group">
+    <label class="ctrl-label" for="selDetail">Detalles:</label>
+    <select id="selDetail" class="ctrl-select" onchange="changeDetail()">
+      <option value="full">Completo</option>
+      <option value="compact">Solo código</option>
+    </select>
+  </div>
+
+  <div class="ctrl-group">
+    <label class="ctrl-label" for="selStatus">Estado:</label>
+    <select id="selStatus" class="ctrl-select" onchange="filterStatus()">
+      <option value="">Todos</option>
+      <option value="available" selected>Disponibles</option>
+      <option value="sold">Vendidas</option>
+    </select>
+  </div>
+
+  <div class="ctrl-group">
+    <label class="ctrl-label" for="inpBizName">Nombre WiFi:</label>
+    <input type="text" id="inpBizName" class="ctrl-input"
+           style="width:160px" placeholder="WiFi ROYOTA"
+           oninput="updateBizName()">
+  </div>
+
+  <button class="btn-back" onclick="history.back()">← Volver</button>
+  <button class="btn-print" onclick="window.print()">🖨️ Imprimir</button>
+</div>
+
+<div id="loadingMsg">⏳ Cargando fichas del lote…</div>
+
+<div id="ticketContainer" class="mode-a4" hidden>
+  <div class="tickets-wrap" id="ticketsWrap"></div>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  /* ── Estado global ───────────────────────────────────── */
+  var _allVouchers = [];
+  var _batchInfo   = null;
+  var _bizName     = 'WiFi ROYOTA';
+  var _curStatus   = 'available';
+
+  /* ── Leer parámetros de URL ──────────────────────────── */
+  var params  = new URLSearchParams(location.search);
+  var batchId = params.get('batch');
+  var token   = localStorage.getItem('fichas_token');
+
+  if (!batchId) {
+    document.getElementById('loadingMsg').textContent =
+      '❌ Falta el parámetro ?batch=ID en la URL.';
+    return;
+  }
+
+  if (!token) {
+    document.getElementById('loadingMsg').textContent =
+      '❌ No estás autenticado. Inicia sesión primero.';
+    return;
+  }
+
+  /* ── Cargar nombre del negocio ───────────────────────── */
+  apiGet('/api/config', function(err, cfg) {
+    if (!err && cfg.businessName) {
+      _bizName = cfg.businessName;
+      document.getElementById('inpBizName').value = _bizName;
+      document.title = 'Imprimir — ' + _bizName;
+    }
+  });
+
+  /* ── Cargar fichas del lote ──────────────────────────── */
+  apiGet('/api/vouchers/batch/' + batchId, function(err, data) {
+    if (err) {
+      document.getElementById('loadingMsg').textContent =
+        '❌ Error al cargar el lote: ' + (err.error || err.message || 'desconocido');
+      return;
+    }
+
+    _allVouchers = data.vouchers || [];
+    _batchInfo   = data.batch;
+
+    document.getElementById('loadingMsg').hidden      = true;
+    document.getElementById('ticketContainer').hidden = false;
+
+    updateBizName();  /* Lee input (que ya tiene el valor del negocio) */
+    renderTickets(_curStatus);
+  });
+
+  /* ── Helpers de petición HTTP y Firestore ───────────── */
+  function apiGet(url, cb) {
+    if (window.firebaseDb && url.startsWith('/api/vouchers/batch/')) {
+      var bId = url.split('/api/vouchers/batch/')[1];
+      window.firebaseDb.getVoucherBatch(bId).then(function(res) {
+        cb(null, res);
+      }).catch(function(err) {
+        cb(err, null);
+      });
+      return;
+    }
+
+    var fullUrl = (window.API_BASE || '') + url;
+    var xhr = new XMLHttpRequest();
+    xhr.open('GET', fullUrl, true);
+    xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState !== 4) return;
+      var d;
+      try { d = JSON.parse(xhr.responseText); } catch(_) { d = {}; }
+      if (xhr.status >= 400) cb(d, null);
+      else cb(null, d);
+    };
+    xhr.onerror = function() { cb({ error: 'Error de red' }, null); };
+    xhr.send();
+  }
+
+  /* ── Render de tickets ───────────────────────────────── */
+  function renderTickets(statusFilter) {
+    var list = statusFilter
+      ? _allVouchers.filter(function(v) { return v.status === statusFilter; })
+      : _allVouchers;
+
+    var wrap = document.getElementById('ticketsWrap');
+    wrap.innerHTML = '';
+
+    var bi = _bizName || 'WiFi ROYOTA';
+    var total = list.length;
+
+    document.getElementById('ctrlInfo').textContent =
+      (total) + ' ficha(s) | Lote #' + batchId +
+      (_batchInfo ? ' — ' + (_batchInfo.plan_name || '') : '');
+
+    if (!total) {
+      wrap.innerHTML = '<p style="padding:20px;font-family:sans-serif;color:#667">Sin fichas con estado: ' + (statusFilter||'todos') + '</p>';
+      return;
+    }
+
+    list.forEach(function(v, idx) {
+      var div = document.createElement('div');
+      div.className = 'ticket';
+
+      div.innerHTML =
+        '<div class="tk-num">#' + (idx+1) + '</div>' +
+
+        '<div class="tk-header">' +
+          '<div class="tk-biz-name">' + esc(bi) + '</div>' +
+          '<div class="tk-label">Acceso a Internet</div>' +
+        '</div>' +
+
+        '<div class="tk-code-wrap">' +
+          '<div class="tk-code">' + esc(v.code) + '</div>' +
+        '</div>' +
+
+        '<div class="tk-details">' +
+          tkRow('Plan',      v.plan_name || '—') +
+          tkRow('Tiempo',    v.duration  || '—') +
+          tkRow('Velocidad', v.speed_limit || '—') +
+          tkRow('Precio',    v.price != null ? '$' + parseFloat(v.price).toFixed(2) : '—') +
+        '</div>' +
+
+        '<div class="tk-footer">Ingresa el código en la página de inicio del WiFi</div>';
+
+      wrap.appendChild(div);
+    });
+  }
+
+  function tkRow(label, val) {
+    return '<div class="tk-row"><span class="tk-k">' + label + '</span>' +
+           '<span class="tk-v">' + esc(String(val)) + '</span></div>';
+  }
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  /* ── Controles de UI ─────────────────────────────────── */
+  window.changePaper = function() {
+    var val = document.getElementById('selPaper').value;
+    var container = document.getElementById('ticketContainer');
+    container.className = 'mode-' + val;
+    // Preservar clase compact si está activa
+    if (document.getElementById('selDetail').value === 'compact') {
+      container.className += ' mode-compact';
+    }
+  };
+
+  window.changeDetail = function() {
+    var val       = document.getElementById('selDetail').value;
+    var container = document.getElementById('ticketContainer');
+    if (val === 'compact') {
+      if (container.className.indexOf('mode-compact') === -1) {
+        container.className += ' mode-compact';
+      }
+    } else {
+      container.className = container.className.replace(/\s*mode-compact/g, '');
+    }
+  };
+
+  window.filterStatus = function() {
+    _curStatus = document.getElementById('selStatus').value;
+    renderTickets(_curStatus);
+  };
+
+  window.updateBizName = function() {
+    _bizName = document.getElementById('inpBizName').value.trim() || 'WiFi ROYOTA';
+    renderTickets(_curStatus);
+  };
+
+}());
+</script>
+</body>
+</html>

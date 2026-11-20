@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin — Hotspot Fichas ROYOTA</title>
+  <link rel="stylesheet" href="./css/admin.css">
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="./js/config.js"></script>
+  <script src="./js/firebase-db.js"></script>
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-card">
+      <h1>🔐 Panel Admin</h1>
+      <p>Hotspot Fichas ROYOTA</p>
+
+      <div id="loginError" class="login-error"></div>
+
+      <form id="loginForm">
+        <div class="form-group">
+          <label for="username">Usuario</label>
+          <input type="text" id="username" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="password">Contraseña</label>
+          <input type="password" id="password" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%;padding:12px;font-size:15px;margin-top:8px;">
+          Iniciar Sesión
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      var token = localStorage.getItem('fichas_token');
+      if (token) { window.location.href = './admin.html'; return; }
+
+      document.getElementById('loginForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var username = document.getElementById('username').value;
+        var password = document.getElementById('password').value;
+        var errBox = document.getElementById('loginError');
+
+        if (window.firebaseDb) {
+          window.firebaseDb.login(username, password).then(function() {
+            window.location.href = './admin.html';
+          }).catch(function(err) {
+            errBox.textContent = err.message || 'Error de autenticación';
+            errBox.style.display = 'block';
+          });
+        } else {
+          var xhr = new XMLHttpRequest();
+          var fullUrl = (window.API_BASE || '') + '/api/auth/login';
+          xhr.open('POST', fullUrl, true);
+          xhr.setRequestHeader('Content-Type', 'application/json');
+          xhr.onreadystatechange = function() {
+            if (xhr.readyState !== 4) return;
+            var data;
+            try { data = JSON.parse(xhr.responseText); } catch(_) { data = {}; }
+            if (xhr.status === 200) {
+              localStorage.setItem('fichas_token', data.token);
+              localStorage.setItem('fichas_admin', JSON.stringify(data.admin));
+              window.location.href = './admin.html';
+            } else {
+              errBox.textContent = data.error || 'Error de autenticación';
+              errBox.style.display = 'block';
+            }
+          };
+          xhr.send(JSON.stringify({ username: username, password: password }));
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

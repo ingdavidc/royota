@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <!--
+    Portal Cautivo — Balneario & Río Royota
+    ══════════════════════════════════════
+    Sin frameworks ni CDNs externos para garantizar carga instantánea
+    en navegadores cautivos (Android CaptivePortalLogin / iOS CNA).
+    Compatible con XMLHttpRequest nativo.
+  -->
+  <title>WiFi Balneario Río Royota — Conectarse</title>
+  <link rel="stylesheet" href="./css/portal.css">
+  <!-- Firebase SDK (Directo a Firestore sin costo) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="./js/config.js"></script>
+  <script src="./js/firebase-db.js"></script>
+  <!-- Favicon SVG ecológico y acuático -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
+</head>
+<body>
+
+  <!-- ── Olas decorativas de río ────────────────────────────── -->
+  <div class="river-waves-wrap" aria-hidden="true">
+    <svg class="river-waves" viewBox="0 0 1200 120" preserveAspectRatio="none">
+      <path d="M0,0 C150,90 350,-40 500,45 C650,130 900,10 1200,60 L1200,120 L0,120 Z"></path>
+    </svg>
+    <svg class="river-waves layer2" viewBox="0 0 1200 120" preserveAspectRatio="none">
+      <path d="M0,20 C200,100 450,10 700,70 C950,130 1100,30 1200,50 L1200,120 L0,120 Z"></path>
+    </svg>
+  </div>
+
+  <!-- ── Contenedor Principal del Portal ────────────────────── -->
+  <main class="portal-container" role="main">
+
+    <!-- Header & Branding del Balneario -->
+    <header class="portal-header">
+      <div class="logo-badge" aria-hidden="true">
+        <!-- SVG Emblema Balneario: Sol, Ola y Señal WiFi -->
+        <svg viewBox="0 0 64 64">
+          <circle cx="32" cy="18" r="7" fill="#ffd166"/>
+          <path d="M10 44 C20 36 28 50 38 42 C48 34 54 44 60 40" stroke="#ffffff" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+          <path d="M12 52 C22 45 30 56 40 50 C48 44 54 52 58 48" stroke="#a7d7c5" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <path d="M22 28 A14 14 0 0 1 42 28" stroke="#ffffff" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <path d="M27 33 A7 7 0 0 1 37 33" stroke="#ffd166" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+          <circle cx="32" cy="38" r="2" fill="#ffffff"/>
+        </svg>
+      </div>
+
+      <div>
+        <span class="tag-resort">🌿 Balneario & Aguas Naturales</span>
+        <h1 class="portal-title" id="businessName">Balneario Río Royota</h1>
+        <p class="portal-slogan" id="businessSlogan">El paraíso natural junto al río · Conexión WiFi</p>
+      </div>
+    </header>
+
+    <!-- ══ TARJETA 1: Ingreso y Activación de Ficha ═════════════ -->
+    <section class="card" aria-labelledby="cardTitleActivation">
+      <div class="card-title-row">
+        <span class="card-icon" aria-hidden="true">🎫</span>
+        <h2 class="card-title" id="cardTitleActivation">Activar Ficha de Internet</h2>
+      </div>
+
+      <form id="activateForm" autocomplete="off" novalidate>
+        <div class="input-group">
+          <input
+            id="codeInput"
+            type="text"
+            class="voucher-input"
+            name="code"
+            inputmode="text"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="characters"
+            spellcheck="false"
+            maxlength="20"
+            placeholder="CÓDIGO DE FICHA"
+            aria-label="Código de ficha de internet"
+            required
+          >
+        </div>
+
+        <button type="submit" id="btnActivar" class="btn-river">
+          ⚡ Conectar al Internet
+        </button>
+      </form>
+
+      <!-- Mensajes de estado (error, alerta o proceso) -->
+      <div id="statusBox" class="status-box" role="alert" aria-live="polite"></div>
+
+      <!-- Datos de la conexión activa -->
+      <div id="connInfo" class="conn-info" hidden>
+        <h3 class="conn-title">✅ ¡Conectado al Internet!</h3>
+        <dl>
+          <div class="conn-row"><dt>Plan</dt>      <dd id="cPlan">—</dd></div>
+          <div class="conn-row"><dt>Duración</dt>  <dd id="cDuration">—</dd></div>
+          <div class="conn-row"><dt>Velocidad</dt> <dd id="cSpeed">—</dd></div>
+          <div class="conn-row"><dt>Expira</dt>    <dd id="cExpires">—</dd></div>
+        </dl>
+        <p class="conn-note">Ya puedes navegar libremente mientras disfrutas del río.</p>
+      </div>
+    </section>
+
+    <!-- ══ TARJETA 2: Compra Directa por WhatsApp ══════════════ -->
+    <section class="wa-card" id="waSection" hidden>
+      <p class="wa-hint">¿No tienes ficha o deseas recargar tu tiempo?</p>
+      <a href="#" id="waButton" class="wa-btn" target="_blank" rel="noopener">
+        <!-- SVG Oficial de WhatsApp -->
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm.01 1.67c2.2 0 4.26.86 5.82 2.42a8.19 8.19 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.19 8.19 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24zm4.52 11.66c-.25-.13-1.47-.72-1.7-.8-.23-.09-.39-.13-.56.13-.17.25-.65.8-.8 1-.14.16-.29.18-.54.06-.25-.13-1.06-.39-2.02-1.25-.75-.67-1.25-1.49-1.4-1.74-.15-.25-.02-.39.11-.51.11-.11.25-.29.38-.44.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.44-.06-.13-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.43h-.48c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1s.9 2.44 1.03 2.61c.13.17 1.77 2.7 4.29 3.79.6.26 1.07.41 1.44.53.6.19 1.15.16 1.58.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.15-1.18-.06-.11-.23-.17-.48-.29z"/>
+        </svg>
+        <span>Pedir Ficha por WhatsApp</span>
+      </a>
+    </section>
+
+    <!-- ══ TARJETA 3: Planes & Precios Disponibles ══════════════ -->
+    <section class="card" id="plansSection" aria-labelledby="plansSectionTitle">
+      <div class="card-title-row">
+        <span class="card-icon" aria-hidden="true">🏷️</span>
+        <h2 class="card-title" id="plansSectionTitle">Planes y Precios de Internet</h2>
+      </div>
+      <div class="plans-grid" id="plansList">
+        <div style="text-align:center; padding:12px; color:#80cbc4;">Cargando planes disponibles…</div>
+      </div>
+    </section>
+
+    <!-- ══ TARJETA 4: Información del Balneario (Editable en Admin) ══ -->
+    <section class="info-card" id="infoSection" hidden>
+      <span class="info-badge-tag" id="infoBadge">Avisos & Servicios</span>
+      <h2 class="info-heading" id="infoTitle">¡Bienvenidos al Balneario Río Royota!</h2>
+      <div class="info-body-text" id="infoContent"></div>
+    </section>
+
+    <!-- ── Pie de Página ────────────────────────────────────── -->
+    <footer class="portal-footer">
+      <p id="footerBusinessName">Balneario Río Royota</p>
+      <p>Cuidemos nuestro río y el entorno natural 🌿</p>
+    </footer>
+
+  </main>
+
+  <!-- ── Script del Portal Cautivo (Vanilla JS XMLHttpRequest) ── -->
+  <script>
+  (function () {
+    'use strict';
+
+    var form        = document.getElementById('activateForm');
+    var input       = document.getElementById('codeInput');
+    var btn         = document.getElementById('btnActivar');
+    var box         = document.getElementById('statusBox');
+    var info        = document.getElementById('connInfo');
+
+    var nameEl      = document.getElementById('businessName');
+    var sloganEl    = document.getElementById('businessSlogan');
+    var footerEl    = document.getElementById('footerBusinessName');
+
+    var waSec       = document.getElementById('waSection');
+    var waBtn       = document.getElementById('waButton');
+
+    var infoSec     = document.getElementById('infoSection');
+    var infoBadge   = document.getElementById('infoBadge');
+    var infoTitle   = document.getElementById('infoTitle');
+    var infoContent = document.getElementById('infoContent');
+
+    var plansList   = document.getElementById('plansList');
+
+    var _settings = {};
+
+    /* ── Helper AJAX con XMLHttpRequest para WebView cautivo ── */
+    function ajaxGet(url, cb) {
+      var fullUrl = (window.API_BASE || '') + url;
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', fullUrl, true);
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState !== 4) return;
+        var data = null;
+        try { data = JSON.parse(xhr.responseText); } catch (_) {}
+        cb(xhr.status, data);
+      };
+      xhr.onerror = function () { cb(0, null); };
+      xhr.send();
+    }
+
+    /* ── Render de Ajustes ── */
+    function renderSettings(data) {
+      if (!data) return;
+      _settings = data;
+      if (data.business_name) {
+        nameEl.textContent   = data.business_name;
+        footerEl.textContent = data.business_name;
+        document.title       = 'WiFi ' + data.business_name + ' — Conectarse';
+      }
+      if (data.business_slogan) {
+        sloganEl.textContent = data.business_slogan;
+      }
+      if (data.whatsapp_number && data.whatsapp_number.trim() !== '') {
+        var cleanNum = data.whatsapp_number.replace(/[^\d]/g, '');
+        var defMsg   = encodeURIComponent(data.whatsapp_message || '¡Hola! Quiero comprar una ficha para navegar en el Balneario.');
+        waBtn.href   = 'https://wa.me/' + cleanNum + '?text=' + defMsg;
+        waSec.removeAttribute('hidden');
+      } else {
+        waSec.setAttribute('hidden', '');
+      }
+      if (data.info_active && data.info_content && data.info_content.trim() !== '') {
+        infoBadge.textContent   = data.info_badge || 'Avisos & Servicios';
+        infoTitle.textContent   = data.info_title || 'Información del Balneario';
+        infoContent.textContent = data.info_content;
+        infoSec.removeAttribute('hidden');
+      } else {
+        infoSec.setAttribute('hidden', '');
+      }
+    }
+
+    /* ── Render de Planes ── */
+    function renderPlans(plans) {
+      if (!plans || !plans.length) {
+        plansList.innerHTML = '<div style="color:#80cbc4;font-size:13px;text-align:center;">Fichas disponibles en taquilla y restaurante</div>';
+        return;
+      }
+      var sym = (_settings && _settings.currencySymbol) || '$';
+      var html = '';
+      for (var i = 0; i < plans.length; i++) {
+        var p = plans[i];
+        var formattedPrice = sym + Number(p.price || 0).toLocaleString();
+        var waHref = '#';
+        if (_settings.whatsapp_number) {
+          var cleanNum = _settings.whatsapp_number.replace(/[^\d]/g, '');
+          var buyMsg = encodeURIComponent('Hola! Deseo comprar la ficha de ' + p.name + ' (' + formattedPrice + ') para el WiFi del Balneario.');
+          waHref = 'https://wa.me/' + cleanNum + '?text=' + buyMsg;
+        }
+        html += '<div class="plan-item">' +
+                  '<div class="plan-info-left">' +
+                    '<div class="plan-name">' + escapeHtml(p.name) + '</div>' +
+                    '<div class="plan-meta">' +
+                      '<span>⏱ ' + escapeHtml(p.duration) + '</span>' +
+                      '<span>⚡ ' + escapeHtml(p.speed_limit) + '</span>' +
+                    '</div>' +
+                  '</div>' +
+                  '<div class="plan-price-wrap">' +
+                    '<div class="plan-price">' + formattedPrice + '</div>' +
+                    (_settings.whatsapp_number
+                      ? '<a href="' + waHref + '" class="plan-buy-btn" target="_blank" rel="noopener">Pedir 📲</a>'
+                      : '') +
+                  '</div>' +
+                '</div>';
+      }
+      plansList.innerHTML = html;
+    }
+
+    /* ── Carga inicial desde Firestore o API ── */
+    if (window.firebaseDb) {
+      window.firebaseDb.getSettings().then(renderSettings);
+      window.firebaseDb.getPlans().then(renderPlans);
+    } else {
+      ajaxGet('/api/settings/public', function (status, data) {
+        if (status === 200) renderSettings(data);
+      });
+      ajaxGet('/api/plans', function (status, plans) {
+        if (status === 200) renderPlans(plans);
+      });
+    }
+
+    /* ── 3. Auto-mayúsculas y formateo del código al teclear ── */
+    input.addEventListener('input', function () {
+      var pos = this.selectionStart;
+      this.value = this.value.toUpperCase();
+      this.setSelectionRange(pos, pos);
+    });
+
+    /* ── 4. Mostrar y ocultar alertas de estado ── */
+    function showStatus(msg, type) {
+      box.className   = 'status-box status-' + type;
+      box.textContent = msg;
+      box.removeAttribute('hidden');
+    }
+
+    function hideStatus() {
+      box.setAttribute('hidden', '');
+      box.className   = 'status-box';
+      box.textContent = '';
+    }
+
+    /* ── 5. Activación de Ficha (Directo a Firestore o Fallback API) ── */
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+
+      var code = input.value.trim().toUpperCase();
+      if (!code) {
+        showStatus('Por favor, escribe el código de tu ficha.', 'warn');
+        input.focus();
+        return;
+      }
+
+      btn.disabled    = true;
+      btn.textContent = '🌊 Conectando al Internet…';
+      info.setAttribute('hidden', '');
+      hideStatus();
+
+      if (window.firebaseDb) {
+        window.firebaseDb.activateVoucher(code).then(function(data) {
+          btn.disabled    = false;
+          btn.textContent = '⚡ Conectar al Internet';
+          input.value     = '';
+          showStatus(data.message || '¡Ficha activada con éxito!', 'ok');
+
+          setText('cPlan',     data.plan);
+          setText('cDuration', data.duration);
+          setText('cSpeed',    data.speed);
+          setText('cExpires',  data.expires_at ? fmtDate(data.expires_at) : '—');
+          info.removeAttribute('hidden');
+
+          try { info.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (_) {}
+        }).catch(function(err) {
+          btn.disabled    = false;
+          btn.textContent = '⚡ Conectar al Internet';
+          showStatus(err.message || 'Código no válido o ya utilizado.', 'error');
+        });
+      } else {
+        var xhr = new XMLHttpRequest();
+        var fullUrl = (window.API_BASE || '') + '/api/vouchers/activate';
+        xhr.open('POST', fullUrl, true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.timeout = 15000;
+
+        xhr.ontimeout = function () {
+          btn.disabled    = false;
+          btn.textContent = '⚡ Conectar al Internet';
+          showStatus('Tiempo de espera agotado. Verifica tu señal e intenta de nuevo.', 'error');
+        };
+
+        xhr.onreadystatechange = function () {
+          if (xhr.readyState !== 4) return;
+
+          btn.disabled    = false;
+          btn.textContent = '⚡ Conectar al Internet';
+
+          var data;
+          try { data = JSON.parse(xhr.responseText); } catch (_) { data = {}; }
+
+          if (xhr.status === 200) {
+            input.value = '';
+            showStatus(data.message || '¡Ficha activada con éxito!', 'ok');
+
+            setText('cPlan',     data.plan);
+            setText('cDuration', data.duration);
+            setText('cSpeed',    data.speed);
+            setText('cExpires',  data.expires_at ? fmtDate(data.expires_at) : '—');
+            info.removeAttribute('hidden');
+
+            try { info.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (_) {}
+          } else {
+            showStatus(
+              (data && data.error) ? data.error : 'Código no válido o ya utilizado.',
+              'error'
+            );
+          }
+        };
+
+        xhr.onerror = function () {
+          btn.disabled    = false;
+          btn.textContent = '⚡ Conectar al Internet';
+          showStatus('Sin conexión con el servidor. Intenta de nuevo.', 'error');
+        };
+
+        xhr.send(JSON.stringify({ code: code }));
+      }
+    });
+
+    function setText(id, val) {
+      var el = document.getElementById(id);
+      if (el) el.textContent = val || '—';
+    }
+
+    function fmtDate(iso) {
+      try {
+        var d = new Date(iso);
+        return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } catch (_) { return iso; }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+  }());
+  </script>
+</body>
+</html>

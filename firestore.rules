@@ -1,0 +1,41 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Ajustes del portal y Balneario: lectura pública, escritura solo admin
+    match /settings/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Planes y precios: lectura pública, escritura solo admin
+    match /plans/{doc} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // Fichas (vouchers):
+    // - Lectura pública (para verificar código)
+    // - Actualización a 'active' permitida para activar la ficha
+    // - Creación y gestión completa solo admin
+    match /vouchers/{code} {
+      allow read: if true;
+      allow update: if (resource.data.status == 'available' || resource.data.status == 'sold')
+                    && request.resource.data.status == 'active';
+      allow write: if request.auth != null;
+    }
+
+    // Lotes y ventas: solo admin
+    match /voucher_batches/{doc} {
+      allow read, write: if request.auth != null;
+    }
+
+    match /sales/{doc} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Todo lo demás requiere autenticación
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}
