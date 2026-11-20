@@ -13,9 +13,9 @@
   -->
   <title>WiFi Balneario Río Royota — Conectarse</title>
   <link rel="stylesheet" href="./css/portal.css">
-  <!-- Firebase SDK (Directo a Firestore sin costo) -->
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <!-- Firebase SDK Local (Sin bloqueo por CSP ni dependencias CDN) -->
+  <script src="./js/firebase-app-compat.js"></script>
+  <script src="./js/firebase-firestore-compat.js"></script>
   <script src="./js/config.js"></script>
   <script src="./js/firebase-db.js"></script>
   <!-- Favicon SVG ecológico y acuático -->
@@ -214,11 +214,21 @@
       }
     }
 
+    var DEFAULT_FALLBACK_PLANS = [
+      { name: '30 Minutos', duration: '30m', speed_limit: '3M/3M', price: 2000 },
+      { name: '1 Hora',     duration: '1h',  speed_limit: '5M/5M', price: 3000 },
+      { name: '2 Horas',    duration: '2h',  speed_limit: '5M/5M', price: 5000 },
+      { name: '5 Horas',    duration: '5h',  speed_limit: '8M/8M', price: 8000 },
+      { name: '1 Día',      duration: '1d',  speed_limit: '10M/10M', price: 12000 },
+      { name: '3 Días',     duration: '3d',  speed_limit: '10M/10M', price: 25000 },
+      { name: '7 Días',     duration: '7d',  speed_limit: '15M/15M', price: 45000 },
+      { name: '30 Días',    duration: '30d', speed_limit: '20M/20M', price: 120000 }
+    ];
+
     /* ── Render de Planes ── */
     function renderPlans(plans) {
       if (!plans || !plans.length) {
-        plansList.innerHTML = '<div style="color:#80cbc4;font-size:13px;text-align:center;">Fichas disponibles en taquilla y restaurante</div>';
-        return;
+        plans = DEFAULT_FALLBACK_PLANS;
       }
       var sym = (_settings && _settings.currencySymbol) || '$';
       var html = '';
@@ -252,14 +262,16 @@
 
     /* ── Carga inicial desde Firestore o API ── */
     if (window.firebaseDb) {
-      window.firebaseDb.getSettings().then(renderSettings);
-      window.firebaseDb.getPlans().then(renderPlans);
+      window.firebaseDb.getSettings().then(renderSettings).catch(function() { renderSettings(null); });
+      window.firebaseDb.getPlans().then(renderPlans).catch(function() { renderPlans(DEFAULT_FALLBACK_PLANS); });
     } else {
       ajaxGet('/api/settings/public', function (status, data) {
-        if (status === 200) renderSettings(data);
+        if (status === 200 && data) renderSettings(data);
+        else renderSettings(null);
       });
       ajaxGet('/api/plans', function (status, plans) {
-        if (status === 200) renderPlans(plans);
+        if (status === 200 && plans && plans.length) renderPlans(plans);
+        else renderPlans(DEFAULT_FALLBACK_PLANS);
       });
     }
 
