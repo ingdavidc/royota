@@ -55,15 +55,25 @@ const config = {
     timeoutMs: parseInt(optional('MIKROTIK_TIMEOUT_MS', '8000'), 10),
   },
 
-  // ── Scheduler ──────────────────────────────────────────────
+  // ── Scheduler de expiración continua ──────────────────────
   cleanup: {
-    cron: optional('CLEANUP_CRON', '*/15 * * * *'),
+    cron: optional('CLEANUP_CRON', '*/5 * * * *'),
   },
 
   // ── Admin por defecto ──────────────────────────────────────
   admin: {
     user: optional('ADMIN_USER', 'admin'),
     pass: optional('ADMIN_PASS', 'admin123'),
+  },
+
+  // ── WhatsApp & IA Bot (Automatización de Ventas) ───────────
+  whatsapp: {
+    enabled:        optional('WHATSAPP_ENABLED', 'true') === 'true',
+    geminiApiKey:   optional('GEMINI_API_KEY', ''),
+    geminiModel:    optional('GEMINI_MODEL', 'gemini-1.5-flash'),
+    paymentPhone:   optional('PAYMENT_PHONE', '3174251419'),
+    daviplataPhone: optional('DAVIPLATA_PHONE', '3174251419'),
+    brebKey:        optional('BREB_KEY', '3174251419'),
   },
 };
 

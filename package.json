@@ -10,13 +10,18 @@
     "test:api": "node -e \"require('./src/services/mikrotik-api').testConnection().then(r=>console.log(JSON.stringify(r,null,2)))\""
   },
   "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
+    "express-rate-limit": "^8.7.5",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "pino": "^10.4.0",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0"
   },
   "engines": {
     "node": ">=20"

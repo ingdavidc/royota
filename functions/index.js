@@ -17,6 +17,7 @@ const express   = require('express');
 const cors      = require('cors');
 const jwt       = require('jsonwebtoken');
 const bcrypt    = require('bcryptjs');
+const crypto    = require('crypto');
 
 const mikrotik  = require('./mikrotik');
 
@@ -40,9 +41,16 @@ const CHARSETS = {
 function generateCode(length = 8, charsetType = 'full', prefix = '') {
   const chars = CHARSETS[charsetType] || CHARSETS.full;
   let result = prefix ? prefix.toUpperCase() : '';
-  const needed = length - result.length;
-  for (let i = 0; i < Math.max(needed, 4); i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  const needed = Math.max(length - result.length, 4);
+  const maxUsable = 256 - (256 % chars.length);
+
+  while (result.length < length) {
+    const bytes = crypto.randomBytes(needed * 2);
+    for (let i = 0; i < bytes.length && result.length < length; i++) {
+      if (bytes[i] < maxUsable) {
+        result += chars[bytes[i] % chars.length];
+      }
+    }
   }
   return result.toUpperCase();
 }

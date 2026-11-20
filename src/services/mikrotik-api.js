@@ -228,6 +228,41 @@ async function listActiveUsers() {
 }
 
 /**
+ * Expulsar y desconectar sesiones activas de un usuario en el Hotspot (/ip/hotspot/active)
+ */
+async function kickActiveUser(username) {
+  if (!username) return { ok: false };
+
+  if (config.mikrotik.mock) {
+    console.log(`[SIMULADOR MIKROTIK] 🔌 Sesión activa desconectada para: ${username}`);
+    return { ok: true, kicked: 1 };
+  }
+
+  try {
+    const activeSessions = await apiRequest(
+      'GET',
+      `/ip/hotspot/active?user=${encodeURIComponent(username)}&server=${encodeURIComponent(config.mikrotik.server)}`
+    );
+
+    let kickedCount = 0;
+    if (Array.isArray(activeSessions) && activeSessions.length > 0) {
+      for (const session of activeSessions) {
+        if (session['.id']) {
+          const id = session['.id'].startsWith('*') ? session['.id'] : `*${session['.id']}`;
+          await apiRequest('DELETE', `/ip/hotspot/active/${id}`);
+          kickedCount++;
+          console.log(`[MikroTik] 🔌 Sesión activa terminada: ${username} (${id})`);
+        }
+      }
+    }
+    return { ok: true, kicked: kickedCount };
+  } catch (err) {
+    console.warn(`[MikroTik] Aviso al expulsar sesión activa de ${username}:`, err.message);
+    return { ok: false, error: err.message };
+  }
+}
+
+/**
  * Listar perfiles Hotspot disponibles
  */
 async function listProfiles() {
@@ -294,6 +329,7 @@ module.exports = {
   findHotspotUser,
   listHotspotUsers,
   listActiveUsers,
+  kickActiveUser,
   listProfiles,
   testConnection,
   profileExists,

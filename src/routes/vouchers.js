@@ -22,6 +22,7 @@ const mikrotik           = require('../services/mikrotik-api');
 const { generateBatch, listBatches, getBatchVouchers, CHARSETS } = require('../services/voucher-generator');
 
 const router = Router();
+const _activatingCodes = new Set();
 
 // ── Helper: parsear duración MikroTik a ms ───────────────────
 function parseDurationMs(str) {
@@ -296,8 +297,14 @@ router.post('/activate', async (req, res) => {
   const { code } = req.body;
   if (!code) return res.status(400).json({ error: 'Código requerido' });
 
-  const db = getDb();
   const cleanCode = String(code).toUpperCase().trim();
+
+  // Prevenir condiciones de carrera por doble clic o peticiones concurrentes
+  if (_activatingCodes.has(cleanCode)) {
+    return res.status(409).json({ error: 'Esta ficha ya está siendo procesada. Por favor espera un momento.' });
+  }
+
+  const db = getDb();
 
   const voucher = db.prepare(`
     SELECT v.*, p.duration, p.speed_limit, p.name AS plan_name,
@@ -311,6 +318,7 @@ router.post('/activate', async (req, res) => {
     return res.status(404).json({ error: 'Código inválido, ya utilizado o expirado' });
   }
 
+  _activatingCodes.add(cleanCode);
   const startTime = Date.now();
 
   try {
@@ -359,6 +367,8 @@ router.post('/activate', async (req, res) => {
     return res.status(502).json({
       error: 'No se pudo activar la ficha en este momento. Intenta de nuevo.',
     });
+  } finally {
+    _activatingCodes.delete(cleanCode);
   }
 });
 
@@ -394,6 +404,10 @@ router.post('/revoke/:id', authRequired, async (req, res) => {
 
   try {
     if (voucher.mikrotik_synced && voucher.status === 'active') {
+      // 1. Expulsar la sesión activa inmediatamente del Hotspot
+      await mikrotik.kickActiveUser(voucher.code);
+
+      // 2. Eliminar de /ip/hotspot/user
       const mkUser = await mikrotik.findHotspotUser(voucher.code);
       if (mkUser) await mikrotik.removeHotspotUser(mkUser['.id']);
     }

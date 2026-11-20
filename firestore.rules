@@ -14,13 +14,12 @@ service cloud.firestore {
     }
 
     // Fichas (vouchers):
-    // - Lectura pública (para verificar código)
-    // - Actualización a 'active' permitida para activar la ficha
-    // - Creación y gestión completa solo admin
+    // - Prohibido el listado masivo (list: false) para evitar robo de fichas
+    // - Permitida solo la consulta individual (get: true) si se conoce el código
+    // - Creación, activación y revocación solo para administradores autenticados o backend
     match /vouchers/{code} {
-      allow read: if true;
-      allow update: if (resource.data.status == 'available' || resource.data.status == 'sold')
-                    && request.resource.data.status == 'active';
+      allow get: if true;
+      allow list: if false;
       allow write: if request.auth != null;
     }
 

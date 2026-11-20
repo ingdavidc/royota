@@ -55,6 +55,10 @@ async function _runCleanup() {
     try {
       // Intentar eliminar del router (solo si fue creado allí)
       if (v.mikrotik_synced) {
+        // 1. Expulsar cualquier sesión activa de inmediato
+        await mikrotik.kickActiveUser(v.code);
+
+        // 2. Eliminar usuario de /ip/hotspot/user
         const mkUser = await mikrotik.findHotspotUser(v.code);
         if (mkUser?.['.id']) {
           await mikrotik.removeHotspotUser(mkUser['.id']);

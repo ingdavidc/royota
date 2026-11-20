@@ -53,6 +53,7 @@
       <li><a class="nav-link"        data-sec="plans"      href="#plans">      <span class="nav-icon">⚙️</span><span class="nav-label">Planes</span></a></li>
       <li><a class="nav-link"        data-sec="mikrotik"   href="#mikrotik">   <span class="nav-icon">🌐</span><span class="nav-label">MikroTik</span></a></li>
       <li><a class="nav-link"        data-sec="portal"     href="#portal">     <span class="nav-icon">🏖️</span><span class="nav-label">Portal & Info</span></a></li>
+      <li><a class="nav-link"        data-sec="whatsapp"   href="#whatsapp">   <span class="nav-icon">🤖</span><span class="nav-label">Bot WhatsApp</span></a></li>
     </ul>
     <div class="sidebar-footer">
       <a href="https://www.dctelematica.com" target="_blank" rel="noopener" class="powered-by-link" title="DC Telemática - Soluciones Tecnológicas">
@@ -390,6 +391,95 @@
           </button>
         </div>
       </form>
+    </section>
+
+    <!-- ═══ BOT WHATSAPP & IA ══════════════════════════════ -->
+    <section id="sec-whatsapp" class="sec" hidden>
+      <h2 class="sec-title">🤖 Automatización WhatsApp & IA</h2>
+      <p style="color:var(--muted); margin-bottom: 20px;">
+        Venta y entrega automática de fichas por WhatsApp mediante lectura de comprobantes con Inteligencia Artificial.
+      </p>
+
+      <div class="two-col">
+        <!-- Tarjeta de Estado de Conexión -->
+        <div class="panel">
+          <div class="panel-hd"><span class="panel-title">📱 Estado de WhatsApp</span></div>
+          <div class="panel-body" style="text-align:center; padding: 25px;">
+            <div id="waStatusPill" style="display:inline-block; padding: 6px 14px; border-radius: 20px; font-weight: bold; margin-bottom: 15px; background: rgba(255,255,255,0.1);">
+              Verificando estado...
+            </div>
+            
+            <!-- Contenedor de Código QR -->
+            <div id="waQrBox" style="display:none; margin: 15px 0;">
+              <p style="font-size: 14px; color: var(--muted); margin-bottom: 10px;">
+                Escanea este código con tu WhatsApp (Dispositivos vinculados):
+              </p>
+              <img id="waQrImg" src="" alt="Código QR WhatsApp" style="width: 240px; height: 240px; border-radius: 8px; border: 4px solid #fff; background:#fff; margin:0 auto; display:block;">
+              <p style="font-size: 12px; color: var(--muted); margin-top: 8px;">El código se actualiza automáticamente.</p>
+            </div>
+
+            <!-- Contenedor Conectado -->
+            <div id="waConnectedBox" style="display:none; margin: 15px 0;">
+              <p style="font-size: 16px; color: #4ade80; font-weight: bold;">✅ Bot activo y escuchando mensajes</p>
+              <p id="waConnectedUser" style="color: var(--muted); margin-top: 5px;"></p>
+              <button class="btn btn-danger" style="margin-top: 15px;" onclick="disconnectWhatsApp()">Desvincular WhatsApp</button>
+            </div>
+
+            <!-- Configuración activa -->
+            <div style="margin-top: 25px; padding-top: 15px; border-top: 1px solid rgba(255,255,255,0.1); text-align: left; font-size: 13px;">
+              <p>💳 <strong>Daviplata autorizado:</strong> <code>3174251419</code></p>
+              <p>⚡ <strong>Llave Bre-B autorizada:</strong> <code>3174251419</code></p>
+              <p>🧠 <strong>Motor de Visión:</strong> Google Gemini Flash</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Guía de Uso del Bot -->
+        <div class="panel">
+          <div class="panel-hd"><span class="panel-title">💡 ¿Cómo interactúa el cliente?</span></div>
+          <div class="panel-body" style="font-size: 14px; line-height: 1.6;">
+            <p><strong>1. Consulta de Planes:</strong><br>
+            Cualquier saludo o palabra como <em>"hola", "planes", "precios", "comprar"</em> activará la respuesta automática con los planes vigentes del sistema y los datos de pago.</p>
+            
+            <p style="margin-top: 12px;"><strong>2. Envío de Comprobante:</strong><br>
+            El cliente transfiere a tu <strong>Daviplata</strong> o <strong>Llave Bre-B (3174251419)</strong> y envía la foto de la transferencia al chat.</p>
+
+            <p style="margin-top: 12px;"><strong>3. Verificación con IA & Anti-Fraude:</strong><br>
+            Gemini Flash lee el monto, verifica que el destino sea tu número y confirma que el número de aprobación no se haya utilizado antes.</p>
+
+            <p style="margin-top: 12px;"><strong>4. Entrega Instantánea:</strong><br>
+            El bot reserva o genera la ficha del plan pagado y le responde con su código y las instrucciones de conexión al Wi-Fi.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabla de Ventas por WhatsApp -->
+      <div class="panel" style="margin-top: 20px;">
+        <div class="panel-hd">
+          <span class="panel-title">🧾 Últimos Pagos y Fichas entregadas por WhatsApp</span>
+          <button class="btn btn-sm btn-ghost" onclick="loadWhatsAppPayments()">🔄 Actualizar</button>
+        </div>
+        <div class="panel-body">
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Cliente (Celular)</th>
+                  <th>Plataforma</th>
+                  <th>Referencia</th>
+                  <th>Monto</th>
+                  <th>Plan Asignado</th>
+                  <th>Ficha Generada</th>
+                </tr>
+              </thead>
+              <tbody id="waPaymentsBody">
+                <tr><td colspan="7" style="text-align:center; color:var(--muted)">Cargando registros...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- Pie de página Admin -->

@@ -141,6 +141,7 @@ var SECTIONS = {
   plans:     { load: loadPlans },
   mikrotik:  { load: loadMikrotikSection },
   portal:    { load: loadPortalSettings },
+  whatsapp:  { load: loadWhatsAppSection },
 };
 
 document.querySelectorAll('.nav-link').forEach(function(a) {
@@ -756,6 +757,113 @@ function savePortalSettings(e) {
   }).catch(function(err) {
     if (btn) btn.disabled = false;
     toast((err && err.error) || 'Error al guardar configuración', 'error');
+  });
+}
+
+/* ══════════════════════════════════════════════════════════
+   WHATSAPP BOT & IA
+══════════════════════════════════════════════════════════ */
+var _waPollInterval = null;
+
+function loadWhatsAppSection() {
+  checkWhatsAppStatus();
+  loadWhatsAppPayments();
+
+  if (_waPollInterval) clearInterval(_waPollInterval);
+  _waPollInterval = setInterval(function() {
+    var sec = document.getElementById('sec-whatsapp');
+    if (sec && !sec.hidden) {
+      checkWhatsAppStatus();
+    } else {
+      clearInterval(_waPollInterval);
+      _waPollInterval = null;
+    }
+  }, 4000);
+}
+
+function checkWhatsAppStatus() {
+  apiFetch('GET', '/api/whatsapp/status').then(function(s) {
+    var pill = document.getElementById('waStatusPill');
+    var qrBox = document.getElementById('waQrBox');
+    var qrImg = document.getElementById('waQrImg');
+    var connBox = document.getElementById('waConnectedBox');
+    var userEl = document.getElementById('waConnectedUser');
+
+    if (!pill) return;
+
+    if (s.status === 'connected') {
+      pill.textContent = '🟢 Conectado';
+      pill.style.background = 'rgba(74, 222, 128, 0.2)';
+      pill.style.color = '#4ade80';
+      qrBox.style.display = 'none';
+      connBox.style.display = 'block';
+      userEl.textContent = 'Vinculado a: ' + (s.user ? (s.user.name || s.user.id || 'Dispositivo WhatsApp') : 'Dispositivo WhatsApp');
+    } else if (s.status === 'qr_ready') {
+      pill.textContent = '🟡 Esperando Escaneo de QR';
+      pill.style.background = 'rgba(250, 204, 21, 0.2)';
+      pill.style.color = '#facc15';
+      connBox.style.display = 'none';
+      qrBox.style.display = 'block';
+      if (s.qrCodeDataUrl) {
+        qrImg.src = s.qrCodeDataUrl;
+      }
+    } else if (s.status === 'connecting') {
+      pill.textContent = '🔄 Conectando...';
+      pill.style.background = 'rgba(56, 189, 248, 0.2)';
+      pill.style.color = '#38bdf8';
+    } else if (s.status === 'disabled') {
+      pill.textContent = '⚪ Desactivado (WHATSAPP_ENABLED=false)';
+      pill.style.background = 'rgba(255, 255, 255, 0.1)';
+      pill.style.color = 'var(--muted)';
+      qrBox.style.display = 'none';
+      connBox.style.display = 'none';
+    } else {
+      pill.textContent = '🔴 Desconectado';
+      pill.style.background = 'rgba(248, 113, 113, 0.2)';
+      pill.style.color = '#f87171';
+      qrBox.style.display = 'none';
+      connBox.style.display = 'none';
+    }
+  }).catch(function(err) {
+    console.error('Error comprobando estado de WhatsApp:', err);
+  });
+}
+
+function disconnectWhatsApp() {
+  if (!confirm('¿Estás seguro de que deseas desvincular el WhatsApp actual?')) return;
+  apiFetch('POST', '/api/whatsapp/logout').then(function(res) {
+    toast(res.message || 'Sesión cerrada', 'ok');
+    checkWhatsAppStatus();
+  }).catch(function(err) {
+    toast((err && err.error) || 'Error al cerrar sesión', 'error');
+  });
+}
+
+function loadWhatsAppPayments() {
+  var tbody = document.getElementById('waPaymentsBody');
+  if (!tbody) return;
+
+  apiFetch('GET', '/api/whatsapp/payments?limit=30').then(function(data) {
+    tbody.innerHTML = '';
+    if (!data.payments || !data.payments.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--muted)">No hay pagos procesados por WhatsApp todavía.</td></tr>';
+      return;
+    }
+
+    data.payments.forEach(function(p) {
+      var tr = document.createElement('tr');
+      tr.innerHTML =
+        '<td>' + fmtDate(p.created_at) + '</td>' +
+        '<td><strong>' + (p.sender_phone || '—') + '</strong></td>' +
+        '<td><span class="badge">' + (p.platform || 'Daviplata') + '</span></td>' +
+        '<td><code>' + (p.reference_number || '—') + '</code></td>' +
+        '<td style="color:#4ade80; font-weight:bold;">' + fmtMoney(p.amount) + '</td>' +
+        '<td>' + (p.plan_name ? p.plan_name + ' (' + p.plan_duration + ')' : '—') + '</td>' +
+        '<td><strong style="color:var(--cyan);">' + (p.voucher_code || '—') + '</strong></td>';
+      tbody.appendChild(tr);
+    });
+  }).catch(function(err) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#f87171">Error cargando historial de pagos.</td></tr>';
   });
 }
 

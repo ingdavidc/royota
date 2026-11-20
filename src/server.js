@@ -10,17 +10,29 @@ const express = require('express');
 const helmet  = require('helmet');
 const cors    = require('cors');
 const path    = require('path');
+const rateLimit = require('express-rate-limit');
 
 const config    = require('./config');
 const { getDb, getSettings } = require('./database');
 const { startCleanupScheduler } = require('./services/cleanup-scheduler');
+const { startWhatsAppBot } = require('./services/whatsapp-bot');
 
 const app = express();
 
 // ── Middlewares de seguridad ──────────────────────────────────
 app.use(helmet({
-  // CSP desactivado: el portal cautivo usa estilos inline
-  contentSecurityPolicy:    false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc:  ["'self'", "'unsafe-inline'"],
+      styleSrc:   ["'self'", "'unsafe-inline'"],
+      imgSrc:     ["'self'", "data:", "https://*"],
+      connectSrc: ["'self'", "https://firestore.googleapis.com", "https://*.firebaseio.com", "https://identitytoolkit.googleapis.com"],
+      fontSrc:    ["'self'"],
+      objectSrc:  ["'none'"],
+      baseUri:    ["'self'"],
+    },
+  },
   crossOriginEmbedderPolicy: false,
 }));
 
@@ -28,6 +40,23 @@ app.use(helmet({
 if (config.nodeEnv !== 'production') {
   app.use(cors());
 }
+
+// ── Rate Limiting (Protección contra fuerza bruta y DoS) ──────
+const voucherLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minuto
+  max: 10,             // máx 10 intentos por minuto por IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiadas solicitudes. Por favor espera un momento antes de intentar de nuevo.' },
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 5,                   // máx 5 intentos por IP
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demasiados intentos de acceso fallidos. Por seguridad, espera 15 minutos.' },
+});
 
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
@@ -60,12 +89,18 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// ── Rate Limiters en endpoints sensibles ──────────────────────
+app.use('/api/auth/login', authLimiter);
+app.use('/api/vouchers/activate', voucherLimiter);
+app.use('/api/vouchers/check', voucherLimiter);
+
 // ── Rutas API ─────────────────────────────────────────────────
 app.use('/api/auth',     require('./routes/auth'));
 app.use('/api/plans',    require('./routes/plans'));
 app.use('/api/vouchers', require('./routes/vouchers'));
 app.use('/api/mikrotik', require('./routes/mikrotik'));
 app.use('/api/settings', require('./routes/settings'));
+app.use('/api/whatsapp', require('./routes/whatsapp'));
 
 // ── SPA fallback para el admin ────────────────────────────────
 app.get('/admin',  (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'admin.html')));
@@ -100,6 +135,9 @@ function start() {
 
   // Iniciar scheduler de limpieza
   startCleanupScheduler();
+
+  // Iniciar Bot de WhatsApp con IA
+  startWhatsAppBot();
 
   // Escuchar en todas las interfaces (necesario para Docker)
   app.listen(config.port, '0.0.0.0', () => {

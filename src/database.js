@@ -178,6 +178,20 @@ function _initSchema(db) {
       created_at   TEXT    NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- ── Pagos recibidos por WhatsApp ─────────────────────────
+    CREATE TABLE IF NOT EXISTS whatsapp_payments (
+      id               INTEGER PRIMARY KEY AUTOINCREMENT,
+      reference_number TEXT NOT NULL UNIQUE,
+      platform         TEXT NOT NULL,
+      sender_phone     TEXT NOT NULL,
+      amount           REAL NOT NULL,
+      destination      TEXT NOT NULL,
+      voucher_id       INTEGER REFERENCES vouchers(id),
+      plan_id          INTEGER REFERENCES plans(id),
+      raw_analysis     TEXT,
+      created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     -- ── Configuración y Portal Cautivo ──────────────────────
     CREATE TABLE IF NOT EXISTS settings (
       key   TEXT PRIMARY KEY,
@@ -192,6 +206,8 @@ function _initSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_vouchers_expires   ON vouchers(expires_at) WHERE status = 'active';
     CREATE INDEX IF NOT EXISTS idx_sales_date         ON sales(created_at);
     CREATE INDEX IF NOT EXISTS idx_sync_log_date      ON sync_log(created_at);
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_ref       ON whatsapp_payments(reference_number);
+    CREATE INDEX IF NOT EXISTS idx_whatsapp_date      ON whatsapp_payments(created_at);
   `);
 }
 

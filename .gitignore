@@ -4,6 +4,7 @@ data/*.db
 data/*.db-shm
 data/*.db-wal
 data/*.db-journal
+data/baileys_auth/
 .env
 functions/.env
 *.log
