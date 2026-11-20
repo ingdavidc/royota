@@ -5,7 +5,7 @@
  * Proyecto: fichas-royota (Plan Spark 100% Gratuito)
  */
 window.FIREBASE_CONFIG = {
-  apiKey: "AIzaSyCWdpRAw40n1KRh89pHbHMYZUmfdzZ8trQ",
+  apiKey: "AIzaSyCWdprAw40n1KRh89pHbHMYZUmfdzZ8trQ",
   authDomain: "fichas-royota.firebaseapp.com",
   projectId: "fichas-royota",
   storageBucket: "fichas-royota.firebasestorage.app",
