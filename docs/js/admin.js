@@ -43,7 +43,9 @@ function apiFetch(method, url, body) {
     if (url.startsWith('/api/plans/')) {
       var planId = url.split('/api/plans/')[1];
       if (method === 'PUT') return window.firebaseDb.savePlan(body, planId);
-      if (method === 'DELETE') return window.firebaseDb.deletePlan(planId);
+      if (method === 'DELETE') {
+        return (window.firebaseDb.deletePlanPermanent ? window.firebaseDb.deletePlanPermanent(planId) : window.firebaseDb.deletePlan(planId));
+      }
     }
     if (url === '/api/vouchers/generate' && method === 'POST') {
       return window.firebaseDb.generateVouchers(body);
@@ -506,17 +508,17 @@ function loadPlans() {
 
 function deletePlanPermanent(id, name) {
   if (!confirm('¿Eliminar definitivamente el plan "' + (name || id) + '"?')) return;
-  if (window.firebaseDb && window.firebaseDb.deletePlanPermanent) {
-    window.firebaseDb.deletePlanPermanent(id).then(function() {
-      toast('Plan eliminado', 'ok');
-      loadPlans();
-    }).catch(function(e) { toast((e && e.message) || 'Error', 'error'); });
-  } else {
-    apiFetch('DELETE', '/api/plans/' + id).then(function() {
-      toast('Plan eliminado', 'ok');
-      loadPlans();
-    }).catch(function(e) { toast((e && e.error) || 'Error', 'error'); });
-  }
+  var action = (window.firebaseDb && window.firebaseDb.deletePlanPermanent)
+    ? window.firebaseDb.deletePlanPermanent(id)
+    : apiFetch('DELETE', '/api/plans/' + id);
+
+  action.then(function() {
+    toast('Plan eliminado permanentemente', 'ok');
+    loadPlans();
+  }).catch(function(e) {
+    console.error('Error al eliminar plan:', e);
+    toast((e && e.message) || (e && e.error) || 'Error al eliminar', 'error');
+  });
 }
 
 function openPlanModal(plan) {
