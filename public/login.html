@@ -2,58 +2,294 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin — Hotspot Fichas ROYOTA</title>
-  <link rel="stylesheet" href="./css/admin.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Acceso Admin — Balneario Río Royota</title>
+  <link rel="stylesheet" href="./css/portal.css">
   <script src="./js/firebase-app-compat.js"></script>
   <script src="./js/firebase-auth-compat.js"></script>
   <script src="./js/firebase-firestore-compat.js"></script>
   <script src="./js/config.js"></script>
   <script src="./js/firebase-db.js"></script>
+  <style>
+    /* Estilos específicos para la pantalla de login responsive */
+    .login-wrap {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 16px;
+      position: relative;
+      z-index: 10;
+    }
+    .login-box {
+      width: 100%;
+      max-width: 420px;
+      background: rgba(10, 41, 51, 0.9);
+      border: 1px solid rgba(0, 229, 255, 0.25);
+      border-radius: 20px;
+      padding: 36px 26px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .login-header {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .login-icon {
+      font-size: 42px;
+      margin-bottom: 8px;
+      display: inline-block;
+    }
+    .login-title {
+      font-size: 22px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 4px;
+    }
+    .login-subtitle {
+      font-size: 13px;
+      color: #a7d7c5;
+    }
+    .form-fg {
+      margin-bottom: 18px;
+      text-align: left;
+    }
+    .form-flabel {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #e0f2f1;
+      margin-bottom: 7px;
+    }
+    .form-finput {
+      display: block;
+      width: 100%;
+      padding: 14px 16px;
+      font-size: 16px; /* 16px previene el zoom forzado en móviles iOS */
+      color: #ffffff;
+      background: rgba(4, 25, 33, 0.9);
+      border: 1.5px solid rgba(0, 229, 255, 0.25);
+      border-radius: 12px;
+      outline: none;
+      transition: all 0.2s ease;
+      -webkit-appearance: none;
+    }
+    .form-finput:focus {
+      border-color: #00e5ff;
+      background: rgba(0, 229, 255, 0.08);
+      box-shadow: 0 0 12px rgba(0, 229, 255, 0.3);
+    }
+    .form-fhint {
+      display: block;
+      font-size: 11.5px;
+      color: #80cbc4;
+      margin-top: 5px;
+    }
+    .login-error-box {
+      display: none;
+      padding: 12px 14px;
+      background: rgba(255, 82, 82, 0.18);
+      border: 1px solid rgba(255, 82, 82, 0.45);
+      color: #ff8a80;
+      border-radius: 10px;
+      font-size: 13px;
+      margin-bottom: 18px;
+      line-height: 1.4;
+      text-align: left;
+    }
+    .btn-login {
+      display: block;
+      width: 100%;
+      padding: 15px;
+      font-size: 16px;
+      font-weight: 700;
+      color: #042027;
+      background: linear-gradient(135deg, #00e5ff 0%, #00c49f 100%);
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+      box-shadow: 0 6px 20px rgba(0, 229, 255, 0.35);
+      transition: transform 0.15s, box-shadow 0.15s;
+      margin-top: 10px;
+    }
+    .btn-login:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 25px rgba(0, 229, 255, 0.5);
+    }
+    .btn-login:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    .login-footer-links {
+      margin-top: 22px;
+      text-align: center;
+      font-size: 13px;
+    }
+    .login-footer-links a {
+      color: #80cbc4;
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+    .login-footer-links a:hover {
+      color: #00e5ff;
+    }
+    @media (max-width: 400px) {
+      .login-box {
+        padding: 28px 18px;
+      }
+      .login-title {
+        font-size: 20px;
+      }
+    }
+  </style>
 </head>
 <body>
-  <div class="login-container">
-    <div class="login-card">
-      <h1>🔐 Panel Admin</h1>
-      <p>Hotspot Fichas ROYOTA</p>
 
-      <div id="loginError" class="login-error"></div>
+  <!-- Olas de fondo -->
+  <div class="river-waves-wrap" aria-hidden="true">
+    <svg class="river-waves" viewBox="0 0 1200 120" preserveAspectRatio="none">
+      <path d="M0,0 C150,90 350,-40 500,45 C650,130 900,10 1200,60 L1200,120 L0,120 Z"></path>
+    </svg>
+  </div>
 
-      <form id="loginForm">
-        <div class="form-group">
-          <label for="username">Usuario</label>
-          <input type="text" id="username" required autocomplete="username">
+  <div class="login-wrap">
+    <div class="login-box">
+
+      <div class="login-header">
+        <span class="login-icon" aria-hidden="true">🔐</span>
+        <h1 class="login-title">Panel de Administración</h1>
+        <p class="login-subtitle">Balneario Río Royota · Sistema de Fichas</p>
+      </div>
+
+      <div id="loginError" class="login-error-box"></div>
+
+      <form id="loginForm" autocomplete="on">
+        <div class="form-fg">
+          <label class="form-flabel" for="username">Correo electrónico o Usuario</label>
+          <input
+            type="text"
+            id="username"
+            class="form-finput"
+            required
+            autocomplete="username"
+            placeholder="ej: tu-correo@gmail.com o admin"
+            autocapitalize="none"
+            spellcheck="false"
+          >
+          <span class="form-fhint">El correo con el que te diste de alta en Firebase</span>
         </div>
-        <div class="form-group">
-          <label for="password">Contraseña</label>
-          <input type="password" id="password" required autocomplete="current-password">
+
+        <div class="form-fg">
+          <label class="form-flabel" for="password">Contraseña</label>
+          <input
+            type="password"
+            id="password"
+            class="form-finput"
+            required
+            autocomplete="current-password"
+            placeholder="••••••••"
+          >
         </div>
-        <button type="submit" class="btn btn-primary" style="width:100%;padding:12px;font-size:15px;margin-top:8px;">
+
+        <button type="submit" id="btnLogin" class="btn-login">
           Iniciar Sesión
         </button>
       </form>
+
+      <div class="login-footer-links">
+        <a href="./index.html">← Volver al Portal Cautivo</a>
+      </div>
+
     </div>
   </div>
 
   <script>
     (function() {
-      var token = localStorage.getItem('fichas_token');
-      if (token) { window.location.href = './admin.html'; return; }
+      'use strict';
 
-      document.getElementById('loginForm').addEventListener('submit', function(e) {
+      // Si ya hay sesión iniciada, redirigir directo al admin
+      var token = localStorage.getItem('fichas_token');
+      if (token) {
+        window.location.href = './admin.html';
+        return;
+      }
+
+      var form   = document.getElementById('loginForm');
+      var userIn = document.getElementById('username');
+      var passIn = document.getElementById('password');
+      var btn    = document.getElementById('btnLogin');
+      var errBox = document.getElementById('loginError');
+
+      function showError(msg) {
+        errBox.textContent = msg;
+        errBox.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Iniciar Sesión';
+      }
+
+      function hideError() {
+        errBox.style.display = 'none';
+        errBox.textContent = '';
+      }
+
+      form.addEventListener('submit', function(e) {
         e.preventDefault();
-        var username = document.getElementById('username').value;
-        var password = document.getElementById('password').value;
-        var errBox = document.getElementById('loginError');
+        hideError();
+
+        var userInput = userIn.value.trim();
+        var password  = passIn.value;
+
+        if (!userInput || !password) {
+          showError('Por favor ingresa usuario y contraseña.');
+          return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Iniciando sesión…';
+
+        // 1. Si no contiene '@', intentamos con los dominios más probables
+        var emailsToTry = [];
+        if (userInput.indexOf('@') !== -1) {
+          emailsToTry.push(userInput);
+        } else {
+          // Si escribieron solo "admin" o su nombre de usuario
+          emailsToTry.push(userInput.toLowerCase() + '@dctelematica.com');
+          emailsToTry.push('ing.davidc@gmail.com');
+          emailsToTry.push(userInput.toLowerCase() + '@gmail.com');
+        }
 
         if (window.firebaseDb) {
-          window.firebaseDb.login(username, password).then(function() {
-            window.location.href = './admin.html';
-          }).catch(function(err) {
-            errBox.textContent = err.message || 'Error de autenticación';
-            errBox.style.display = 'block';
-          });
+          // Intentar login con Firebase Auth
+          function tryNext(index) {
+            if (index >= emailsToTry.length) {
+              showError('Credenciales incorrectas. Verifica tu correo y contraseña registrados en Firebase.');
+              return;
+            }
+            var email = emailsToTry[index];
+            window.firebaseDb.login(email, password).then(function() {
+              window.location.href = './admin.html';
+            }).catch(function(err) {
+              // Si el error fue formato inválido o usuario no encontrado, probar la siguiente alternativa
+              if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-email' || err.code === 'auth/invalid-credential') {
+                if (index + 1 < emailsToTry.length) {
+                  tryNext(index + 1);
+                } else {
+                  showError('No se encontró el usuario "' + userInput + '". Recuerda usar el correo electrónico que creaste en Firebase.');
+                }
+              } else if (err.code === 'auth/wrong-password') {
+                showError('Contraseña incorrecta. Por favor verifica e intenta de nuevo.');
+              } else {
+                showError(err.message || 'Error de autenticación');
+              }
+            });
+          }
+
+          tryNext(0);
+
         } else {
+          // Fallback a servidor local si no hay Firebase
           var xhr = new XMLHttpRequest();
           var fullUrl = (window.API_BASE || '') + '/api/auth/login';
           xhr.open('POST', fullUrl, true);
@@ -67,11 +303,11 @@
               localStorage.setItem('fichas_admin', JSON.stringify(data.admin));
               window.location.href = './admin.html';
             } else {
-              errBox.textContent = data.error || 'Error de autenticación';
-              errBox.style.display = 'block';
+              showError((data && data.error) || 'Error de autenticación');
             }
           };
-          xhr.send(JSON.stringify({ username: username, password: password }));
+          xhr.onerror = function() { showError('Error de conexión con el servidor.'); };
+          xhr.send(JSON.stringify({ username: userInput, password: password }));
         }
       });
     })();
