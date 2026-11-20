@@ -12,12 +12,23 @@
     Compatible con XMLHttpRequest nativo.
   -->
   <title>WiFi Balneario Río Royota — Conectarse</title>
-  <link rel="stylesheet" href="./css/portal.css">
+  <link rel="stylesheet" href="./css/portal.css?v=3">
   <!-- Firebase SDK Local (Sin bloqueo por CSP ni dependencias CDN) -->
   <script src="./js/firebase-app-compat.js"></script>
   <script src="./js/firebase-firestore-compat.js"></script>
-  <script src="./js/config.js"></script>
-  <script src="./js/firebase-db.js"></script>
+  <script>
+    window.FIREBASE_CONFIG = {
+      apiKey: "AIzaSyCWdprAw40n1KRh89pHbHMYZUmfdzZ8trQ",
+      authDomain: "fichas-royota.firebaseapp.com",
+      projectId: "fichas-royota",
+      storageBucket: "fichas-royota.firebasestorage.app",
+      messagingSenderId: "963411118744",
+      appId: "1:963411118744:web:0be0b4d9a51a87deaa9eed",
+      measurementId: "G-WSXG9T6NRM"
+    };
+  </script>
+  <script src="./js/config.js?v=3"></script>
+  <script src="./js/firebase-db.js?v=3"></script>
   <!-- Favicon SVG ecológico y acuático -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
 </head>
