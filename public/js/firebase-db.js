@@ -56,12 +56,23 @@
     length = length || 8;
     charsetType = charsetType || 'full';
     var chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
-    if (charsetType === 'numeric') chars = '0123456789';
+    if (charsetType === 'numeric') chars = '23456789';
     if (charsetType === 'alpha')   chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
 
     var res = prefix ? prefix.toUpperCase() : '';
-    var needed = length - res.length;
-    for (var i = 0; i < Math.max(needed, 4); i++) {
+    var needed = Math.max(length - res.length, 4);
+
+    if (window.crypto && window.crypto.getRandomValues) {
+      var buffer = new Uint8Array(needed * 2);
+      window.crypto.getRandomValues(buffer);
+      var maxUsable = 256 - (256 % chars.length);
+      for (var i = 0; i < buffer.length && res.length < length; i++) {
+        if (buffer[i] < maxUsable) {
+          res += chars.charAt(buffer[i] % chars.length);
+        }
+      }
+    }
+    while (res.length < length) {
       res += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return res.toUpperCase();

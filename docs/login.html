@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Acceso Admin — Balneario Río Royota</title>
-  <link rel="stylesheet" href="./css/portal.css">
+  <link rel="stylesheet" href="./css/portal.css?v=5">
   <script src="./js/firebase-app-compat.js"></script>
   <script src="./js/firebase-auth-compat.js"></script>
   <script src="./js/firebase-firestore-compat.js"></script>
@@ -213,6 +213,13 @@
         <a href="./index.html">← Volver al Portal Cautivo</a>
       </div>
 
+      <div class="powered-by-container" style="margin-top: 14px;">
+        <a href="https://www.dctelematica.com" target="_blank" rel="noopener" class="powered-by-link" title="DC Telemática - Soluciones Tecnológicas">
+          <span class="powered-by-text">Powered by</span>
+          <img src="./img/logo-dc.png" alt="DC Telemática" class="powered-by-logo">
+        </a>
+      </div>
+
     </div>
   </div>
 
@@ -260,14 +267,12 @@
         btn.disabled = true;
         btn.textContent = 'Iniciando sesión…';
 
-        // 1. Si no contiene '@', intentamos con los dominios más probables
+        // 1. Si no contiene '@', preparar alternativas de correo
         var emailsToTry = [];
         if (userInput.indexOf('@') !== -1) {
           emailsToTry.push(userInput);
         } else {
-          // Si escribieron solo "admin" o su nombre de usuario
-          emailsToTry.push(userInput.toLowerCase() + '@dctelematica.com');
-          emailsToTry.push('ing.davidc@gmail.com');
+          emailsToTry.push(userInput.toLowerCase() + '@royota.local');
           emailsToTry.push(userInput.toLowerCase() + '@gmail.com');
         }
 

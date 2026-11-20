@@ -12,7 +12,7 @@
     Compatible con XMLHttpRequest nativo.
   -->
   <title>WiFi Balneario Río Royota — Conectarse</title>
-  <link rel="stylesheet" href="./css/portal.css?v=4">
+  <link rel="stylesheet" href="./css/portal.css?v=5">
   <!-- Firebase SDK Local (Sin bloqueo por CSP ni dependencias CDN) -->
   <script src="./js/firebase-app-compat.js"></script>
   <script src="./js/firebase-auth-compat.js"></script>
@@ -263,6 +263,12 @@
     <footer class="portal-footer">
       <p id="footerBusinessName">Balneario R&iacute;o Royota</p>
       <p>Cuidemos nuestro r&iacute;o y el entorno natural 🌿</p>
+      <div class="powered-by-container">
+        <a href="https://www.dctelematica.com" target="_blank" rel="noopener" class="powered-by-link" title="DC Telemática - Soluciones Tecnológicas">
+          <span class="powered-by-text">Powered by</span>
+          <img src="./img/logo-dc.png" alt="DC Telemática" class="powered-by-logo">
+        </a>
+      </div>
     </footer>
 
   </main>
@@ -465,11 +471,30 @@
       info.setAttribute('hidden', '');
       hideStatus();
 
-      if (window.firebaseDb) {
-        window.firebaseDb.activateVoucher(code).then(function(data) {
-          btn.disabled    = false;
-          btn.textContent = '⚡ Conectar al Internet';
-          input.value     = '';
+      // Siempre procesar la activación por el backend API para registrar en MikroTik RouterOS
+      var xhr = new XMLHttpRequest();
+      var fullUrl = (window.API_BASE || '') + '/api/vouchers/activate';
+      xhr.open('POST', fullUrl, true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.timeout = 15000;
+
+      xhr.ontimeout = function () {
+        btn.disabled    = false;
+        btn.textContent = '⚡ Conectar al Internet';
+        showStatus('Tiempo de espera agotado. Verifica tu señal e intenta de nuevo.', 'error');
+      };
+
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState !== 4) return;
+
+        btn.disabled    = false;
+        btn.textContent = '⚡ Conectar al Internet';
+
+        var data;
+        try { data = JSON.parse(xhr.responseText); } catch (_) { data = {}; }
+
+        if (xhr.status === 200) {
+          input.value = '';
           showStatus(data.message || '¡Ficha activada con éxito!', 'ok');
 
           setText('cPlan',     data.plan);
@@ -479,60 +504,21 @@
           info.removeAttribute('hidden');
 
           try { info.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (_) {}
-        }).catch(function(err) {
-          btn.disabled    = false;
-          btn.textContent = '⚡ Conectar al Internet';
-          showStatus(err.message || 'Código no válido o ya utilizado.', 'error');
-        });
-      } else {
-        var xhr = new XMLHttpRequest();
-        var fullUrl = (window.API_BASE || '') + '/api/vouchers/activate';
-        xhr.open('POST', fullUrl, true);
-        xhr.setRequestHeader('Content-Type', 'application/json');
-        xhr.timeout = 15000;
+        } else {
+          showStatus(
+            (data && data.error) ? data.error : 'Código no válido o ya utilizado.',
+            'error'
+          );
+        }
+      };
 
-        xhr.ontimeout = function () {
-          btn.disabled    = false;
-          btn.textContent = '⚡ Conectar al Internet';
-          showStatus('Tiempo de espera agotado. Verifica tu señal e intenta de nuevo.', 'error');
-        };
+      xhr.onerror = function () {
+        btn.disabled    = false;
+        btn.textContent = '⚡ Conectar al Internet';
+        showStatus('Sin conexión con el servidor. Intenta de nuevo.', 'error');
+      };
 
-        xhr.onreadystatechange = function () {
-          if (xhr.readyState !== 4) return;
-
-          btn.disabled    = false;
-          btn.textContent = '⚡ Conectar al Internet';
-
-          var data;
-          try { data = JSON.parse(xhr.responseText); } catch (_) { data = {}; }
-
-          if (xhr.status === 200) {
-            input.value = '';
-            showStatus(data.message || '¡Ficha activada con éxito!', 'ok');
-
-            setText('cPlan',     data.plan);
-            setText('cDuration', data.duration);
-            setText('cSpeed',    data.speed);
-            setText('cExpires',  data.expires_at ? fmtDate(data.expires_at) : '—');
-            info.removeAttribute('hidden');
-
-            try { info.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (_) {}
-          } else {
-            showStatus(
-              (data && data.error) ? data.error : 'Código no válido o ya utilizado.',
-              'error'
-            );
-          }
-        };
-
-        xhr.onerror = function () {
-          btn.disabled    = false;
-          btn.textContent = '⚡ Conectar al Internet';
-          showStatus('Sin conexión con el servidor. Intenta de nuevo.', 'error');
-        };
-
-        xhr.send(JSON.stringify({ code: code }));
-      }
+      xhr.send(JSON.stringify({ code: code }));
     });
 
     function setText(id, val) {
