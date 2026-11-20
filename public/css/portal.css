@@ -440,6 +440,7 @@ body {
       -ms-flex-align: center;
           align-items: center;
   gap: 12px;
+  cursor: pointer;
   -webkit-transition: border-color 0.2s, -webkit-transform 0.2s;
           transition: border-color 0.2s, transform 0.2s;
 }
@@ -448,6 +449,7 @@ body {
   border-color: rgba(0, 229, 255, 0.4);
   -webkit-transform: translateY(-1px);
           transform: translateY(-1px);
+  background: rgba(8, 36, 46, 0.85);
 }
 
 .plan-info-left {
@@ -472,6 +474,16 @@ body {
 
 .plan-price-wrap {
   text-align: right;
+  display: -webkit-box;
+  display: -ms-flexbox;
+  display: flex;
+  -webkit-box-orient: vertical;
+  -webkit-box-direction: normal;
+      -ms-flex-direction: column;
+          flex-direction: column;
+  -webkit-box-align: end;
+      -ms-flex-align: end;
+          align-items: flex-end;
 }
 
 .plan-price {
@@ -481,21 +493,34 @@ body {
 }
 
 .plan-buy-btn {
-  display: inline-block;
-  margin-top: 4px;
-  padding: 4px 10px;
-  font-size: 11px;
+  display: inline-flex;
+  display: -webkit-inline-box;
+  display: -ms-inline-flexbox;
+  -webkit-box-align: center;
+      -ms-flex-align: center;
+          align-items: center;
+  -webkit-box-pack: center;
+      -ms-flex-pack: center;
+          justify-content: center;
+  gap: 4px;
+  margin-top: 5px;
+  padding: 5px 12px;
+  font-size: 12px;
   font-weight: 700;
   color: #042027;
   background: #a7d7c5;
-  border-radius: 6px;
+  border-radius: 8px;
   text-decoration: none;
-  -webkit-transition: background 0.15s;
-          transition: background 0.15s;
+  -webkit-transition: all 0.15s ease;
+          transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .plan-buy-btn:hover {
   background: #00e5ff;
+  -webkit-transform: translateY(-1px);
+          transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 229, 255, 0.4);
 }
 
 /* ── Sección Informativa del Balneario ────────────────────────── */

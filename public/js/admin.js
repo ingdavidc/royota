@@ -73,6 +73,10 @@ function apiFetch(method, url, body) {
     if (url === '/api/vouchers/sell' && method === 'POST') {
       return window.firebaseDb.sellVoucher(body.voucher_id, body.payment_method, body.buyer_note);
     }
+    if (url.startsWith('/api/vouchers/revoke/') && method === 'POST') {
+      var revCode = url.split('/api/vouchers/revoke/')[1];
+      return window.firebaseDb.revokeVoucher(revCode);
+    }
   }
 
   return new Promise(function(resolve, reject) {
@@ -725,5 +729,15 @@ function savePortalSettings(e) {
 }
 
 /* ── Arranque inicial ───────────────────────────────────── */
-loadDashboard();
-loadPlanFilterDropdown();
+if (window.firebaseDb && window.firebaseDb.seedInitialDataIfEmpty) {
+  window.firebaseDb.seedInitialDataIfEmpty().then(function() {
+    loadDashboard();
+    loadPlanFilterDropdown();
+  }).catch(function() {
+    loadDashboard();
+    loadPlanFilterDropdown();
+  });
+} else {
+  loadDashboard();
+  loadPlanFilterDropdown();
+}

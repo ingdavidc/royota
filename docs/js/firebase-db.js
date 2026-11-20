@@ -29,14 +29,14 @@
   };
 
   var DEFAULT_PLANS = [
-    { name: '30 Minutos',  duration: '30m',  speed_limit: '3M/3M',   price: 2000,  shared_users: 1, sort_order: 1, is_active: 1 },
-    { name: '1 Hora',      duration: '1h',   speed_limit: '5M/5M',   price: 3000,  shared_users: 1, sort_order: 2, is_active: 1 },
-    { name: '2 Horas',     duration: '2h',   speed_limit: '5M/5M',   price: 5000,  shared_users: 1, sort_order: 3, is_active: 1 },
-    { name: '5 Horas',     duration: '5h',   speed_limit: '8M/8M',   price: 8000,  shared_users: 1, sort_order: 4, is_active: 1 },
-    { name: '1 Día',       duration: '1d',   speed_limit: '10M/10M', price: 12000, shared_users: 2, sort_order: 5, is_active: 1 },
-    { name: '3 Días',      duration: '3d',   speed_limit: '10M/10M', price: 25000, shared_users: 2, sort_order: 6, is_active: 1 },
-    { name: '7 Días',      duration: '7d',   speed_limit: '15M/15M', price: 45000, shared_users: 3, sort_order: 7, is_active: 1 },
-    { name: '30 Días',     duration: '30d',  speed_limit: '20M/20M', price: 120000,shared_users: 3, sort_order: 8, is_active: 1 },
+    { id: 'plan_30m', name: '30 Minutos',  duration: '30m',  speed_limit: '3M/3M',   price: 2000,  shared_users: 1, sort_order: 1, is_active: 1 },
+    { id: 'plan_1h',  name: '1 Hora',      duration: '1h',   speed_limit: '5M/5M',   price: 3000,  shared_users: 1, sort_order: 2, is_active: 1 },
+    { id: 'plan_2h',  name: '2 Horas',     duration: '2h',   speed_limit: '5M/5M',   price: 5000,  shared_users: 1, sort_order: 3, is_active: 1 },
+    { id: 'plan_5h',  name: '5 Horas',     duration: '5h',   speed_limit: '8M/8M',   price: 8000,  shared_users: 1, sort_order: 4, is_active: 1 },
+    { id: 'plan_1d',  name: '1 Día',       duration: '1d',   speed_limit: '10M/10M', price: 12000, shared_users: 2, sort_order: 5, is_active: 1 },
+    { id: 'plan_3d',  name: '3 Días',      duration: '3d',   speed_limit: '10M/10M', price: 25000, shared_users: 2, sort_order: 6, is_active: 1 },
+    { id: 'plan_7d',  name: '7 Días',      duration: '7d',   speed_limit: '15M/15M', price: 45000, shared_users: 3, sort_order: 7, is_active: 1 },
+    { id: 'plan_30d', name: '30 Días',     duration: '30d',  speed_limit: '20M/20M', price: 120000,shared_users: 3, sort_order: 8, is_active: 1 },
   ];
 
   function parseDurationMs(str) {
@@ -186,12 +186,21 @@
       var prefix      = params.prefix || '';
       var note        = params.note || '';
 
-      return db.collection('plans').doc(String(plan_id)).get().then(function(pDoc) {
-        if (!pDoc.exists) throw new Error('Plan no encontrado');
-        var plan = pDoc.data();
+      var planPromise = db.collection('plans').doc(String(plan_id)).get().then(function(pDoc) {
+        if (pDoc.exists) {
+          return { id: pDoc.id, data: pDoc.data() };
+        }
+        var found = DEFAULT_PLANS.find(function(dp) { return dp.id === plan_id || String(dp.id) === String(plan_id); });
+        if (found) return { id: found.id, data: found };
+        throw new Error('Plan no encontrado');
+      });
+
+      return planPromise.then(function(pInfo) {
+        var planId = pInfo.id;
+        var plan   = pInfo.data;
 
         return db.collection('voucher_batches').add({
-          plan_id:     pDoc.id,
+          plan_id:     planId,
           plan_name:   plan.name,
           quantity:    quantity,
           note:        note,
@@ -206,7 +215,7 @@
             var vRef = db.collection('vouchers').doc(code);
             batch.set(vRef, {
               code:         code,
-              plan_id:      pDoc.id,
+              plan_id:      planId,
               plan_name:    plan.name,
               duration:     plan.duration,
               speed_limit:  plan.speed_limit,
@@ -338,6 +347,37 @@
       });
     },
 
+    // ── Revocar Ficha ────────────────────────────────────────
+    revokeVoucher: function(code) {
+      var cleanCode = String(code).toUpperCase().trim();
+      return db.collection('vouchers').doc(cleanCode).update({
+        status:     'revoked',
+        revoked_at: new Date().toISOString(),
+      });
+    },
+
+    // ── Auto-seed si Firestore está vacío ─────────────────────
+    seedInitialDataIfEmpty: function() {
+      return db.collection('plans').get().then(function(snap) {
+        if (snap.empty && auth.currentUser) {
+          var batch = db.batch();
+          DEFAULT_PLANS.forEach(function(p) {
+            var ref = db.collection('plans').doc(p.id);
+            batch.set(ref, Object.assign({}, p, { created_at: new Date().toISOString() }));
+          });
+          return batch.commit();
+        }
+      }).then(function() {
+        return db.collection('settings').doc('general').get();
+      }).then(function(doc) {
+        if (!doc.exists && auth.currentUser) {
+          return db.collection('settings').doc('general').set(DEFAULT_SETTINGS);
+        }
+      }).catch(function(err) {
+        console.warn('[FirebaseDb] Auto-seed:', err);
+      });
+    },
+
     // ── Auth Admin (Firebase Auth) ────────────────────────────
     login: function(email, password) {
       return auth.signInWithEmailAndPassword(email, password).then(function(cred) {
@@ -358,7 +398,10 @@
 
     getAdminUser: function() {
       return auth.currentUser || JSON.parse(localStorage.getItem('fichas_admin') || 'null');
-    }
+    },
+
+    DEFAULT_SETTINGS: DEFAULT_SETTINGS,
+    DEFAULT_PLANS: DEFAULT_PLANS
   };
 
   window.firebaseDb = firebaseDb;
