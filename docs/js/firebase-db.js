@@ -90,6 +90,41 @@
       });
     },
 
+    onSettingsChange: function(cb) {
+      return db.collection('settings').doc('general').onSnapshot(function(doc) {
+        if (doc && doc.exists) {
+          cb(Object.assign({}, DEFAULT_SETTINGS, doc.data()));
+        } else {
+          cb(DEFAULT_SETTINGS);
+        }
+      }, function(err) {
+        console.warn('[FirebaseDb] Settings realtime:', err);
+      });
+    },
+
+    onPlansChange: function(cb) {
+      return db.collection('plans').onSnapshot(function(snap) {
+        if (!snap || snap.empty) {
+          cb(DEFAULT_PLANS);
+          return;
+        }
+        var list = [];
+        snap.forEach(function(d) {
+          var p = d.data();
+          p.id = d.id;
+          if (p.is_active !== 0 && p.is_active !== false) {
+            list.push(p);
+          }
+        });
+        list.sort(function(a, b) {
+          return (a.sort_order || 0) - (b.sort_order || 0) || (a.price || 0) - (b.price || 0);
+        });
+        cb(list);
+      }, function(err) {
+        console.warn('[FirebaseDb] Plans realtime:', err);
+      });
+    },
+
     // ── Planes de Internet ─────────────────────────────────────
     getPlans: function() {
       return db.collection('plans').get().then(function(snap) {

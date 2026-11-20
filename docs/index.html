@@ -401,20 +401,25 @@
       plansList.innerHTML = html;
     }
 
-    /* ── Carga inicial desde Firestore o API ── */
+    /* ── Carga y Sincronización en Tiempo Real desde Firestore o API ── */
     if (window.firebaseDb) {
-      window.firebaseDb.getSettings().then(renderSettings).catch(function() { renderSettings(null); });
-      window.firebaseDb.getPlans().then(renderPlans).catch(function() { renderPlans(DEFAULT_FALLBACK_PLANS); });
+      if (window.firebaseDb.onSettingsChange) {
+        window.firebaseDb.onSettingsChange(renderSettings);
+      } else {
+        window.firebaseDb.getSettings().then(renderSettings).catch(function() { renderSettings(null); });
+      }
+
+      if (window.firebaseDb.onPlansChange) {
+        window.firebaseDb.onPlansChange(renderPlans);
+      } else {
+        window.firebaseDb.getPlans().then(renderPlans).catch(function() { renderPlans(DEFAULT_FALLBACK_PLANS); });
+      }
     } else {
       ajaxGet('/api/settings/public', function (status, data) {
         if (status === 200 && data) renderSettings(data);
         else renderSettings(null);
       });
       ajaxGet('/api/plans', function (status, plans) {
-        if (status === 200 && plans && plans.length) renderPlans(plans);
-        else renderPlans(DEFAULT_FALLBACK_PLANS);
-      });
-    }
         if (status === 200 && plans && plans.length) renderPlans(plans);
         else renderPlans(DEFAULT_FALLBACK_PLANS);
       });
