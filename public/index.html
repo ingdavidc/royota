@@ -12,9 +12,10 @@
     Compatible con XMLHttpRequest nativo.
   -->
   <title>WiFi Balneario Río Royota — Conectarse</title>
-  <link rel="stylesheet" href="./css/portal.css?v=3">
+  <link rel="stylesheet" href="./css/portal.css?v=4">
   <!-- Firebase SDK Local (Sin bloqueo por CSP ni dependencias CDN) -->
   <script src="./js/firebase-app-compat.js"></script>
+  <script src="./js/firebase-auth-compat.js"></script>
   <script src="./js/firebase-firestore-compat.js"></script>
   <script>
     window.FIREBASE_CONFIG = {
@@ -27,8 +28,8 @@
       measurementId: "G-WSXG9T6NRM"
     };
   </script>
-  <script src="./js/config.js?v=3"></script>
-  <script src="./js/firebase-db.js?v=3"></script>
+  <script src="./js/config.js?v=4"></script>
+  <script src="./js/firebase-db.js?v=4"></script>
   <!-- Favicon SVG ecológico y acuático -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
 </head>
@@ -358,11 +359,14 @@
       waBtn.href   = 'https://wa.me/' + cleanNum + '?text=' + defMsg;
       waSec.removeAttribute('hidden');
 
-      if (_settings.info_content && _settings.info_content.trim() !== '') {
+      var isInfoActive = _settings.info_active !== '0' && _settings.info_active !== false && _settings.info_active !== 0;
+      if (isInfoActive && _settings.info_content && _settings.info_content.trim() !== '') {
         infoBadge.textContent   = _settings.info_badge || 'Avisos & Servicios del Balneario';
         infoTitle.textContent   = _settings.info_title || '¡Bienvenidos al Balneario Río Royota!';
         infoContent.textContent = _settings.info_content;
         infoSec.removeAttribute('hidden');
+      } else {
+        infoSec.setAttribute('hidden', '');
       }
 
       // Re-renderizar planes con el número y moneda actualizados

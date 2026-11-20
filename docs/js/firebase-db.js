@@ -12,8 +12,8 @@
     firebase.initializeApp(window.FIREBASE_CONFIG);
   }
 
-  var db   = firebase.firestore();
-  var auth = firebase.auth();
+  var db   = (typeof firebase.firestore === 'function') ? firebase.firestore() : null;
+  var auth = (typeof firebase.auth === 'function') ? firebase.auth() : null;
 
   var DEFAULT_SETTINGS = {
     business_name:    'Balneario Río Royota',
@@ -397,8 +397,9 @@
 
     // ── Auto-seed si Firestore está vacío ─────────────────────
     seedInitialDataIfEmpty: function() {
+      if (!db) return Promise.resolve();
       return db.collection('plans').get().then(function(snap) {
-        if (snap.empty && auth.currentUser) {
+        if (snap.empty && auth && auth.currentUser) {
           var batch = db.batch();
           DEFAULT_PLANS.forEach(function(p) {
             var ref = db.collection('plans').doc(p.id);
@@ -409,7 +410,7 @@
       }).then(function() {
         return db.collection('settings').doc('general').get();
       }).then(function(doc) {
-        if (!doc.exists && auth.currentUser) {
+        if (!doc.exists && auth && auth.currentUser) {
           return db.collection('settings').doc('general').set(DEFAULT_SETTINGS);
         }
       }).catch(function(err) {
@@ -419,6 +420,7 @@
 
     // ── Auth Admin (Firebase Auth) ────────────────────────────
     login: function(email, password) {
+      if (!auth) return Promise.reject(new Error('Firebase Auth no disponible'));
       return auth.signInWithEmailAndPassword(email, password).then(function(cred) {
         localStorage.setItem('fichas_token', cred.user.uid);
         localStorage.setItem('fichas_admin', JSON.stringify({
@@ -432,11 +434,12 @@
     logout: function() {
       localStorage.removeItem('fichas_token');
       localStorage.removeItem('fichas_admin');
+      if (!auth) return Promise.resolve();
       return auth.signOut();
     },
 
     getAdminUser: function() {
-      return auth.currentUser || JSON.parse(localStorage.getItem('fichas_admin') || 'null');
+      return (auth && auth.currentUser) || JSON.parse(localStorage.getItem('fichas_admin') || 'null');
     },
 
     DEFAULT_SETTINGS: DEFAULT_SETTINGS,
