@@ -91,7 +91,13 @@ function apiFetch(method, url, body) {
       if (xhr.readyState !== 4) return;
       var d;
       try { d = JSON.parse(xhr.responseText); } catch(_) { d = {}; }
-      if (xhr.status === 401) { logout(); return; }
+      if (xhr.status === 401) {
+        if (url.indexOf('/api/whatsapp') === -1) {
+          logout();
+        }
+        reject(d);
+        return;
+      }
       if (xhr.status >= 400) { reject(d); return; }
       resolve(d);
     };

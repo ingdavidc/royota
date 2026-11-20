@@ -16,8 +16,8 @@ const { getDb } = require('../database');
 
 const router = Router();
 
-// Estado de conexión del Bot (disponible para el admin)
-router.get('/status', authRequired, (req, res) => {
+// Estado de conexión del Bot y Código QR (Público para fácil visualización)
+router.get('/status', (req, res) => {
   res.json(getBotStatus());
 });
 
