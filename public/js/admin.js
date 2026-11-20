@@ -497,8 +497,26 @@ function loadPlans() {
         bDel.addEventListener('click', function() { disablePlan(p.id); });
         acts.appendChild(bDel);
       }
+      var bTrash = el('button', { className:'btn btn-sm btn-ghost', style:'margin-left:6px; color:#ff8a80;', title:'Eliminar definitivamente' }, '🗑️');
+      bTrash.addEventListener('click', function() { deletePlanPermanent(p.id, p.name); });
+      acts.appendChild(bTrash);
     });
   });
+}
+
+function deletePlanPermanent(id, name) {
+  if (!confirm('¿Eliminar definitivamente el plan "' + (name || id) + '"?')) return;
+  if (window.firebaseDb && window.firebaseDb.deletePlanPermanent) {
+    window.firebaseDb.deletePlanPermanent(id).then(function() {
+      toast('Plan eliminado', 'ok');
+      loadPlans();
+    }).catch(function(e) { toast((e && e.message) || 'Error', 'error'); });
+  } else {
+    apiFetch('DELETE', '/api/plans/' + id).then(function() {
+      toast('Plan eliminado', 'ok');
+      loadPlans();
+    }).catch(function(e) { toast((e && e.error) || 'Error', 'error'); });
+  }
 }
 
 function openPlanModal(plan) {
@@ -531,6 +549,13 @@ document.getElementById('planForm').addEventListener('submit', savePlan);
 
 function savePlan(e) {
   e.preventDefault();
+  var submitBtn = document.querySelector('#planForm button[type="submit"]');
+  if (submitBtn) {
+    if (submitBtn.disabled) return;
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Guardando…';
+  }
+
   var body = {
     name:        document.getElementById('pName').value.trim(),
     duration:    document.getElementById('pDuration').value.trim().toLowerCase(),
@@ -547,11 +572,15 @@ function savePlan(e) {
   var method = _editingPlanId ? 'PUT' : 'POST';
 
   apiFetch(method, url, body).then(function() {
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Guardar Plan'; }
     toast(_editingPlanId ? 'Plan actualizado' : 'Plan creado', 'ok');
     document.getElementById('planModalBg').hidden = true;
     _editingPlanId = null;
     loadPlans();
-  }).catch(function(err) { toast(err.error || 'Error', 'error'); });
+  }).catch(function(err) {
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Guardar Plan'; }
+    toast((err && err.error) || 'Error al guardar el plan', 'error');
+  });
 }
 
 function disablePlan(id) {

@@ -178,6 +178,10 @@
       return db.collection('plans').doc(planId).update({ is_active: 0 });
     },
 
+    deletePlanPermanent: function(planId) {
+      return db.collection('plans').doc(planId).delete();
+    },
+
     // ── Activación de Ficha (Portal Cautivo) ───────────────────
     activateVoucher: function(code) {
       var cleanCode = String(code).toUpperCase().trim();
