@@ -17,13 +17,13 @@
 
   var DEFAULT_SETTINGS = {
     business_name:    'Balneario Río Royota',
-    business_slogan:  'El paraíso natural junto al río · Conexión WiFi de alta velocidad',
+    business_slogan:  'El paraíso natural junto al río · Conexión WiFi',
     whatsapp_number:  '573123456789',
     whatsapp_message: '¡Hola! Estoy en el Balneario Río Royota y deseo comprar una ficha de internet WiFi.',
     info_active:      true,
     info_badge:       'Avisos & Servicios del Balneario',
     info_title:       '¡Bienvenidos al Balneario Río Royota!',
-    info_content:     '🌊 Zona de río y piscinas naturales abiertas de 8:00 AM a 6:00 PM.\n🍹 Kioscos, restaurante y venta de bebidas disponibles.\n🎫 Venta de fichas WiFi en Taquilla Principal y Restaurante.\n🌿 Cuidemos el río: por favor deposita los residuos en los contenedores.',
+    info_content:     '🌊 Piscinas naturales y zona de río abiertas hasta las 6:00 PM.\n🍹 Restaurante y kioscos con bebidas frías disponibles todo el día.\n🎫 Venta de fichas WiFi en Taquilla Principal y Restaurante.\n🌿 Cuidemos el río: deposita los residuos en su lugar.',
     currency:         'COP',
     currencySymbol:   '$',
   };

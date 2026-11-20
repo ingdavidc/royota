@@ -564,11 +564,49 @@ body {
   text-decoration: none;
 }
 
-/* ── Responsive Pantallas Pequeñas ────────────────────────────── */
-@media (max-width: 380px) {
-  .portal-title { font-size: 22px; }
-  .card { padding: 20px 14px; }
-  .voucher-input { font-size: 18px; padding: 14px 12px; letter-spacing: 3px; }
-  .btn-river { font-size: 15px; padding: 13px; }
-  .plan-item { padding: 12px 10px; }
+/* ── Responsive Pantallas Pequeñas y Móviles Cautivos ────────── */
+@media (max-width: 480px) {
+  .portal-container {
+    padding: 0 12px;
+    margin-top: -30px;
+  }
+  .card, .wa-card, .info-card {
+    padding: 20px 16px;
+    border-radius: 16px;
+    margin-bottom: 16px;
+  }
+  .portal-title {
+    font-size: 24px;
+  }
+  .portal-slogan {
+    font-size: 13px;
+    padding: 0 4px;
+  }
+  .wa-btn {
+    font-size: 14.5px;
+    padding: 13px 14px;
+  }
+  .plan-item {
+    padding: 12px 14px;
+    gap: 10px;
+  }
+  .plan-price {
+    font-size: 16px;
+  }
+  .info-heading {
+    font-size: 16px;
+  }
+  .info-body-text {
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 360px) {
+  .portal-title { font-size: 21px; }
+  .card, .wa-card, .info-card { padding: 16px 12px; }
+  .voucher-input { font-size: 17px; padding: 13px 10px; letter-spacing: 2px; }
+  .btn-river { font-size: 14.5px; padding: 12px; }
+  .plan-item { padding: 10px 10px; }
+  .plan-name { font-size: 14px; }
+  .plan-price { font-size: 15px; }
 }
