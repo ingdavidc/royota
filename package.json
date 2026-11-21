@@ -7,7 +7,8 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "seed": "node src/seed.js",
-    "test:api": "node -e \"require('./src/services/mikrotik-api').testConnection().then(r=>console.log(JSON.stringify(r,null,2)))\""
+    "test:api": "node -e \"require('./src/services/mikrotik-api').testConnection().then(r=>console.log(JSON.stringify(r,null,2)))\"",
+    "sync:docs": "node -e \"const fs=require('fs'); fs.cpSync('public', 'docs', {recursive:true}); console.log('Assets synced');\""
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^7.0.0-rc14",

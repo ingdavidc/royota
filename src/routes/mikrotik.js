@@ -114,32 +114,80 @@ router.get('/sync-log', (req, res) => {
   res.json(logs);
 });
 
-// Memoria en la nube para cola adicional
-let _pendingRsc = '';
+// Token de seguridad compartido para autenticación autónoma del router MikroTik
+const SYNC_SECRET = process.env.MIKROTIK_SYNC_TOKEN || 'RoyotaCloud_SyncToken_2026_SecureKey';
 
-// POST /api/mikrotik/sync/push-batch — Llamado al generar fichas
+// Expresiones regulares estrictas de validación (Prevención de Inyección de Comandos RouterOS)
+const REGEX_CODE     = /^[A-Z0-9]{4,16}$/;
+const REGEX_PROFILE  = /^[A-Za-z0-9 _-]{1,32}$/;
+const REGEX_DURATION = /^\d+[mhd]$/;
+
+// POST /api/mikrotik/sync/push-batch — Llamado al generar fichas (Persistente y Sanitizado)
 router.post('/sync/push-batch', (req, res) => {
   const { vouchers, plan } = req.body;
   if (!Array.isArray(vouchers) || !vouchers.length) {
     return res.status(400).json({ error: 'Lista de fichas requerida' });
   }
 
-  const profileName = (plan && plan.name) ? plan.name : '1 Hora';
-  const duration = (plan && plan.duration) ? plan.duration : '1h';
+  const rawProfile = (plan && plan.name) ? String(plan.name).trim() : '1 Hora Basico';
+  const rawDuration = (plan && plan.duration) ? String(plan.duration).trim() : '1h';
 
-  let rscCommands = '\n/ip hotspot user\n';
-  vouchers.forEach(code => {
-    const clean = String(code).trim().toUpperCase();
-    rscCommands += `:do { add name="${clean}" password="${clean}" profile="${profileName}" limit-uptime="${duration}" comment="Royota Cloud" } on-error={ :do { add name="${clean}" password="${clean}" profile="default" limit-uptime="${duration}" comment="Royota Cloud" } on-error={} }\n`;
-  });
+  const profileName = REGEX_PROFILE.test(rawProfile) ? rawProfile : '1 Hora Basico';
+  const duration    = REGEX_DURATION.test(rawDuration) ? rawDuration : '1h';
 
-  _pendingRsc += rscCommands;
-  console.log(`[Cloud-Sync] ${vouchers.length} fichas encoladas en memoria para el MikroTik.`);
-  res.json({ ok: true, queued: vouchers.length });
+  const db = getDb();
+  let insertCount = 0;
+
+  try {
+    // Resolver o registrar el plan en SQLite si es necesario
+    let planRow = null;
+    if (plan && plan.name) {
+      planRow = db.prepare('SELECT id, duration, profile_name FROM plans WHERE name = ? COLLATE NOCASE').get(plan.name);
+      if (!planRow) {
+        const prof = (plan.profile_name || plan.name || '1 Hora Basico');
+        const dur  = (plan.duration || '1h');
+        const spd  = (plan.speed_limit || '5M/2M');
+        const prc  = (plan.price || 2000);
+        const info = db.prepare(`
+          INSERT INTO plans (name, duration, speed_limit, price, profile_name)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(plan.name, dur, spd, prc, prof);
+        planRow = { id: info.lastInsertRowid, duration: dur, profile_name: prof };
+      }
+    }
+    const resolvedPlanId = planRow ? planRow.id : 1;
+
+    const insertStmt = db.prepare(`
+      INSERT OR IGNORE INTO vouchers (code, plan_id, status, mikrotik_synced, created_at)
+      VALUES (?, ?, 'available', 0, datetime('now'))
+    `);
+
+    const transaction = db.transaction((codes) => {
+      for (const code of codes) {
+        const clean = String(code).trim().toUpperCase();
+        if (REGEX_CODE.test(clean)) {
+          insertStmt.run(clean, resolvedPlanId);
+          insertCount++;
+        }
+      }
+    });
+
+    transaction(vouchers);
+    console.log(`[Cloud-Sync] 💾 ${insertCount} fichas persistidas en base de datos para sincronización.`);
+  } catch (err) {
+    console.error('[Cloud-Sync] Error persistiendo lote en SQLite:', err.message);
+  }
+
+  res.json({ ok: true, queued: insertCount });
 });
 
-// GET /api/mikrotik/sync/vouchers.rsc — Descargado autónomamente por el MikroTik en el Balneario
+// GET /api/mikrotik/sync/vouchers.rsc — Descargado autónomamente por el MikroTik (Autenticado por Token)
 router.get('/sync/vouchers.rsc', (req, res) => {
+  const token = req.query.token || req.headers['x-sync-token'];
+  if (token !== SYNC_SECRET) {
+    return res.status(403).send('# Error: Acceso no autorizado a la cola de aprovisionamiento\n');
+  }
+
   // 1. Capturar telemetría enviada por el script del MikroTik
   const version = req.query.version || req.query.v;
   const uptime = req.query.uptime || req.query.u;
@@ -162,10 +210,10 @@ router.get('/sync/vouchers.rsc', (req, res) => {
   const db = getDb();
   let rscCommands = '';
 
-  // 2. Extraer fichas pendientes en base de datos (tanto de WhatsApp como de lotes creados en Admin)
+  // 2. Extraer fichas pendientes en base de datos (Persistente ante reinicios del contenedor)
   try {
     const unsynced = db.prepare(`
-      SELECT v.id, v.code, p.name AS profile_name, p.duration, p.speed_limit
+      SELECT v.id, v.code, p.name AS plan_name, p.profile_name, p.duration, p.speed_limit
       FROM vouchers v
       LEFT JOIN plans p ON v.plan_id = p.id
       WHERE v.mikrotik_synced = 0
@@ -178,26 +226,24 @@ router.get('/sync/vouchers.rsc', (req, res) => {
       const idsToMark = [];
       unsynced.forEach(v => {
         const clean = String(v.code).trim().toUpperCase();
-        const prof = v.profile_name || 'default';
-        const dur = v.duration || '1h';
-        rscCommands += `:do { add name="${clean}" password="${clean}" profile="${prof}" limit-uptime="${dur}" comment="Royota Cloud" } on-error={ :do { add name="${clean}" password="${clean}" profile="default" limit-uptime="${dur}" comment="Royota Cloud" } on-error={} }\n`;
-        idsToMark.push(v.id);
+        if (REGEX_CODE.test(clean)) {
+          const prof = (v.profile_name && REGEX_PROFILE.test(v.profile_name) && v.profile_name !== 'default')
+            ? v.profile_name
+            : ((v.plan_name && REGEX_PROFILE.test(v.plan_name)) ? v.plan_name : '1 Hora Basico');
+          const dur  = (v.duration && REGEX_DURATION.test(v.duration)) ? v.duration : '1h';
+          rscCommands += `:do { add name="${clean}" password="${clean}" profile="${prof}" limit-uptime="${dur}" comment="Royota Cloud" } on-error={ :do { add name="${clean}" password="${clean}" profile="default" limit-uptime="${dur}" comment="Royota Cloud" } on-error={} }\n`;
+          idsToMark.push(v.id);
+        }
       });
 
       if (idsToMark.length > 0) {
         const placeholders = idsToMark.map(() => '?').join(',');
         db.prepare(`UPDATE vouchers SET mikrotik_synced = 1 WHERE id IN (${placeholders})`).run(...idsToMark);
-        console.log(`[Cloud-Sync] 📡 Entregadas ${idsToMark.length} fichas al MikroTik (${_routerTelemetry.ip}).`);
+        console.log(`[Cloud-Sync] 📡 Entregadas ${idsToMark.length} fichas autenticadas al MikroTik (${_routerTelemetry.ip}).`);
       }
     }
   } catch (err) {
     console.error('[Cloud-Sync] Error procesando fichas pendientes:', err.message);
-  }
-
-  // 3. Agregar comandos de memoria si existían
-  if (_pendingRsc && _pendingRsc.trim() !== '') {
-    rscCommands += _pendingRsc;
-    _pendingRsc = '';
   }
 
   res.setHeader('Content-Type', 'text/plain');

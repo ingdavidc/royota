@@ -213,28 +213,30 @@
       return db.collection('plans').doc(planId).delete();
     },
 
-    // ── Activación de Ficha (Portal Cautivo) ───────────────────
+    // ── Activación de Ficha Atómica (Anti-Carrera / TOCTOU) ───
     activateVoucher: function(code) {
       var cleanCode = String(code).toUpperCase().trim();
       var vRef = db.collection('vouchers').doc(cleanCode);
 
-      return vRef.get().then(function(vDoc) {
-        if (!vDoc.exists) {
-          throw new Error('Código de ficha no encontrado');
-        }
-        var v = vDoc.data();
-        if (v.status !== 'available' && v.status !== 'sold') {
-          throw new Error('Esta ficha ya ha sido utilizada o está ' + v.status);
-        }
+      return db.runTransaction(function(transaction) {
+        return transaction.get(vRef).then(function(vDoc) {
+          if (!vDoc.exists) {
+            throw new Error('Código de ficha no encontrado');
+          }
+          var v = vDoc.data();
+          if (v.status !== 'available' && v.status !== 'sold') {
+            throw new Error('Esta ficha ya ha sido utilizada o está ' + v.status);
+          }
 
-        var durMs = parseDurationMs(v.duration);
-        var expiresAt = new Date(Date.now() + durMs).toISOString();
+          var durMs = parseDurationMs(v.duration);
+          var expiresAt = new Date(Date.now() + durMs).toISOString();
 
-        return vRef.update({
-          status:       'active',
-          activated_at: new Date().toISOString(),
-          expires_at:   expiresAt,
-        }).then(function() {
+          transaction.update(vRef, {
+            status:       'active',
+            activated_at: new Date().toISOString(),
+            expires_at:   expiresAt,
+          });
+
           return {
             message:    '¡Ficha activada con éxito! Ya puedes navegar.',
             code:       v.code,

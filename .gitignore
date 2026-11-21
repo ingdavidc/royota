@@ -10,3 +10,7 @@ functions/.env
 *.log
 .DS_Store
 .firebase/
+*.key
+*.pem
+*.ppk
+id_rsa*
