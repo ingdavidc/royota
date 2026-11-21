@@ -155,6 +155,18 @@ function start() {
 ║  MikroTik: ${config.mikrotik.host}:${config.mikrotik.port} ${config.mikrotik.useSsl ? '(HTTPS)' : '(HTTP) '}${''.padEnd(23)}║
 ╚══════════════════════════════════════════════════════════╝
     `);
+
+    // Keep-Alive para Render (Evita que el servicio gratuito se duerma por inactividad)
+    const keepAliveUrl = process.env.RENDER_EXTERNAL_URL || (process.env.NODE_ENV === 'production' ? 'https://royota-bot.onrender.com' : null);
+    if (keepAliveUrl) {
+      setInterval(async () => {
+        try {
+          const res = await fetch(`${keepAliveUrl}/api/health`);
+          if (res.ok) console.log(`[Keep-Alive] Ping exitoso a ${keepAliveUrl}/api/health`);
+        } catch (_) {}
+      }, 10 * 60 * 1000); // Cada 10 minutos
+      console.log(`[Keep-Alive] ✅ Ping automático activo cada 10 min hacia: ${keepAliveUrl}`);
+    }
   });
 }
 

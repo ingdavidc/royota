@@ -16,3 +16,10 @@ window.FIREBASE_CONFIG = {
 
 // URL o IP del router MikroTik en el Balneario (para login nativo)
 window.MIKROTIK_LOGIN_URL = "http://192.168.88.1/login";
+
+// URL del Servidor Backend en la Nube (Render 24/7)
+if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+  window.API_BASE = window.location.origin;
+} else {
+  window.API_BASE = "https://royota-bot.onrender.com";
+}
