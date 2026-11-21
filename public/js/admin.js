@@ -845,6 +845,12 @@ function checkWhatsAppStatus() {
     }
   }).catch(function(err) {
     console.error('Error comprobando estado de WhatsApp:', err);
+    var pill = document.getElementById('waStatusPill');
+    if (pill) {
+      pill.textContent = '⚠️ Sin conexión con el servidor local';
+      pill.style.background = 'rgba(248, 113, 113, 0.2)';
+      pill.style.color = '#f87171';
+    }
   });
 }
 
