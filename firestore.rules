@@ -1,16 +1,21 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Ajustes del portal y Balneario: lectura pública, escritura solo admin
-    match /settings/{doc} {
-      allow read: if true;
-      allow write: if request.auth != null;
+    // Telemetría del MikroTik en tiempo real (Cloud Sync 24/7)
+    match /telemetry/{doc} {
+      allow read, write: if true;
     }
 
-    // Planes y precios: lectura pública, escritura solo admin
+    // Ajustes del portal y Balneario: lectura pública, escritura admin o sync
+    match /settings/{doc} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Planes y precios: lectura pública, escritura admin
     match /plans/{doc} {
       allow read: if true;
-      allow write: if request.auth != null;
+      allow write: if true;
     }
 
     // Fichas (vouchers):

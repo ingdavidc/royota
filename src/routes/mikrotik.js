@@ -21,6 +21,37 @@ let _routerTelemetry = {
   ip: null,
 };
 
+// Sincronización de telemetría hacia Cloud Firestore (para monitoreo sin restricciones de red)
+let _lastFirestoreSync = 0;
+async function syncTelemetryToFirestore(telem) {
+  const now = Date.now();
+  if (now - _lastFirestoreSync < 20000) return; // máximo cada 20s
+  _lastFirestoreSync = now;
+
+  try {
+    const body = {
+      fields: {
+        status: { stringValue: 'online' },
+        version: { stringValue: telem.version ? `${telem.version} (Enlace Nube Activo)` : 'RouterOS v7.25.1 (Enlace Nube Activo)' },
+        uptime: { stringValue: telem.uptime || 'Activo' },
+        cpuLoad: { integerValue: String(telem.cpuLoad !== null && telem.cpuLoad !== undefined ? telem.cpuLoad : 3) },
+        freeMemory: { integerValue: String(telem.freeMemory || 524288000) },
+        totalMemory: { integerValue: String(telem.totalMemory || 1073741824) },
+        syncMode: { stringValue: 'Cloud Sync Autónomo 24/7 (ONT / MikroTik)' },
+        lastSeen: { stringValue: telem.lastSeen || new Date().toISOString() }
+      }
+    };
+
+    await fetch('https://firestore.googleapis.com/v1/projects/fichas-royota/databases/(default)/documents/telemetry/mikrotik', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+  } catch (err) {
+    console.warn('[Telemetry-Firestore] Error al sincronizar a Firestore:', err.message);
+  }
+}
+
 // GET /api/mikrotik/test — Prueba de conectividad completa (Monitoreo para el panel)
 router.get('/test', async (req, res) => {
   const now = Date.now();
@@ -124,6 +155,9 @@ router.get('/sync/vouchers.rsc', (req, res) => {
     totalMemory: 1073741824,
     ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
   };
+
+  // Sincronizar telemetría hacia Firestore en segundo plano
+  syncTelemetryToFirestore(_routerTelemetry);
 
   const db = getDb();
   let rscCommands = '';

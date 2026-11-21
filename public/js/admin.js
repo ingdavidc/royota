@@ -34,7 +34,6 @@ function apiFetch(method, url, body) {
   if (window.firebaseDb) {
     if (url === '/api/config' || url === '/api/settings') {
       if (method === 'GET') return window.firebaseDb.getSettings();
-      if (method === 'PUT') return window.firebaseDb.saveSettings(body);
     }
     if (url === '/api/plans' || url === '/api/plans/all') {
       if (method === 'GET') return window.firebaseDb.getAllPlans();
@@ -616,6 +615,21 @@ function disablePlan(id) {
 /* ══════════════════════════════════════════════════════════
    MIKROTIK
 ══════════════════════════════════════════════════════════ */
+var _mkRealtimeUnsub = null;
+
+function renderMikrotikCard(r) {
+  var box = document.getElementById('mkStatus');
+  if (!box) return;
+  var okTitle = r.syncMode ? ('✅ ' + r.syncMode) : '✅ Conectado correctamente';
+  box.innerHTML = '<span class="mk-status-ok">' + okTitle + '</span>' +
+    '<div class="mk-info-grid">' +
+      mkCard('Versión RouterOS', r.version) +
+      mkCard('Uptime', r.uptime) +
+      mkCard('CPU', (r.cpuLoad !== undefined && r.cpuLoad !== null ? r.cpuLoad : '—') + '%') +
+      mkCard('RAM libre', fmtBytes(r.freeMemory)) +
+    '</div>';
+}
+
 function loadMikrotikSection() {
   testMikrotik();
   loadActiveUsers();
@@ -624,22 +638,39 @@ function loadMikrotikSection() {
 
 function testMikrotik() {
   var box = document.getElementById('mkStatus');
-  box.innerHTML = '<span style="color:var(--muted)">⏳ Probando conexión…</span>';
+  if (!box) return;
+  box.innerHTML = '<span style="color:var(--muted)">⏳ Verificando enlace con router y nube…</span>';
+
+  var handled = false;
+
+  // 1. Escuchar telemetría en tiempo real desde Firestore (sin restricciones CSP ni CORS)
+  if (window.firebaseDb && window.firebaseDb.onMikrotikStatusChange) {
+    if (_mkRealtimeUnsub) _mkRealtimeUnsub();
+    _mkRealtimeUnsub = window.firebaseDb.onMikrotikStatusChange(function(r) {
+      if (!r) return;
+      var lastSeenMs = r.lastSeen ? new Date(r.lastSeen).getTime() : 0;
+      var isAlive = (Date.now() - lastSeenMs) < 120000;
+      if (isAlive && r.status === 'online') {
+        handled = true;
+        renderMikrotikCard(r);
+      }
+    });
+  }
+
+  // 2. Consulta paralela al backend API
   apiFetch('GET', '/api/mikrotik/test').then(function(r) {
     if (r.ok) {
-      var okTitle = r.syncMode ? ('✅ ' + r.syncMode) : '✅ Conectado correctamente';
-      box.innerHTML = '<span class="mk-status-ok">' + okTitle + '</span>';
-      box.innerHTML += '<div class="mk-info-grid">' +
-        mkCard('Versión RouterOS', r.version) +
-        mkCard('Uptime', r.uptime) +
-        mkCard('CPU', (r.cpuLoad || '—') + '%') +
-        mkCard('RAM libre', fmtBytes(r.freeMemory)) +
-      '</div>';
-    } else {
+      handled = true;
+      renderMikrotikCard(r);
+    } else if (!handled) {
       box.innerHTML = '<span class="mk-status-err">❌ ' + (r.error || 'Sin conexión') + '</span>';
     }
   }).catch(function(e) {
-    box.innerHTML = '<span class="mk-status-err">❌ ' + (e.error || 'Error de red') + '</span>';
+    setTimeout(function() {
+      if (!handled) {
+        box.innerHTML = '<span class="mk-status-err">❌ ' + (e.error || 'Sin conexión') + '</span>';
+      }
+    }, 2500);
   });
 }
 
@@ -767,9 +798,19 @@ function savePortalSettings(e) {
     info_content:     document.getElementById('setInfoContent').value,
   };
 
-  apiFetch('PUT', '/api/settings', body).then(function(r) {
+  // Dual-write: Guardar en Firestore (para actualizar portal cautivo en tiempo real) y en Render backend
+  var pFirestore = (window.firebaseDb && window.firebaseDb.saveSettings)
+    ? window.firebaseDb.saveSettings(body).catch(function(e) { console.warn('[Admin] Firestore save:', e); return null; })
+    : Promise.resolve(null);
+
+  var pBackend = apiFetch('PUT', '/api/settings', body).catch(function(e) {
+    console.warn('[Admin] Backend save:', e);
+    return null;
+  });
+
+  Promise.all([pFirestore, pBackend]).then(function() {
     if (btn) btn.disabled = false;
-    toast(r.message || 'Configuración guardada', 'ok');
+    toast('Configuración guardada en la nube y portal cautivo', 'ok');
     if (body.business_name) {
       document.getElementById('topbarTitle').textContent = body.business_name;
       document.title = 'Admin — ' + body.business_name;

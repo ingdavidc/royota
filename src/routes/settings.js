@@ -43,6 +43,35 @@ router.get('/', authRequired, (req, res) => {
   });
 });
 
+// Sincronizar ajustes hacia Cloud Firestore para actualizar en tiempo real el portal cautivo
+async function syncSettingsToFirestore(settings) {
+  try {
+    const fields = {};
+    if (settings.business_name !== undefined)    fields.business_name    = { stringValue: String(settings.business_name) };
+    if (settings.business_slogan !== undefined)  fields.business_slogan  = { stringValue: String(settings.business_slogan) };
+    if (settings.whatsapp_number !== undefined)  fields.whatsapp_number  = { stringValue: String(settings.whatsapp_number) };
+    if (settings.whatsapp_message !== undefined) fields.whatsapp_message = { stringValue: String(settings.whatsapp_message) };
+    if (settings.info_active !== undefined)      fields.info_active      = { stringValue: String(settings.info_active) };
+    if (settings.info_badge !== undefined)       fields.info_badge       = { stringValue: String(settings.info_badge) };
+    if (settings.info_title !== undefined)       fields.info_title       = { stringValue: String(settings.info_title) };
+    if (settings.info_content !== undefined)     fields.info_content     = { stringValue: String(settings.info_content) };
+
+    const keys = Object.keys(fields);
+    if (!keys.length) return;
+
+    const updatePaths = keys.map(f => `updateMask.fieldPaths=${f}`).join('&');
+    const url = `https://firestore.googleapis.com/v1/projects/fichas-royota/databases/(default)/documents/settings/general?${updatePaths}`;
+
+    await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fields })
+    });
+  } catch (err) {
+    console.warn('[Settings-Firestore] Error al sincronizar ajustes a Firestore:', err.message);
+  }
+}
+
 // PUT /api/settings — Actualizar ajustes (auth)
 router.put('/', authRequired, (req, res) => {
   const {
@@ -67,6 +96,10 @@ router.put('/', authRequired, (req, res) => {
   if (info_content !== undefined)     toUpdate.info_content     = info_content;
 
   const updated = setSettings(toUpdate);
+
+  // Sincronizar en tiempo real a Google Firestore (para actualizar portal cautivo al instante)
+  syncSettingsToFirestore(toUpdate);
+
   res.json({ message: 'Configuración guardada con éxito', settings: updated });
 });
 

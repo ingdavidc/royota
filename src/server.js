@@ -27,13 +27,14 @@ app.use(helmet({
       scriptSrc:  ["'self'", "'unsafe-inline'"],
       styleSrc:   ["'self'", "'unsafe-inline'"],
       imgSrc:     ["'self'", "data:", "https://*"],
-      connectSrc: ["'self'", "https://firestore.googleapis.com", "https://*.firebaseio.com", "https://identitytoolkit.googleapis.com"],
+      connectSrc: ["'self'", "https://firestore.googleapis.com", "https://*.firebaseio.com", "https://identitytoolkit.googleapis.com", "https://royota-bot.onrender.com", "https://royota.dctelematica.com"],
       fontSrc:    ["'self'"],
       objectSrc:  ["'none'"],
       baseUri:    ["'self'"],
     },
   },
   crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" },
 }));
 
 // CORS: habilitado para permitir comunicación desde el dominio web y local

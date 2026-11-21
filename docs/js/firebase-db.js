@@ -113,6 +113,26 @@
       });
     },
 
+    // ── Telemetría MikroTik en Tiempo Real ─────────────────────
+    getMikrotikStatus: function() {
+      if (!db) return Promise.reject(new Error('Firestore no disponible'));
+      return db.collection('telemetry').doc('mikrotik').get().then(function(doc) {
+        if (doc.exists) return doc.data();
+        return null;
+      });
+    },
+
+    onMikrotikStatusChange: function(cb) {
+      if (!db) return function(){};
+      return db.collection('telemetry').doc('mikrotik').onSnapshot(function(doc) {
+        if (doc && doc.exists) {
+          cb(doc.data());
+        }
+      }, function(err) {
+        console.warn('[FirebaseDb] Telemetry realtime error:', err);
+      });
+    },
+
     onPlansChange: function(cb) {
       return db.collection('plans').onSnapshot(function(snap) {
         if (!snap || snap.empty) {
