@@ -11,7 +11,7 @@
     en navegadores cautivos (Android CaptivePortalLogin / iOS CNA).
     Compatible con XMLHttpRequest nativo.
   -->
-  <title>WiFi Balneario Río Royota — Conectarse</title>
+  <title>WiFi Río Royota — Conectarse</title>
   <link rel="stylesheet" href="./css/portal.css?v=5">
   <!-- Firebase SDK Local (Sin bloqueo por CSP ni dependencias CDN) -->
   <script src="./js/firebase-app-compat.js"></script>
@@ -64,8 +64,8 @@
 
       <div>
         <span class="tag-resort">🌿 Balneario &amp; Aguas Naturales</span>
-        <h1 class="portal-title" id="businessName">Balneario R&iacute;o Royota</h1>
-        <p class="portal-slogan" id="businessSlogan">El para&iacute;so natural junto al r&iacute;o &bull; Conexi&oacute;n WiFi</p>
+        <h1 class="portal-title" id="businessName">R&iacute;o Royota</h1>
+        <p class="portal-slogan" id="businessSlogan">Un para&iacute;so natural junto al r&iacute;o &bull; Conexi&oacute;n WiFi</p>
       </div>
     </header>
 
@@ -119,7 +119,7 @@
     <!-- ══ TARJETA 2: Compra Directa por WhatsApp ══════════════ -->
     <section class="wa-card" id="waSection">
       <p class="wa-hint">¿No tienes ficha o deseas recargar tu tiempo?</p>
-      <a href="https://wa.me/573123456789?text=%C2%A1Hola!%20Estoy%20en%20el%20Balneario%20R%C3%ADo%20Royota%20y%20deseo%20comprar%20una%20ficha%20de%20internet%20WiFi." id="waButton" class="wa-btn" target="_blank" rel="noopener">
+      <a href="https://wa.me/573174251419?text=%C2%A1Hola!%20Estoy%20en%20R%C3%ADo%20Royota%20y%20deseo%20comprar%20una%20ficha%20de%20internet%20WiFi." id="waButton" class="wa-btn" target="_blank" rel="noopener">
         <!-- SVG Oficial de WhatsApp -->
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm.01 1.67c2.2 0 4.26.86 5.82 2.42a8.19 8.19 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.19 8.19 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24zm4.52 11.66c-.25-.13-1.47-.72-1.7-.8-.23-.09-.39-.13-.56.13-.17.25-.65.8-.8 1-.14.16-.29.18-.54.06-.25-.13-1.06-.39-2.02-1.25-.75-.67-1.25-1.49-1.4-1.74-.15-.25-.02-.39.11-.51.11-.11.25-.29.38-.44.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.44-.06-.13-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.43h-.48c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1s.9 2.44 1.03 2.61c.13.17 1.77 2.7 4.29 3.79.6.26 1.07.41 1.44.53.6.19 1.15.16 1.58.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.15-1.18-.06-.11-.23-.17-.48-.29z"/>
@@ -135,115 +135,31 @@
         <h2 class="card-title" id="plansSectionTitle">Planes y Precios de Internet</h2>
       </div>
       <div class="plans-grid" id="plansList">
-        <div class="plan-item" onclick="pedirPlan('30 Minutos', '$2.000')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">
+        <div class="plan-item" onclick="pedirPlan('1 Hora Basico', '$2000')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">
           <div class="plan-info-left">
-            <div class="plan-name">30 Minutos</div>
-            <div class="plan-meta">
-              <span>⏱ 30m</span>
-              <span>⚡ 3M/3M</span>
-            </div>
-          </div>
-          <div class="plan-price-wrap">
-            <div class="plan-price">$2.000</div>
-            <a href="https://wa.me/573123456789?text=%C2%A1Hola!%20Deseo%20pedir%20la%20ficha%20de%20internet%20de%2030%20Minutos%20($2.000)%20en%20el%20Balneario%20R%C3%ADo%20Royota." class="plan-buy-btn" target="_blank" rel="noopener" onclick="event.stopPropagation();">Pedir 🪪</a>
-          </div>
-        </div>
-
-        <div class="plan-item" onclick="pedirPlan('1 Hora', '$3.000')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">
-          <div class="plan-info-left">
-            <div class="plan-name">1 Hora</div>
+            <div class="plan-name">1 Hora Basico</div>
             <div class="plan-meta">
               <span>⏱ 1h</span>
-              <span>⚡ 5M/5M</span>
+              <span>⚡ 5M/2M</span>
             </div>
           </div>
           <div class="plan-price-wrap">
-            <div class="plan-price">$3.000</div>
-            <a href="https://wa.me/573123456789?text=%C2%A1Hola!%20Deseo%20pedir%20la%20ficha%20de%20internet%20de%201%20Hora%20($3.000)%20en%20el%20Balneario%20R%C3%ADo%20Royota." class="plan-buy-btn" target="_blank" rel="noopener" onclick="event.stopPropagation();">Pedir 🪪</a>
+            <div class="plan-price">$2000</div>
+            <a href="https://wa.me/573174251419?text=%C2%A1Hola!%20Deseo%20pedir%20la%20ficha%20de%20internet%20de%201%20Hora%20Basico%20($2000)%20en%20R%C3%ADo%20Royota." class="plan-buy-btn" target="_blank" rel="noopener" onclick="event.stopPropagation();">Pedir 🪪</a>
           </div>
         </div>
 
-        <div class="plan-item" onclick="pedirPlan('2 Horas', '$5.000')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">
+        <div class="plan-item" onclick="pedirPlan('1 Hora Premium', '$3000')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">
           <div class="plan-info-left">
-            <div class="plan-name">2 Horas</div>
+            <div class="plan-name">1 Hora Premium</div>
             <div class="plan-meta">
-              <span>⏱ 2h</span>
-              <span>⚡ 5M/5M</span>
+              <span>⏱ 1h</span>
+              <span>⚡ 5M/10M</span>
             </div>
           </div>
           <div class="plan-price-wrap">
-            <div class="plan-price">$5.000</div>
-            <a href="https://wa.me/573123456789?text=%C2%A1Hola!%20Deseo%20pedir%20la%20ficha%20de%20internet%20de%202%20Horas%20($5.000)%20en%20el%20Balneario%20R%C3%ADo%20Royota." class="plan-buy-btn" target="_blank" rel="noopener" onclick="event.stopPropagation();">Pedir 🪪</a>
-          </div>
-        </div>
-
-        <div class="plan-item" onclick="pedirPlan('5 Horas', '$8.000')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">
-          <div class="plan-info-left">
-            <div class="plan-name">5 Horas</div>
-            <div class="plan-meta">
-              <span>⏱ 5h</span>
-              <span>⚡ 8M/8M</span>
-            </div>
-          </div>
-          <div class="plan-price-wrap">
-            <div class="plan-price">$8.000</div>
-            <a href="https://wa.me/573123456789?text=%C2%A1Hola!%20Deseo%20pedir%20la%20ficha%20de%20internet%20de%205%20Horas%20($8.000)%20en%20el%20Balneario%20R%C3%ADo%20Royota." class="plan-buy-btn" target="_blank" rel="noopener" onclick="event.stopPropagation();">Pedir 🪪</a>
-          </div>
-        </div>
-
-        <div class="plan-item" onclick="pedirPlan('1 Día', '$12.000')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">
-          <div class="plan-info-left">
-            <div class="plan-name">1 D&iacute;a</div>
-            <div class="plan-meta">
-              <span>⏱ 1d</span>
-              <span>⚡ 10M/10M</span>
-            </div>
-          </div>
-          <div class="plan-price-wrap">
-            <div class="plan-price">$12.000</div>
-            <a href="https://wa.me/573123456789?text=%C2%A1Hola!%20Deseo%20pedir%20la%20ficha%20de%20internet%20de%201%20D%C3%ADa%20($12.000)%20en%20el%20Balneario%20R%C3%ADo%20Royota." class="plan-buy-btn" target="_blank" rel="noopener" onclick="event.stopPropagation();">Pedir 🪪</a>
-          </div>
-        </div>
-
-        <div class="plan-item" onclick="pedirPlan('3 Días', '$25.000')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">
-          <div class="plan-info-left">
-            <div class="plan-name">3 D&iacute;as</div>
-            <div class="plan-meta">
-              <span>⏱ 3d</span>
-              <span>⚡ 10M/10M</span>
-            </div>
-          </div>
-          <div class="plan-price-wrap">
-            <div class="plan-price">$25.000</div>
-            <a href="https://wa.me/573123456789?text=%C2%A1Hola!%20Deseo%20pedir%20la%20ficha%20de%20internet%20de%203%20D%C3%ADas%20($25.000)%20en%20el%20Balneario%20R%C3%ADo%20Royota." class="plan-buy-btn" target="_blank" rel="noopener" onclick="event.stopPropagation();">Pedir 🪪</a>
-          </div>
-        </div>
-
-        <div class="plan-item" onclick="pedirPlan('7 Días', '$45.000')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">
-          <div class="plan-info-left">
-            <div class="plan-name">7 D&iacute;as</div>
-            <div class="plan-meta">
-              <span>⏱ 7d</span>
-              <span>⚡ 15M/15M</span>
-            </div>
-          </div>
-          <div class="plan-price-wrap">
-            <div class="plan-price">$45.000</div>
-            <a href="https://wa.me/573123456789?text=%C2%A1Hola!%20Deseo%20pedir%20la%20ficha%20de%20internet%20de%207%20D%C3%ADas%20($45.000)%20en%20el%20Balneario%20R%C3%ADo%20Royota." class="plan-buy-btn" target="_blank" rel="noopener" onclick="event.stopPropagation();">Pedir 🪪</a>
-          </div>
-        </div>
-
-        <div class="plan-item" onclick="pedirPlan('30 Días', '$120.000')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">
-          <div class="plan-info-left">
-            <div class="plan-name">30 D&iacute;as</div>
-            <div class="plan-meta">
-              <span>⏱ 30d</span>
-              <span>⚡ 20M/20M</span>
-            </div>
-          </div>
-          <div class="plan-price-wrap">
-            <div class="plan-price">$120.000</div>
-            <a href="https://wa.me/573123456789?text=%C2%A1Hola!%20Deseo%20pedir%20la%20ficha%20de%20internet%20de%2030%20D%C3%ADas%20($120.000)%20en%20el%20Balneario%20R%C3%ADo%20Royota." class="plan-buy-btn" target="_blank" rel="noopener" onclick="event.stopPropagation();">Pedir 🪪</a>
+            <div class="plan-price">$3000</div>
+            <a href="https://wa.me/573174251419?text=%C2%A1Hola!%20Deseo%20pedir%20la%20ficha%20de%20internet%20de%201%20Hora%20Premium%20($3000)%20en%20R%C3%ADo%20Royota." class="plan-buy-btn" target="_blank" rel="noopener" onclick="event.stopPropagation();">Pedir 🪪</a>
           </div>
         </div>
       </div>
@@ -266,7 +182,7 @@
     <!-- ══ TARJETA 5: Información del Balneario (Editable en Admin) ══ -->
     <section class="info-card" id="infoSection">
       <span class="info-badge-tag" id="infoBadge">Avisos &amp; Servicios del Balneario</span>
-      <h2 class="info-heading" id="infoTitle">&iexcl;Bienvenidos al Balneario R&iacute;o Royota!</h2>
+      <h2 class="info-heading" id="infoTitle">&iexcl;Bienvenidos a R&iacute;o Royota!</h2>
       <div class="info-body-text" id="infoContent">🌊 Piscinas naturales y zona de río abiertas hasta las 6:00 PM.
 🍹 Restaurante y kioscos con bebidas frías disponibles todo el día.
 🎫 Venta de fichas WiFi en Taquilla Principal y Restaurante.
@@ -275,7 +191,7 @@
 
     <!-- ── Pie de Página ────────────────────────────────────── -->
     <footer class="portal-footer">
-      <p id="footerBusinessName">Balneario R&iacute;o Royota</p>
+      <p id="footerBusinessName">R&iacute;o Royota</p>
       <p>Cuidemos nuestro r&iacute;o y el entorno natural 🌿</p>
       <div class="powered-by-container">
         <a href="https://www.dctelematica.com" target="_blank" rel="noopener" class="powered-by-link" title="DC Telemática - Soluciones Tecnológicas">
@@ -313,36 +229,50 @@
     var plansList   = document.getElementById('plansList');
 
     var DEFAULT_SETTINGS = {
-      business_name:    'Balneario R\u00edo Royota',
-      business_slogan:  'El para\u00edso natural junto al r\u00edo \u2022 Conexi\u00f3n WiFi',
-      whatsapp_number:  '573123456789',
-      whatsapp_message: '\u00a1Hola! Estoy en el Balneario R\u00edo Royota y deseo comprar una ficha de internet WiFi.',
+      business_name:    'R\u00edo Royota',
+      business_slogan:  'Un para\u00edso natural junto al r\u00edo \u2022 Conexi\u00f3n WiFi',
+      whatsapp_number:  '573174251419',
+      whatsapp_message: '\u00a1Hola! Estoy en R\u00edo Royota y deseo comprar una ficha de internet WiFi.',
       info_active:      true,
       info_badge:       'Avisos & Servicios del Balneario',
-      info_title:       '\u00a1Bienvenidos al Balneario R\u00edo Royota!',
+      info_title:       '\u00a1Bienvenidos a R\u00edo Royota!',
       info_content:     '\ud83c\udf0a Piscinas naturales y zona de r\u00edo abiertas hasta las 6:00 PM.\n\ud83c\udf79 Restaurante y kioscos con bebidas fr\u00edas disponibles todo el d\u00eda.\n\ud83c\udfab Venta de fichas WiFi en Taquilla Principal y Restaurante.\n\ud83c\udf3f Cuidemos el r\u00edo: deposita los residuos en su lugar.',
       currency:         'COP',
       currencySymbol:   '$'
     };
 
     var DEFAULT_FALLBACK_PLANS = [
-      { name: '30 Minutos', duration: '30m', speed_limit: '3M/3M', price: 2000 },
-      { name: '1 Hora',     duration: '1h',  speed_limit: '5M/5M', price: 3000 },
-      { name: '2 Horas',    duration: '2h',  speed_limit: '5M/5M', price: 5000 },
-      { name: '5 Horas',    duration: '5h',  speed_limit: '8M/8M', price: 8000 },
-      { name: '1 Día',      duration: '1d',  speed_limit: '10M/10M', price: 12000 },
-      { name: '3 Días',     duration: '3d',  speed_limit: '10M/10M', price: 25000 },
-      { name: '7 Días',     duration: '7d',  speed_limit: '15M/15M', price: 45000 },
-      { name: '30 Días',    duration: '30d', speed_limit: '20M/20M', price: 120000 }
+      { name: '1 Hora Basico',  duration: '1h', speed_limit: '5M/2M',  price: 2000 },
+      { name: '1 Hora Premium', duration: '1h', speed_limit: '5M/10M', price: 3000 }
     ];
 
+    /* ── Carga Instantánea desde Caché Local (Elimina Parpadeo / FOUC) ── */
     var _settings = Object.assign({}, DEFAULT_SETTINGS);
+    try {
+      var cachedSet = localStorage.getItem('royota_cached_settings');
+      if (cachedSet) {
+        var parsed = JSON.parse(cachedSet);
+        if (parsed && typeof parsed === 'object') {
+          _settings = Object.assign({}, DEFAULT_SETTINGS, parsed);
+        }
+      }
+    } catch (_) {}
+
     var _cachedPlans = DEFAULT_FALLBACK_PLANS;
+    try {
+      var cachedPl = localStorage.getItem('royota_cached_plans');
+      if (cachedPl) {
+        var parsedPl = JSON.parse(cachedPl);
+        if (Array.isArray(parsedPl) && parsedPl.length > 0) {
+          _cachedPlans = parsedPl;
+        }
+      }
+    } catch (_) {}
 
     /* ── Helper de enlace WhatsApp con código internacional de Colombia ── */
     function formatWhatsAppLink(rawNum, msgText) {
       var num = String(rawNum || '').replace(/[^\d]/g, '');
-      if (!num) num = '573123456789';
+      if (!num) num = '573174251419';
       if (num.length === 10 && num.startsWith('3')) {
         num = '57' + num;
       }
@@ -351,8 +281,9 @@
 
     /* ── Función para pedir plan directamente ── */
     window.pedirPlan = function(planName, formattedPrice) {
-      var num = _settings && _settings.whatsapp_number ? _settings.whatsapp_number : '573123456789';
-      var msg = '¡Hola! Deseo pedir la ficha de internet de ' + planName + ' (' + formattedPrice + ') en el Balneario Río Royota.';
+      var num = _settings && _settings.whatsapp_number ? _settings.whatsapp_number : '573174251419';
+      var biz = _settings && _settings.business_name ? _settings.business_name : 'Río Royota';
+      var msg = '¡Hola! Deseo pedir la ficha de internet de ' + planName + ' (' + formattedPrice + ') en ' + biz + '.';
       window.open(formatWhatsAppLink(num, msg), '_blank');
     };
 
@@ -375,6 +306,7 @@
     function renderSettings(data) {
       if (data) {
         _settings = Object.assign({}, DEFAULT_SETTINGS, data);
+        try { localStorage.setItem('royota_cached_settings', JSON.stringify(_settings)); } catch (_) {}
       }
       if (_settings.business_name) {
         nameEl.textContent   = _settings.business_name;
@@ -384,14 +316,15 @@
       if (_settings.business_slogan) {
         sloganEl.textContent = _settings.business_slogan;
       }
-      var defMsg = _settings.whatsapp_message || '¡Hola! Estoy en el Balneario Río Royota y deseo comprar una ficha de internet WiFi.';
+      var biz = _settings.business_name || 'Río Royota';
+      var defMsg = _settings.whatsapp_message || ('¡Hola! Estoy en ' + biz + ' y deseo comprar una ficha de internet WiFi.');
       waBtn.href = formatWhatsAppLink(_settings.whatsapp_number, defMsg);
       waSec.removeAttribute('hidden');
 
       var isInfoActive = _settings.info_active !== '0' && _settings.info_active !== false && _settings.info_active !== 0;
       if (isInfoActive && _settings.info_content && _settings.info_content.trim() !== '') {
         infoBadge.textContent   = _settings.info_badge || 'Avisos & Servicios del Balneario';
-        infoTitle.textContent   = _settings.info_title || '¡Bienvenidos al Balneario Río Royota!';
+        infoTitle.textContent   = _settings.info_title || ('¡Bienvenidos a ' + biz + '!');
         infoContent.textContent = _settings.info_content;
         infoSec.removeAttribute('hidden');
       } else {
@@ -399,22 +332,26 @@
       }
 
       // Re-renderizar planes con el número y moneda actualizados
-      renderPlans(_cachedPlans);
+      renderPlans(_cachedPlans, false);
     }
 
     /* ── Render de Planes ── */
-    function renderPlans(plans) {
+    function renderPlans(plans, updateCache) {
       if (!plans || !plans.length) {
         plans = DEFAULT_FALLBACK_PLANS;
       }
       _cachedPlans = plans;
+      if (updateCache !== false) {
+        try { localStorage.setItem('royota_cached_plans', JSON.stringify(_cachedPlans)); } catch (_) {}
+      }
       var sym = (_settings && _settings.currencySymbol) || '$';
-      var botNum = (_settings && _settings.whatsapp_number) || '573123456789';
+      var botNum = (_settings && _settings.whatsapp_number) || '573174251419';
+      var biz = (_settings && _settings.business_name) || 'Río Royota';
       var html = '';
       for (var i = 0; i < plans.length; i++) {
         var p = plans[i];
         var formattedPrice = sym + Number(p.price || 0).toLocaleString();
-        var buyMsg = '¡Hola! Deseo pedir la ficha de internet de ' + p.name + ' (' + formattedPrice + ') en el Balneario Río Royota.';
+        var buyMsg = '¡Hola! Deseo pedir la ficha de internet de ' + p.name + ' (' + formattedPrice + ') en ' + biz + '.';
         var waHref = formatWhatsAppLink(botNum, buyMsg);
 
         html += '<div class="plan-item" onclick="pedirPlan(\'' + escapeHtml(p.name) + '\', \'' + formattedPrice + '\')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">' +
@@ -433,6 +370,10 @@
       }
       plansList.innerHTML = html;
     }
+
+    /* ── Inicialización Inmediata (0.00s de retraso) ── */
+    renderSettings(null);
+    renderPlans(_cachedPlans, false);
 
     /* ── Carga y Sincronización en Tiempo Real desde Firestore o API ── */
     if (window.firebaseDb) {

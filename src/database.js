@@ -260,17 +260,17 @@ function _seedAdmin(db) {
   }
 }
 
-// ── Seed de configuración por defecto (Balneario) ─────────────
+// ── Seed de configuración por defecto (Royota) ─────────────────
 function _seedSettings(db) {
   const defaults = {
-    business_name:    'Balneario Río Royota',
-    business_slogan:  'El paraíso natural junto al río · Conexión WiFi de alta velocidad',
-    whatsapp_number:  '573123456789',
-    whatsapp_message: '¡Hola! Estoy en el Balneario Río Royota y me interesa comprar una ficha de internet WiFi.',
+    business_name:    'Río Royota',
+    business_slogan:  'Un paraíso natural junto al río · Conexión WiFi',
+    whatsapp_number:  '573174251419',
+    whatsapp_message: '¡Hola! Estoy en Río Royota y deseo comprar una ficha de internet WiFi.',
     info_active:      '1',
     info_badge:       'Avisos & Servicios del Balneario',
-    info_title:       '¡Bienvenidos al Balneario Río Royota!',
-    info_content:     '🌊 Disfruta de nuestras refrescantes aguas y zonas de descanso.\n🍹 Restaurante, kioscos y bebidas frías disponibles todo el día.\n🎫 Venta de fichas WiFi en Taquilla Principal y Restaurante.\n🌿 Cuidemos el río: utiliza las canecas de basura y evita plásticos en el agua.',
+    info_title:       '¡Bienvenidos a Río Royota!',
+    info_content:     '🌊 Piscinas naturales y zona de río abiertas hasta las 6:00 PM.\n🍹 Restaurante y kioscos con bebidas frías disponibles todo el día.\n🎫 Venta de fichas WiFi en Taquilla Principal y Restaurante.\n🌿 Cuidemos el río: deposita los residuos en su lugar.',
   };
 
   const insertStmt = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
