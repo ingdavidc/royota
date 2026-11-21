@@ -806,50 +806,101 @@ function checkWhatsAppStatus() {
     var qrBox = document.getElementById('waQrBox');
     var qrImg = document.getElementById('waQrImg');
     var connBox = document.getElementById('waConnectedBox');
+    var discBox = document.getElementById('waDisconnectedBox');
     var userEl = document.getElementById('waConnectedUser');
+    var botNumDisp = document.getElementById('waBotNumberDisplay');
 
     if (!pill) return;
+
+    if (botNumDisp) {
+      if (s.botPhone) {
+        botNumDisp.textContent = '+' + s.botPhone;
+      } else {
+        botNumDisp.textContent = 'Auto-detectado al escanear';
+      }
+    }
 
     if (s.status === 'connected') {
       pill.textContent = '🟢 Conectado';
       pill.style.background = 'rgba(74, 222, 128, 0.2)';
       pill.style.color = '#4ade80';
-      qrBox.style.display = 'none';
-      connBox.style.display = 'block';
-      userEl.textContent = 'Vinculado a: ' + (s.user ? (s.user.name || s.user.id || 'Dispositivo WhatsApp') : 'Dispositivo WhatsApp');
+      if (qrBox) qrBox.style.display = 'none';
+      if (discBox) discBox.style.display = 'none';
+      if (connBox) connBox.style.display = 'block';
+      var userDisplayName = s.user ? (s.user.name || (s.botPhone ? ('+' + s.botPhone) : s.user.id)) : (s.botPhone ? ('+' + s.botPhone) : 'Dispositivo WhatsApp');
+      if (userEl) userEl.textContent = 'Vinculado a: ' + userDisplayName;
+
+      // Sincronizar automáticamente el número del bot al input de ajustes y a Firebase
+      if (s.botPhone) {
+        var cleanBot = s.botPhone.replace(/\D/g, '');
+        var setWaInput = document.getElementById('setWhatsappNumber');
+        if (setWaInput && (!setWaInput.value || setWaInput.value === '573123456789' || setWaInput.value === '3174251419')) {
+          setWaInput.value = cleanBot;
+        }
+        if (window.firebaseDb && window.firebaseDb.saveSettings && cleanBot !== window._lastSyncedBotNumber) {
+          window._lastSyncedBotNumber = cleanBot;
+          window.firebaseDb.saveSettings({ whatsapp_number: cleanBot });
+        }
+      }
     } else if (s.status === 'qr_ready') {
       pill.textContent = '🟡 Esperando Escaneo de QR';
       pill.style.background = 'rgba(250, 204, 21, 0.2)';
       pill.style.color = '#facc15';
-      connBox.style.display = 'none';
-      qrBox.style.display = 'block';
-      if (s.qrCodeDataUrl) {
-        qrImg.src = s.qrCodeDataUrl;
+      if (connBox) connBox.style.display = 'none';
+      if (discBox) discBox.style.display = 'none';
+      if (qrBox) {
+        qrBox.style.display = 'block';
+        if (s.qrCodeDataUrl) {
+          qrImg.src = s.qrCodeDataUrl;
+        }
       }
     } else if (s.status === 'connecting') {
-      pill.textContent = '🔄 Conectando...';
+      pill.textContent = '🔄 Conectando / Generando QR...';
       pill.style.background = 'rgba(56, 189, 248, 0.2)';
       pill.style.color = '#38bdf8';
+      if (qrBox) qrBox.style.display = 'none';
+      if (connBox) connBox.style.display = 'none';
+      if (discBox) discBox.style.display = 'none';
     } else if (s.status === 'disabled') {
       pill.textContent = '⚪ Desactivado (WHATSAPP_ENABLED=false)';
       pill.style.background = 'rgba(255, 255, 255, 0.1)';
       pill.style.color = 'var(--muted)';
-      qrBox.style.display = 'none';
-      connBox.style.display = 'none';
+      if (qrBox) qrBox.style.display = 'none';
+      if (connBox) connBox.style.display = 'none';
+      if (discBox) discBox.style.display = 'none';
     } else {
       pill.textContent = '🔴 Desconectado';
       pill.style.background = 'rgba(248, 113, 113, 0.2)';
       pill.style.color = '#f87171';
-      qrBox.style.display = 'none';
-      connBox.style.display = 'none';
+      if (qrBox) qrBox.style.display = 'none';
+      if (connBox) connBox.style.display = 'none';
+      if (discBox) discBox.style.display = 'block';
     }
   }).catch(function(err) {
     console.error('Error comprobando estado de WhatsApp:', err);
-    var pill = document.getElementById('waStatusPill');
-    if (pill) {
-      pill.textContent = '⚠️ Sin conexión con el servidor local';
-      pill.style.background = 'rgba(248, 113, 113, 0.2)';
-      pill.style.color = '#f87171';
+  });
+}
+
+function requestNewQr() {
+  var btn = document.getElementById('btnRequestQr');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Generando QR...';
+  }
+  apiFetch('POST', '/api/whatsapp/restart').then(function() {
+    toast('Generando código QR, un momento...', 'ok');
+    setTimeout(function() {
+      checkWhatsAppStatus();
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '🔄 Generar Código QR';
+      }
+    }, 2000);
+  }).catch(function(err) {
+    toast((err && err.error) || 'Error al solicitar QR', 'error');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '🔄 Generar Código QR';
     }
   });
 }

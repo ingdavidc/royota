@@ -11,7 +11,7 @@
 
 const { Router } = require('express');
 const { authRequired } = require('../middleware/auth');
-const { getBotStatus, logoutBot } = require('../services/whatsapp-bot');
+const { getBotStatus, logoutBot, restartBot } = require('../services/whatsapp-bot');
 const { getDb } = require('../database');
 
 const router = Router();
@@ -19,6 +19,16 @@ const router = Router();
 // Estado de conexión del Bot y Código QR (Público para fácil visualización)
 router.get('/status', (req, res) => {
   res.json(getBotStatus());
+});
+
+// Reiniciar bot y forzar generación de nuevo código QR
+router.post('/restart', async (req, res) => {
+  try {
+    const result = await restartBot();
+    res.json(result || { success: true, message: 'Bot reiniciado con éxito. Generando código QR...' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Cerrar sesión y desvincular número

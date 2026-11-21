@@ -39,6 +39,8 @@ const AUTH_DIR = path.join(__dirname, '..', '..', 'data', 'baileys_auth');
 const logger = pino({ level: 'silent' });
 
 let _sock = null;
+let _reconnectTimer = null;
+let _isStarting = false;
 let _state = {
   status: 'disconnected', // 'disconnected' | 'connecting' | 'qr_ready' | 'connected' | 'disabled'
   qr: null,
@@ -484,11 +486,34 @@ async function processPaymentReceipt(sock, msg, senderJid) {
 /**
  * Inicia la conexión de WhatsApp
  */
-async function startWhatsAppBot() {
+async function startWhatsAppBot(forceClean = false) {
   if (!config.whatsapp.enabled) {
     console.log('[WhatsApp Bot] Desactivado en configuración (WHATSAPP_ENABLED=false).');
     _state.status = 'disabled';
     return;
+  }
+
+  if (_reconnectTimer) {
+    clearTimeout(_reconnectTimer);
+    _reconnectTimer = null;
+  }
+
+  // Cerrar y remover listeners del socket previo si existía para evitar sesiones duplicadas
+  if (_sock) {
+    try {
+      _sock.ev.removeAllListeners('connection.update');
+      _sock.ev.removeAllListeners('creds.update');
+      _sock.ev.removeAllListeners('messages.upsert');
+      _sock.end(undefined);
+    } catch (_) {}
+    _sock = null;
+  }
+
+  if (forceClean && fs.existsSync(AUTH_DIR)) {
+    try {
+      fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+      console.log('[WhatsApp Bot] Credenciales limpiadas para generar nuevo QR limpio.');
+    } catch (_) {}
   }
 
   // Asegurar directorio de datos de autenticación
@@ -497,6 +522,7 @@ async function startWhatsAppBot() {
   }
 
   _state.status = 'connecting';
+  _state.lastError = null;
   console.log('[WhatsApp Bot] Iniciando servicio de WhatsApp con Baileys...');
 
   try {
@@ -508,9 +534,12 @@ async function startWhatsAppBot() {
       logger,
       printQRInTerminal: false,
       auth: state,
-      browser: ['Hotspot Fichas ROYOTA', 'Chrome', '1.0.0'],
+      browser: ['Balneario Río Royota', 'Chrome', '1.0.0'],
       syncFullHistory: false,
       generateHighQualityLinkPreview: false,
+      connectTimeoutMs: 60000,
+      defaultQueryTimeoutMs: 60000,
+      keepAliveIntervalMs: 25000,
     });
 
     _sock = sock;
@@ -526,7 +555,7 @@ async function startWhatsAppBot() {
         _state.status = 'qr_ready';
         _state.qr = qr;
         try {
-          _state.qrCodeDataUrl = await QRCode.toDataURL(qr);
+          _state.qrCodeDataUrl = await QRCode.toDataURL(qr, { width: 320, margin: 2 });
         } catch (_) {}
 
         console.log('\n╔════════════════════════════════════════════════════════════════════╗');
@@ -537,29 +566,65 @@ async function startWhatsAppBot() {
       }
 
       if (connection === 'close') {
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
+        const isLoggedOut = statusCode === DisconnectReason.loggedOut;
+        const isRestartRequired = statusCode === 515; // 515: Restart Required de WhatsApp tras emparejar
+        const isRegistered = Boolean(state.creds?.registered);
+
+        console.log(`[WhatsApp Bot] Conexión cerrada (Código: ${statusCode}). Registrado: ${isRegistered}`);
+
+        if (isRestartRequired) {
+          // 515: WhatsApp exige reconexión inmediata tras emparejar credenciales
+          console.log('[WhatsApp Bot] Reconexión requerida por WhatsApp (515). Reconectando de inmediato...');
+          _state.status = 'connecting';
+          _reconnectTimer = setTimeout(() => startWhatsAppBot(false), 1500);
+          return;
+        }
+
         _state.status = 'disconnected';
         _state.qr = null;
         _state.qrCodeDataUrl = null;
         _state.user = null;
 
-        const statusCode = lastDisconnect?.error?.output?.statusCode;
-        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-
-        console.log(`[WhatsApp Bot] Conexión cerrada (Código: ${statusCode}). ¿Reconectar?: ${shouldReconnect}`);
-
-        if (shouldReconnect) {
-          setTimeout(() => startWhatsAppBot(), 5000);
+        if (isLoggedOut) {
+          console.log('[WhatsApp Bot] Sesión cerrada permanentemente (Logged Out). Limpiando credenciales...');
+          try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (_) {}
+          _reconnectTimer = setTimeout(() => startWhatsAppBot(true), 3000);
+        } else if (!isRegistered) {
+          // El QR expiró o falló sin llegar a escanearse: limpiar credenciales no registradas
+          console.log('[WhatsApp Bot] Código QR expiró o sesión no registrada. Generando nuevo QR...');
+          try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (_) {}
+          _reconnectTimer = setTimeout(() => startWhatsAppBot(true), 3000);
         } else {
-          console.log('[WhatsApp Bot] Sesión cerrada permanentemente. Limpiando credenciales...');
-          fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-          setTimeout(() => startWhatsAppBot(), 3000);
+          // Sesión registrada caída temporalmente (red, etc.), mantener credenciales y reconectar
+          console.log('[WhatsApp Bot] Reconectando sesión activa en 5 segundos...');
+          _reconnectTimer = setTimeout(() => startWhatsAppBot(false), 5000);
         }
       } else if (connection === 'open') {
         _state.status = 'connected';
         _state.qr = null;
         _state.qrCodeDataUrl = null;
         _state.user = sock.user;
-        console.log(`[WhatsApp Bot] ✅ Conectado exitosamente como: ${sock.user?.name || sock.user?.id}`);
+
+        let rawPhone = (sock.user?.id || '').split(':')[0].replace(/\D/g, '');
+        if (rawPhone.length === 10 && rawPhone.startsWith('3')) {
+          rawPhone = '57' + rawPhone;
+        }
+
+        console.log(`[WhatsApp Bot] ✅ Conectado exitosamente como: ${sock.user?.name || rawPhone}`);
+
+        // AUTO-DETECCIÓN DEL NÚMERO DEL BOT:
+        // Se actualiza en la tabla settings para que el portal cautivo envíe
+        // a los turistas directamente al WhatsApp de este bot.
+        if (rawPhone) {
+          try {
+            const db = getDb();
+            db.prepare("INSERT INTO settings (key, value) VALUES ('whatsapp_number', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(rawPhone);
+            console.log(`[WhatsApp Bot] 📱 'whatsapp_number' guardado automáticamente: ${rawPhone}`);
+          } catch (e) {
+            console.warn('[WhatsApp Bot] No se pudo guardar en settings local:', e.message);
+          }
+        }
       }
     });
 
@@ -767,8 +832,25 @@ async function startWhatsAppBot() {
  * Obtener estado actual del bot
  */
 function getBotStatus() {
+  const db = getDb();
+  let botNumber = '';
+  try {
+    const row = db.prepare("SELECT value FROM settings WHERE key = 'whatsapp_number'").get();
+    botNumber = row ? row.value : '';
+  } catch (_) {}
+
+  // Si está desconectado y no hay proceso en curso, activar generación/conexión
+  if (_state.status === 'disconnected' && !_sock && !_reconnectTimer) {
+    startWhatsAppBot(false).catch(() => {});
+  }
+
+  const rawBotPhone = _state.user?.id
+    ? _state.user.id.split(':')[0].replace(/\D/g, '')
+    : botNumber;
+
   return {
     ..._state,
+    botPhone: rawBotPhone || null,
     paymentPhone: config.whatsapp.paymentPhone,
     hasGeminiKey: !!config.whatsapp.geminiApiKey,
   };
@@ -778,26 +860,42 @@ function getBotStatus() {
  * Cerrar sesión manual
  */
 async function logoutBot() {
+  if (_reconnectTimer) {
+    clearTimeout(_reconnectTimer);
+    _reconnectTimer = null;
+  }
   if (_sock) {
     try {
+      _sock.ev.removeAllListeners('connection.update');
+      _sock.ev.removeAllListeners('creds.update');
+      _sock.ev.removeAllListeners('messages.upsert');
       await _sock.logout();
     } catch (_) {}
+    _sock = null;
   }
   _state.status = 'disconnected';
   _state.user = null;
   _state.qr = null;
   _state.qrCodeDataUrl = null;
   if (fs.existsSync(AUTH_DIR)) {
-    fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+    try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (_) {}
   }
-  setTimeout(() => startWhatsAppBot(), 2000);
+  setTimeout(() => startWhatsAppBot(true), 2000);
   return { success: true, message: 'Sesión cerrada. Escanea un nuevo QR.' };
+}
+
+/**
+ * Reiniciar bot y forzar nuevo QR limpio
+ */
+async function restartBot() {
+  return await startWhatsAppBot(true);
 }
 
 module.exports = {
   startWhatsAppBot,
   getBotStatus,
   logoutBot,
+  restartBot,
   recordStrike,
   clearStrikes,
   checkPhoneBlocked,

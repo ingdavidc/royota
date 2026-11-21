@@ -339,11 +339,21 @@
     var _settings = Object.assign({}, DEFAULT_SETTINGS);
     var _cachedPlans = DEFAULT_FALLBACK_PLANS;
 
+    /* ── Helper de enlace WhatsApp con código internacional de Colombia ── */
+    function formatWhatsAppLink(rawNum, msgText) {
+      var num = String(rawNum || '').replace(/[^\d]/g, '');
+      if (!num) num = '573123456789';
+      if (num.length === 10 && num.startsWith('3')) {
+        num = '57' + num;
+      }
+      return 'https://wa.me/' + num + '?text=' + encodeURIComponent(msgText);
+    }
+
     /* ── Función para pedir plan directamente ── */
     window.pedirPlan = function(planName, formattedPrice) {
-      var num = (_settings && _settings.whatsapp_number ? _settings.whatsapp_number : '573123456789').replace(/[^\d]/g, '');
-      var msg = encodeURIComponent('¡Hola! Deseo pedir la ficha de internet de ' + planName + ' (' + formattedPrice + ') en el Balneario Río Royota.');
-      window.open('https://wa.me/' + num + '?text=' + msg, '_blank');
+      var num = _settings && _settings.whatsapp_number ? _settings.whatsapp_number : '573123456789';
+      var msg = '¡Hola! Deseo pedir la ficha de internet de ' + planName + ' (' + formattedPrice + ') en el Balneario Río Royota.';
+      window.open(formatWhatsAppLink(num, msg), '_blank');
     };
 
     /* ── Helper AJAX con XMLHttpRequest para WebView cautivo ── */
@@ -374,9 +384,8 @@
       if (_settings.business_slogan) {
         sloganEl.textContent = _settings.business_slogan;
       }
-      var cleanNum = (_settings.whatsapp_number || '573123456789').replace(/[^\d]/g, '');
-      var defMsg   = encodeURIComponent(_settings.whatsapp_message || '¡Hola! Estoy en el Balneario Río Royota y deseo comprar una ficha de internet WiFi.');
-      waBtn.href   = 'https://wa.me/' + cleanNum + '?text=' + defMsg;
+      var defMsg = _settings.whatsapp_message || '¡Hola! Estoy en el Balneario Río Royota y deseo comprar una ficha de internet WiFi.';
+      waBtn.href = formatWhatsAppLink(_settings.whatsapp_number, defMsg);
       waSec.removeAttribute('hidden');
 
       var isInfoActive = _settings.info_active !== '0' && _settings.info_active !== false && _settings.info_active !== 0;
@@ -400,13 +409,13 @@
       }
       _cachedPlans = plans;
       var sym = (_settings && _settings.currencySymbol) || '$';
-      var num = (_settings && _settings.whatsapp_number ? _settings.whatsapp_number : '573123456789').replace(/[^\d]/g, '');
+      var botNum = (_settings && _settings.whatsapp_number) || '573123456789';
       var html = '';
       for (var i = 0; i < plans.length; i++) {
         var p = plans[i];
         var formattedPrice = sym + Number(p.price || 0).toLocaleString();
-        var buyMsg = encodeURIComponent('¡Hola! Deseo pedir la ficha de internet de ' + p.name + ' (' + formattedPrice + ') en el Balneario Río Royota.');
-        var waHref = 'https://wa.me/' + num + '?text=' + buyMsg;
+        var buyMsg = '¡Hola! Deseo pedir la ficha de internet de ' + p.name + ' (' + formattedPrice + ') en el Balneario Río Royota.';
+        var waHref = formatWhatsAppLink(botNum, buyMsg);
 
         html += '<div class="plan-item" onclick="pedirPlan(\'' + escapeHtml(p.name) + '\', \'' + formattedPrice + '\')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">' +
                   '<div class="plan-info-left">' +
