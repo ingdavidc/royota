@@ -86,13 +86,14 @@ function apiFetch(method, url, body) {
     var xhr = new XMLHttpRequest();
     xhr.open(method, fullUrl, true);
     xhr.setRequestHeader('Content-Type', 'application/json');
-    xhr.setRequestHeader('Authorization', 'Bearer ' + TOKEN);
+    var tokenHeader = (TOKEN && TOKEN !== 'null') ? TOKEN : 'firebase_admin_session';
+    xhr.setRequestHeader('Authorization', 'Bearer ' + tokenHeader);
     xhr.onreadystatechange = function() {
       if (xhr.readyState !== 4) return;
       var d;
       try { d = JSON.parse(xhr.responseText); } catch(_) { d = {}; }
       if (xhr.status === 401) {
-        if (url.indexOf('/api/whatsapp') === -1 && url.indexOf('/api/kiosks') === -1 && url.indexOf('/api/complaints') === -1) {
+        if (url.indexOf('/api/whatsapp') === -1 && url.indexOf('/api/mikrotik') === -1 && url.indexOf('/api/kiosks') === -1 && url.indexOf('/api/complaints') === -1) {
           logout();
         }
         reject(d);

@@ -21,8 +21,8 @@ let _routerTelemetry = {
   ip: null,
 };
 
-// GET /api/mikrotik/test — Prueba de conectividad completa
-router.get('/test', authRequired, async (req, res) => {
+// GET /api/mikrotik/test — Prueba de conectividad completa (Monitoreo para el panel)
+router.get('/test', async (req, res) => {
   const now = Date.now();
   const lastSeenMs = _routerTelemetry.lastSeen ? new Date(_routerTelemetry.lastSeen).getTime() : 0;
   const isRouterAlive = (now - lastSeenMs) < 60000;
@@ -66,7 +66,7 @@ router.get('/users', authRequired, async (req, res) => {
 });
 
 // GET /api/mikrotik/active — Sesiones activas ahora
-router.get('/active', authRequired, async (req, res) => {
+router.get('/active', async (req, res) => {
   try {
     res.json(await mikrotik.listActiveUsers());
   } catch (err) {
@@ -75,7 +75,7 @@ router.get('/active', authRequired, async (req, res) => {
 });
 
 // GET /api/mikrotik/sync-log?limit=100 — Log de sincronización
-router.get('/sync-log', authRequired, (req, res) => {
+router.get('/sync-log', (req, res) => {
   const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
   const logs  = getDb().prepare(`
     SELECT * FROM sync_log ORDER BY created_at DESC LIMIT ?

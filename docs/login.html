@@ -284,7 +284,10 @@
               return;
             }
             var email = emailsToTry[index];
-            window.firebaseDb.login(email, password).then(function() {
+            window.firebaseDb.login(email, password).then(function(userCred) {
+              var uid = (userCred && userCred.user && userCred.user.uid) || 'firebase_admin_session';
+              localStorage.setItem('fichas_token', uid);
+              localStorage.setItem('fichas_admin', JSON.stringify({ email: email, role: 'admin' }));
               window.location.href = './admin.html';
             }).catch(function(err) {
               // Si el error fue formato inválido o usuario no encontrado, probar la siguiente alternativa
