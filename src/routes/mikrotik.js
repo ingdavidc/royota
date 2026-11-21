@@ -53,4 +53,39 @@ router.get('/sync-log', authRequired, (req, res) => {
   res.json(logs);
 });
 
+// Memoria en la nube para la cola de aprovisionamiento autónomo
+let _pendingRsc = '';
+
+// POST /api/mikrotik/sync/push-batch — Llamado desde royota.dctelematica.com al generar fichas
+router.post('/sync/push-batch', (req, res) => {
+  const { vouchers, plan } = req.body;
+  if (!Array.isArray(vouchers) || !vouchers.length) {
+    return res.status(400).json({ error: 'Lista de fichas requerida' });
+  }
+
+  const profileName = (plan && plan.name) ? plan.name : '1 Hora Basico';
+  const duration = (plan && plan.duration) ? plan.duration : '1h';
+
+  let rscCommands = '\n/ip hotspot user\n';
+  vouchers.forEach(code => {
+    const clean = String(code).trim().toUpperCase();
+    rscCommands += `:do { add name="${clean}" password="${clean}" profile="${profileName}" limit-uptime="${duration}" comment="Royota Cloud" } on-error={}\n`;
+  });
+
+  _pendingRsc += rscCommands;
+  console.log(`[Cloud-Sync] ${vouchers.length} fichas encoladas para el MikroTik.`);
+  res.json({ ok: true, queued: vouchers.length });
+});
+
+// GET /api/mikrotik/sync/vouchers.rsc — Descargado autónomamente por el MikroTik en el sitio
+router.get('/sync/vouchers.rsc', (req, res) => {
+  res.setHeader('Content-Type', 'text/plain');
+  if (!_pendingRsc || _pendingRsc.trim() === '') {
+    return res.send('# No pending vouchers\n');
+  }
+  const toSend = _pendingRsc;
+  _pendingRsc = ''; // Limpiar cola una vez entregada al router
+  res.send(toSend);
+});
+
 module.exports = router;

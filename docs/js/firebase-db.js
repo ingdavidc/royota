@@ -277,6 +277,15 @@
           }
 
           return batch.commit().then(function() {
+            // Notificar a la nube para aprovisionamiento autónomo en MikroTik
+            try {
+              var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
+              var xhr = new XMLHttpRequest();
+              xhr.open('POST', apiBase + '/api/mikrotik/sync/push-batch', true);
+              xhr.setRequestHeader('Content-Type', 'application/json');
+              xhr.send(JSON.stringify({ vouchers: codes, plan: plan }));
+            } catch (_) {}
+
             return {
               message:   'Lote de ' + quantity + ' fichas generado',
               batch_id:  batchRef.id,
