@@ -306,7 +306,7 @@ document.getElementById('genForm').addEventListener('submit', function(e) {
   btn.textContent = 'Generando…';
 
   apiFetch('POST', '/api/vouchers/generate', {
-    plan_id:    parseInt(planId, 10),
+    plan_id:    (typeof planId === 'string' && /^\d+$/.test(planId)) ? parseInt(planId, 10) : planId,
     quantity:   qty,
     code_length: codeLen,
     charset:    charset,
@@ -321,13 +321,13 @@ document.getElementById('genForm').addEventListener('submit', function(e) {
     _lastBatchId   = r.batch_id;
     _lastBatchData = r;
 
-    toast(r.message, 'ok');
+    toast(r.message || 'Fichas generadas con éxito', 'ok');
     showCodesResult(r);
     loadBatches();
   }).catch(function(err) {
     btn.disabled    = false;
     btn.textContent = '🎫 Generar Fichas';
-    toast(err.error || 'Error al generar fichas', 'error');
+    toast((err && (err.error || err.message)) || 'Error al generar fichas', 'error');
   });
 });
 
@@ -336,7 +336,7 @@ function showCodesResult(r) {
   var title   = document.getElementById('resultTitle');
   var grid    = document.getElementById('codesGrid');
 
-  title.textContent = r.generated + ' fichas — ' + (r.plan ? r.plan.name : '');
+  title.textContent = (r.generated || (r.codes && r.codes.length) || '') + ' fichas — ' + (r.plan ? r.plan.name : '');
   grid.innerHTML    = '';
   r.codes.forEach(function(code) {
     var chip = document.createElement('span');

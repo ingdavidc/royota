@@ -278,9 +278,11 @@
 
           return batch.commit().then(function() {
             return {
-              message:  'Lote de ' + quantity + ' fichas generado',
-              batch_id: batchRef.id,
-              codes:    codes,
+              message:   'Lote de ' + quantity + ' fichas generado',
+              batch_id:  batchRef.id,
+              codes:     codes,
+              generated: codes.length,
+              plan:      plan,
             };
           });
         });

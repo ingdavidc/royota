@@ -15,7 +15,7 @@ window.FIREBASE_CONFIG = {
 };
 
 // URL o IP del router MikroTik en el Balneario (para login nativo)
-window.MIKROTIK_LOGIN_URL = "http://192.168.88.1/login";
+window.MIKROTIK_LOGIN_URL = "http://192.168.20.1/login";
 
 // URL del Servidor Backend en la Nube (Render 24/7)
 if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
