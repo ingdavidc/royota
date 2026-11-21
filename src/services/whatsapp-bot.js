@@ -194,23 +194,40 @@ async function processPaymentReceipt(sock, msg, senderJid) {
     }
 
     // 8. Obtener o generar la ficha para el plan
+    // 🔒 AISLAMIENTO TOTAL: El bot SOLO toma o genera fichas con prefijo WSP-
+    // NUNCA toma fichas impresas ni lotes de las casetas físicas.
     let voucher = db.prepare(
-      'SELECT * FROM vouchers WHERE plan_id = ? AND status = "available" LIMIT 1'
+      'SELECT * FROM vouchers WHERE plan_id = ? AND status = "available" AND code LIKE "WSP-%" LIMIT 1'
     ).get(matchedPlan.id);
 
     if (!voucher) {
-      console.log(`[WhatsApp Bot] No hay fichas libres para el plan ${matchedPlan.name}, generando una automáticamente...`);
+      console.log(`[WhatsApp Bot] Generando ficha digital exclusiva (WSP-) para el plan ${matchedPlan.name}...`);
       const batchResult = await generateBatch({
         planId: matchedPlan.id,
         quantity: 1,
         codeLength: 8,
         charset: 'full',
-        prefix: 'ROY-',
-        batchNote: `Auto-generada por WhatsApp Bot para cliente ${senderPhone}`,
+        prefix: 'WSP-',
+        batchNote: `Venta digital WhatsApp (${senderPhone})`,
       });
 
       const newCode = batchResult.codes[0];
       voucher = db.prepare('SELECT * FROM vouchers WHERE code = ?').get(newCode);
+    }
+
+    // Provisionar inmediatamente en el MikroTik del Balneario
+    try {
+      const mikrotik = require('./mikrotik-api');
+      await mikrotik.createHotspotUser(voucher.code, voucher.code, {
+        profile: matchedPlan.profile_name || 'default',
+        limitUptime: matchedPlan.duration,
+        rateLimit: matchedPlan.speed_limit,
+        sharedUsers: matchedPlan.shared_users || 1,
+        comment: `WhatsApp: ${senderPhone} | Ref: ${cleanRef}`,
+      });
+      db.prepare('UPDATE vouchers SET mikrotik_synced = 1 WHERE id = ?').run(voucher.id);
+    } catch (mkErr) {
+      console.warn('[WhatsApp Bot] Aviso sincronización MikroTik (se activará al navegar):', mkErr.message);
     }
 
     // 9. Registrar la venta y el pago en la BD de forma atómica
