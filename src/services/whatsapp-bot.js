@@ -413,19 +413,21 @@ async function processPaymentReceipt(sock, msg, senderJid) {
       voucher = db.prepare('SELECT * FROM vouchers WHERE code = ?').get(newCode);
     }
 
-    // Provisionar inmediatamente en el MikroTik del Balneario
+    // Provisionar en el MikroTik del Balneario (Vía REST directo o encolado para Cloud Sync)
     try {
-      const mikrotik = require('./mikrotik-api');
-      await mikrotik.createHotspotUser(voucher.code, voucher.code, {
-        profile: matchedPlan.profile_name || 'default',
-        limitUptime: matchedPlan.duration,
-        rateLimit: matchedPlan.speed_limit,
-        sharedUsers: matchedPlan.shared_users || 1,
-        comment: `WhatsApp: ${senderPhone} | Ref: ${cleanRef}`,
-      });
-      db.prepare('UPDATE vouchers SET mikrotik_synced = 1 WHERE id = ?').run(voucher.id);
+      if (!config.mikrotik.mock) {
+        const mikrotik = require('./mikrotik-api');
+        await mikrotik.createHotspotUser(voucher.code, voucher.code, {
+          profile: matchedPlan.profile_name || 'default',
+          limitUptime: matchedPlan.duration,
+          rateLimit: matchedPlan.speed_limit,
+          sharedUsers: matchedPlan.shared_users || 1,
+          comment: `WhatsApp: ${senderPhone} | Ref: ${cleanRef}`,
+        });
+        db.prepare('UPDATE vouchers SET mikrotik_synced = 1 WHERE id = ?').run(voucher.id);
+      }
     } catch (mkErr) {
-      console.warn('[WhatsApp Bot] Aviso sincronización MikroTik (se activará al navegar):', mkErr.message);
+      console.warn('[WhatsApp Bot] Aviso sincronización directa MikroTik (se entregará por Cloud Sync al router):', mkErr.message);
     }
 
     // Registrar la venta y el pago en la BD de forma atómica

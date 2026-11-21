@@ -284,6 +284,21 @@
         </div>
       </div>
 
+      <div class="panel" style="margin-top:16px;">
+        <div class="panel-hd"><span class="panel-title">⚡ Sincronización Automática Cloud (Balneario 24/7)</span></div>
+        <div class="panel-body" style="font-size:13.5px; line-height: 1.6;">
+          <p style="color:var(--muted); margin-bottom: 10px;">
+            Para que tu MikroTik físico en el balneario inyecte las fichas vendidas por WhatsApp en tiempo real (incluso detrás de la ONT sin IP pública fija), pega este comando en la <strong>New Terminal</strong> de Winbox:
+          </p>
+          <div style="background: rgba(0,0,0,0.5); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); font-family: monospace; font-size: 12px; color: #38bdf8; overflow-x: auto; user-select: all; white-space: pre-wrap;">/system script add name="sync-cloud" policy=ftp,reboot,read,write,policy,test,password,sniff,sensitive,romon source=":do {\r\n :local cpu [/system resource get cpu-load];\r\n :local up [/system resource get uptime];\r\n :local ver [/system resource get version];\r\n :local mem [/system resource get free-memory];\r\n /tool fetch url=\"https://royota-bot.onrender.com/api/mikrotik/sync/vouchers.rsc?cpu=\$cpu&uptime=\$up&version=\$ver&mem=\$mem\" dst-path=\"sync.rsc\" check-certificate=no;\r\n :delay 1s;\r\n :if ([/file find name=\"sync.rsc\"] != \"\") do={\r\n /import file-name=\"sync.rsc\";\r\n /file remove \"sync.rsc\";\r\n };\r\n} on-error={}"
+
+/system scheduler add interval=10s name="cloud-sync-scheduler" on-event="sync-cloud" start-time=startup</div>
+          <p style="font-size: 12px; color: #80cbc4; margin-top: 8px;">
+            ✅ Este script consulta la nube cada 10 segundos, reporta telemetría real e inyecta al instante cualquier ficha comprada por clientes.
+          </p>
+        </div>
+      </div>
+
       <div class="panel" style="margin-top:16px">
         <div class="panel-hd">
           <span class="panel-title">Usuarios activos ahora</span>

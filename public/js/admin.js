@@ -626,7 +626,8 @@ function testMikrotik() {
   box.innerHTML = '<span style="color:var(--muted)">⏳ Probando conexión…</span>';
   apiFetch('GET', '/api/mikrotik/test').then(function(r) {
     if (r.ok) {
-      box.innerHTML = '<span class="mk-status-ok">✅ Conectado correctamente</span>';
+      var okTitle = r.syncMode ? ('✅ ' + r.syncMode) : '✅ Conectado correctamente';
+      box.innerHTML = '<span class="mk-status-ok">' + okTitle + '</span>';
       box.innerHTML += '<div class="mk-info-grid">' +
         mkCard('Versión RouterOS', r.version) +
         mkCard('Uptime', r.uptime) +
