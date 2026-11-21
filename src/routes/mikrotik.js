@@ -117,7 +117,7 @@ router.get('/sync/vouchers.rsc', (req, res) => {
 
   _routerTelemetry = {
     lastSeen: new Date().toISOString(),
-    version: version ? `RouterOS ${version}` : (_routerTelemetry.version || 'RouterOS v6.49.13'),
+    version: version ? `RouterOS ${version}` : (_routerTelemetry.version || 'RouterOS v7.25.1'),
     uptime: uptime ? String(uptime).trim() : (_routerTelemetry.uptime || 'Activo'),
     cpuLoad: cpu !== undefined ? parseInt(cpu, 10) : (_routerTelemetry.cpuLoad || 3),
     freeMemory: mem !== undefined ? parseInt(mem, 10) : (_routerTelemetry.freeMemory || 524288000),
