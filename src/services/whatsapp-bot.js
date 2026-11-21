@@ -115,7 +115,7 @@ function checkPhoneBlocked(phone) {
 }
 
 /**
- * Registra un intento inválido (Strike) y aplica suspensión de 24h al acumular 3
+ * Registra un intento inválido (Strike) y aplica suspensión de 24h al acumular 2 intentos
  */
 function recordStrike(phone, reason) {
   const db = getDb();
@@ -126,12 +126,12 @@ function recordStrike(phone, reason) {
   let blockedUntil = null;
   let isBlocked = false;
 
-  if (currentStrikes >= 3) {
-    // Bloqueo estricto por 24 horas
+  // LÍMITE: Máximo 2 intentos para comprobantes
+  if (currentStrikes >= 2) {
     const in24h = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     blockedUntil = in24h;
     isBlocked = true;
-    console.warn(`[WhatsApp Bot] 🚫 Número ${clean} BLOQUEADO por 24 horas (3er Strike: ${reason})`);
+    console.warn(`[WhatsApp Bot] 🚫 Número ${clean} BLOQUEADO por 24 horas (2do intento no válido: ${reason})`);
   } else {
     console.warn(`[WhatsApp Bot] ⚠️ Strike #${currentStrikes} asignado a ${clean} (${reason})`);
   }
@@ -220,18 +220,27 @@ function buildMenuMessage() {
 }
 
 /**
- * Mensaje de suspensión formal cuando un usuario alcanza 3 strikes
+ * Mensaje de suspensión formal cuando un usuario alcanza 2 intentos fallidos
  */
 function buildSuspensionMessage() {
   const kiosksList = getKiosksFormatted(true);
   return `🚫 *NÚMERO TEMPORALMENTE SUSPENDIDO* 🚫\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
-    `Has acumulado 3 intentos no válidos de pago. Por medidas de seguridad y prevención de fraudes, tu número ha sido suspendido por *24 horas* para compras en línea.\n\n` +
+    `Has alcanzado el límite de *2 intentos no válidos* de comprobante. Por medidas de seguridad y prevención de fraudes, tu número ha sido suspendido por *24 horas* para compras en línea.\n\n` +
     `🏪 *SOLO ES POSIBLE LA COMPRA EN CASETA FÍSICA:*\n` +
-    `Ahora solo es posible adquirir tu ticket de internet directamente en efectivo en cualquiera de nuestras casetas autorizadas en el balneario:\n\n` +
+    `A partir de este momento, solo es posible adquirir tu ticket de internet directamente en efectivo en cualquiera de nuestras casetas autorizadas en el balneario:\n\n` +
     `${kiosksList}\n\n` +
     `_Te esperamos en el Balneario Río Royota._\n` +
     `━━━━━━━━━━━━━━━━━━━━`;
+}
+
+/**
+ * Helper para formatear advertencia de strike
+ */
+function formatStrikeWarning(strike) {
+  if (strike.isBlocked) return '';
+  const kiosksShort = getKiosksFormatted(false);
+  return `\n\n⚠️ *ADVERTENCIA (Intento 1 de 2):* Te queda solo 1 intento más. De no ser aprobado tu comprobante, tu número será suspendido por 24 horas y solo podrás adquirir el ticket en tienda física (casetas autorizadas).\n\n🏪 *Casetas físicas para pago en efectivo:*\n${kiosksShort}`;
 }
 
 /**
@@ -286,20 +295,30 @@ async function processPaymentReceipt(sock, msg, senderJid) {
     const analysis = await analyzeReceipt(imageBuffer, 'image/jpeg');
     console.log('[WhatsApp Bot] Resultado Gemini:', analysis);
 
+    // ── VALIDADOR 0: Detección Forense de Manipulación / Edición Digital ──
+    if (analysis.is_tampered) {
+      const reason = analysis.tamper_reason || 'Se detectaron alteraciones o tipografía inconsistente en el comprobante.';
+      const strike = recordStrike(senderPhone, `Comprobante alterado/editado: ${reason}`);
+      if (strike.isBlocked) {
+        await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
+      } else {
+        await sock.sendMessage(senderJid, {
+          text: `🚫 *Comprobante no válido (Inconsistencias detectadas)*\n\nEl sistema de auditoría detectó posibles alteraciones o edición digital en los datos del comprobante (${reason}).${formatStrikeWarning(strike)}`,
+        }, { quoted: msg });
+      }
+      return;
+    }
+
     // ── VALIDADOR 1: ¿Es un comprobante de pago válido y exitoso? ──
     if (!analysis.is_payment_receipt || !analysis.is_successful) {
-      const reason = analysis.rejection_reason || 'La imagen no corresponde a un comprobante de pago exitoso.';
+      const reason = analysis.rejection_reason || 'La imagen no corresponde a un comprobante de pago exitoso o legible.';
       const strike = recordStrike(senderPhone, `Comprobante inválido: ${reason}`);
 
       if (strike.isBlocked) {
         await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
       } else {
-        const kiosksShort = getKiosksFormatted(false);
-        const warning = strike.strikes === 2
-          ? `\n\n⚠️ *ADVERTENCIA (Intento 2 de 3):* Al siguiente intento no válido, tu número será bloqueado por 24 horas y solo podrás comprar en caseta física.`
-          : `\n\n*(Intento ${strike.strikes} de 3)*. Si prefieres pagar en efectivo, puedes comprar en nuestras casetas:\n${kiosksShort}`;
         await sock.sendMessage(senderJid, {
-          text: `❌ *No se pudo validar el pago*\n\nMotivo: ${reason}\n\nPor favor envía una captura nítida donde se observe el valor, el número de aprobación y la cuenta de destino.${warning}`,
+          text: `❌ *No se pudo validar el pago*\n\nMotivo: ${reason}\n\nPor favor envía una captura de pantalla original y nítida donde se observe claramente el valor, el número de aprobación y la cuenta de destino.${formatStrikeWarning(strike)}`,
         }, { quoted: msg });
       }
       return;
@@ -315,7 +334,7 @@ async function processPaymentReceipt(sock, msg, senderJid) {
         await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
       } else {
         await sock.sendMessage(senderJid, {
-          text: `❌ *Cuenta de destino incorrecta*\n\nEl comprobante muestra destino: *${analysis.destination_phone}*, pero el pago debe ser a la cuenta autorizada: *${targetPhone}*.\n*(Intento ${strike.strikes} de 3)*`,
+          text: `❌ *Cuenta de destino incorrecta*\n\nEl comprobante muestra destino: *${analysis.destination_phone}*, pero el pago debe ser transferido a la cuenta autorizada: *${targetPhone}*.${formatStrikeWarning(strike)}`,
         }, { quoted: msg });
       }
       return;
@@ -329,7 +348,7 @@ async function processPaymentReceipt(sock, msg, senderJid) {
         await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
       } else {
         await sock.sendMessage(senderJid, {
-          text: `❌ No se pudo identificar el número de referencia o aprobación en el comprobante. Por favor envía una imagen más clara.\n*(Intento ${strike.strikes} de 3)*`,
+          text: `❌ No se pudo identificar el número de referencia o aprobación en el comprobante. Por favor envía una captura más nítida.${formatStrikeWarning(strike)}`,
         }, { quoted: msg });
       }
       return;
@@ -343,7 +362,7 @@ async function processPaymentReceipt(sock, msg, senderJid) {
         await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
       } else {
         await sock.sendMessage(senderJid, {
-          text: `⚠️ *Comprobante duplicado*\n\nEste comprobante (Ref: *${cleanRef}*) ya fue registrado y procesado anteriormente el día ${existingRef.created_at}.\nCada comprobante es válido para una única ficha.\n*(Intento ${strike.strikes} de 3)*`,
+          text: `⚠️ *Comprobante duplicado / Reutilizado*\n\nEste comprobante (Ref: *${cleanRef}*) ya fue registrado y procesado anteriormente el día ${existingRef.created_at}.\nCada comprobante es válido para una única ficha de internet.${formatStrikeWarning(strike)}`,
         }, { quoted: msg });
       }
       return;
@@ -360,9 +379,9 @@ async function processPaymentReceipt(sock, msg, senderJid) {
         await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
       } else {
         const formattedPaid = paidAmount.toLocaleString('es-CO');
-        let planListStr = activePlans.map(p => `• ${p.name}: $${p.price.toLocaleString('es-CO')}`).join('\n');
+        let planListStr = activePlans.map(p => `• *${p.name}* (${p.duration}) → *$${p.price.toLocaleString('es-CO')} COP*`).join('\n');
         await sock.sendMessage(senderJid, {
-          text: `⚠️ *Monto no coincide con ningún plan*\n\nDetectamos un pago de *$${formattedPaid} COP*, pero actualmente no coincide con el valor exacto de nuestros planes:\n\n${planListStr}\n\n*(Intento ${strike.strikes} de 3)*`,
+          text: `⚠️ *Monto recibido no coincide con ningún plan*\n\nDetectamos un pago por *$${formattedPaid} COP*, pero actualmente no coincide con el valor exacto de ninguno de nuestros planes disponibles:\n\n${planListStr}${formatStrikeWarning(strike)}`,
         }, { quoted: msg });
       }
       return;
@@ -616,6 +635,31 @@ async function startWhatsAppBot() {
         const timerId = setTimeout(async () => {
           _debounceTimers.delete(senderPhone);
 
+          // Palabras clave de Quejas, Reclamos, Insatisfacción y Soporte (PQRS)
+          const isComplaint =
+            norm.includes('queja') ||
+            norm.includes('reclamo') ||
+            norm.includes('inconforme') ||
+            norm.includes('insatisfech') ||
+            norm.includes('pesimo') ||
+            norm.includes('malo') ||
+            norm.includes('no sirve') ||
+            norm.includes('no funciona') ||
+            norm.includes('no conecta') ||
+            norm.includes('lento') ||
+            norm.includes('estafa') ||
+            norm.includes('robo') ||
+            norm.includes('ladron') ||
+            norm.includes('devolucion') ||
+            norm.includes('devolver') ||
+            norm.includes('garantia') ||
+            norm.includes('soporte') ||
+            norm.includes('problema') ||
+            norm.includes('falla') ||
+            norm.includes('reclamar') ||
+            norm.includes('administrador') ||
+            norm.includes('dueno');
+
           // Palabras clave de consulta de Kioskos / Puntos de Venta
           const isKioskQuery =
             norm.includes('caseta') ||
@@ -642,7 +686,34 @@ async function startWhatsAppBot() {
             norm.includes('bre-b') ||
             norm.includes('ayuda');
 
-          if (isKioskQuery) {
+          if (isComplaint) {
+            _offTopicTracker.delete(senderPhone);
+            const db = getDb();
+            let radicado = 'PQRS-0001';
+            try {
+              const res = db.prepare('INSERT INTO complaints (phone, message, status) VALUES (?, ?, "pending")')
+                .run(senderPhone, text);
+              radicado = `PQRS-${String(res.lastInsertRowid).padStart(4, '0')}`;
+              console.log(`[WhatsApp Bot] 📋 Queja registrada #${radicado} de ${senderPhone}`);
+            } catch (cErr) {
+              console.error('[WhatsApp Bot] Error guardando queja:', cErr);
+            }
+
+            const kiosksFull = getKiosksFormatted(true);
+            const complaintMsg =
+              `📋 *SOLICITUD DE SOPORTE / QUEJA REGISTRADA*\n` +
+              `━━━━━━━━━━━━━━━━━━━━\n` +
+              `Radicado: *#${radicado}*\n` +
+              `Línea: *${senderPhone}*\n` +
+              `Estado: *Pendiente de revisión administrativa*\n\n` +
+              `Lamentamos mucho los inconvenientes con el servicio. Tu reporte ha quedado registrado formalmente en nuestro panel y el administrador revisará tu caso a la brevedad para darte solución o gestionar la reposición de tu servicio.\n\n` +
+              `🏪 *Soporte Presencial en el Balneario:*\n` +
+              `Si te encuentras en el balneario, también puedes acercarte a cualquiera de nuestras casetas autorizadas donde el personal te asistirá directamente:\n\n` +
+              `${kiosksFull}\n\n` +
+              `_Por favor conserva tu número de radicado #${radicado}._\n` +
+              `━━━━━━━━━━━━━━━━━━━━`;
+            await sock.sendMessage(remoteJid, { text: complaintMsg });
+          } else if (isKioskQuery) {
             _offTopicTracker.delete(senderPhone);
             const kiosksFull = getKiosksFormatted(true);
             const kioskMsg =

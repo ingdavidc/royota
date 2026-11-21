@@ -92,7 +92,7 @@ function apiFetch(method, url, body) {
       var d;
       try { d = JSON.parse(xhr.responseText); } catch(_) { d = {}; }
       if (xhr.status === 401) {
-        if (url.indexOf('/api/whatsapp') === -1) {
+        if (url.indexOf('/api/whatsapp') === -1 && url.indexOf('/api/kiosks') === -1 && url.indexOf('/api/complaints') === -1) {
           logout();
         }
         reject(d);
@@ -137,6 +137,16 @@ var CUR_SYM = '$';
 apiFetch('GET', '/api/config').then(function(c) { if (c.currencySymbol) CUR_SYM = c.currencySymbol; }).catch(function(){});
 function fmtMoney(n) { return CUR_SYM + parseFloat(n || 0).toFixed(2); }
 
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 /* ══════════════════════════════════════════════════════════
    NAVEGACIÓN
 ══════════════════════════════════════════════════════════ */
@@ -149,6 +159,7 @@ var SECTIONS = {
   portal:    { load: loadPortalSettings },
   whatsapp:  { load: loadWhatsAppSection },
   kiosks:    { load: loadKiosksSection },
+  complaints:{ load: loadComplaintsSection },
 };
 
 document.querySelectorAll('.nav-link').forEach(function(a) {
@@ -1045,6 +1056,122 @@ if (kioskForm) {
     }).catch(function(err) {
       toast((err && err.error) || 'Error al guardar caseta', 'error');
     });
+  });
+}
+
+/* ══════════════════════════════════════════════════════════
+   GESTIÓN DE QUEJAS, RECLAMOS Y SOPORTE (PQRS)
+══════════════════════════════════════════════════════════ */
+var _currentComplaints = [];
+
+function loadComplaintsSection() {
+  var tbody = document.getElementById('complaintsBody');
+  var badge = document.getElementById('complaintPendingBadge');
+  var statusFilter = document.getElementById('filterComplaintStatus');
+  var statusVal = statusFilter ? statusFilter.value : 'pending';
+
+  if (!tbody) return;
+
+  apiFetch('GET', '/api/complaints?status=' + statusVal).then(function(data) {
+    _currentComplaints = data.complaints || [];
+    if (badge) {
+      badge.textContent = (data.pending || 0) + ' pendientes';
+    }
+
+    tbody.innerHTML = '';
+    if (!_currentComplaints.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--muted)">No hay registros en esta categoría de PQRS.</td></tr>';
+      return;
+    }
+
+    _currentComplaints.forEach(function(c) {
+      var tr = document.createElement('tr');
+      var radicado = 'PQRS-' + String(c.id).padStart(4, '0');
+
+      var statusBadge = '';
+      if (c.status === 'resolved') {
+        statusBadge = '<span class="badge" style="background:rgba(74,222,128,0.2); color:#4ade80;">✅ Resuelto</span>';
+      } else if (c.status === 'in_progress') {
+        statusBadge = '<span class="badge" style="background:rgba(56,189,248,0.2); color:#38bdf8;">🔄 En proceso</span>';
+      } else {
+        statusBadge = '<span class="badge" style="background:rgba(250,204,21,0.2); color:#facc15;">⏳ Pendiente</span>';
+      }
+
+      var phoneLink = '<a href="https://wa.me/57' + c.phone + '" target="_blank" rel="noopener" style="color:var(--cyan); text-decoration:none;" title="Chatear en WhatsApp">💬 ' + c.phone + '</a>';
+
+      tr.innerHTML =
+        '<td><strong>#' + radicado + '</strong></td>' +
+        '<td style="white-space:nowrap;">' + fmtDate(c.created_at) + '</td>' +
+        '<td>' + phoneLink + '</td>' +
+        '<td style="max-width:280px; word-break:break-word;">' + escapeHtml(c.message) + '</td>' +
+        '<td>' + statusBadge + '</td>' +
+        '<td style="font-size:12px; color:var(--muted); max-width:200px;">' + (c.admin_notes ? escapeHtml(c.admin_notes) : '—') + '</td>' +
+        '<td>' +
+          '<div style="display:flex; gap:6px;">' +
+            '<button class="btn btn-sm btn-ghost" onclick="openComplaintModal(' + c.id + ')" title="Atender / Responder">✏️ Atender</button>' +
+            (c.status !== 'resolved' ? '<button class="btn btn-sm btn-ghost" onclick="quickResolveComplaint(' + c.id + ')" title="Marcar como Resuelto">✅</button>' : '') +
+            '<button class="btn btn-sm btn-danger" onclick="deleteComplaint(' + c.id + ')" title="Eliminar">🗑️</button>' +
+          '</div>' +
+        '</td>';
+      tbody.appendChild(tr);
+    });
+  }).catch(function(err) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#f87171">Error al cargar la bandeja de quejas.</td></tr>';
+  });
+}
+
+function openComplaintModal(id) {
+  var c = _currentComplaints.find(function(item) { return item.id === id; });
+  if (!c) return;
+
+  var bg = document.getElementById('complaintModalBg');
+  document.getElementById('cId').value = c.id;
+  document.getElementById('cRadicado').textContent = '#PQRS-' + String(c.id).padStart(4, '0');
+  document.getElementById('cPhone').textContent = c.phone;
+  document.getElementById('cMessage').textContent = c.message;
+  document.getElementById('cStatus').value = c.status || 'pending';
+  document.getElementById('cAdminNotes').value = c.admin_notes || '';
+
+  bg.removeAttribute('hidden');
+}
+
+function closeComplaintModal(e) {
+  if (e && e.target && e.target.id !== 'complaintModalBg' && !e.target.classList.contains('modal-close')) return;
+  var bg = document.getElementById('complaintModalBg');
+  if (bg) bg.setAttribute('hidden', '');
+}
+
+function saveComplaintResolution(e) {
+  if (e) e.preventDefault();
+  var id = document.getElementById('cId').value;
+  var status = document.getElementById('cStatus').value;
+  var admin_notes = document.getElementById('cAdminNotes').value.trim();
+
+  apiFetch('PATCH', '/api/complaints/' + id, { status: status, admin_notes: admin_notes }).then(function(res) {
+    toast(res.message || 'Queja actualizada correctamente', 'ok');
+    closeComplaintModal();
+    loadComplaintsSection();
+  }).catch(function(err) {
+    toast((err && err.error) || 'Error al actualizar queja', 'error');
+  });
+}
+
+function quickResolveComplaint(id) {
+  apiFetch('PATCH', '/api/complaints/' + id, { status: 'resolved', admin_notes: 'Resuelto por administrador' }).then(function(res) {
+    toast('Queja marcada como resuelta', 'ok');
+    loadComplaintsSection();
+  }).catch(function(err) {
+    toast((err && err.error) || 'Error al resolver queja', 'error');
+  });
+}
+
+function deleteComplaint(id) {
+  if (!confirm('¿Deseas eliminar este registro de queja/PQRS?')) return;
+  apiFetch('DELETE', '/api/complaints/' + id).then(function(res) {
+    toast(res.message || 'Registro eliminado', 'ok');
+    loadComplaintsSection();
+  }).catch(function(err) {
+    toast((err && err.error) || 'Error al eliminar', 'error');
   });
 }
 

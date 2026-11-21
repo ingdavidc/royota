@@ -55,6 +55,7 @@
       <li><a class="nav-link"        data-sec="portal"     href="#portal">     <span class="nav-icon">🏖️</span><span class="nav-label">Portal & Info</span></a></li>
       <li><a class="nav-link"        data-sec="whatsapp"   href="#whatsapp">   <span class="nav-icon">🤖</span><span class="nav-label">Bot WhatsApp</span></a></li>
       <li><a class="nav-link"        data-sec="kiosks"     href="#kiosks">     <span class="nav-icon">🏪</span><span class="nav-label">Casetas & Kioskos</span></a></li>
+      <li><a class="nav-link"        data-sec="complaints" href="#complaints"> <span class="nav-icon">📋</span><span class="nav-label">Quejas & PQRS</span></a></li>
     </ul>
     <div class="sidebar-footer">
       <a href="https://www.dctelematica.com" target="_blank" rel="noopener" class="powered-by-link" title="DC Telemática - Soluciones Tecnológicas">
@@ -550,6 +551,54 @@
       </div>
     </section>
 
+    <!-- ═══ GESTIÓN DE QUEJAS, RECLAMOS Y SOPORTE (PQRS) ═══════ -->
+    <section id="sec-complaints" class="sec" hidden>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+        <div>
+          <h2 class="sec-title" style="margin-bottom:4px;">📋 Quejas, Reclamos y Soporte (PQRS)</h2>
+          <p style="color:var(--muted); font-size:14px;">
+            Bandeja de reclamos e inconformidades reportadas automáticamente por el Bot de WhatsApp para brindar atención y solución a los clientes.
+          </p>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <select id="filterComplaintStatus" class="finput" style="width:auto;" onchange="loadComplaintsSection()">
+            <option value="all">Todas las quejas</option>
+            <option value="pending" selected>Solo Pendientes</option>
+            <option value="in_progress">En proceso</option>
+            <option value="resolved">Resueltas</option>
+          </select>
+          <button class="btn btn-sm btn-ghost" onclick="loadComplaintsSection()">🔄 Actualizar</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-hd">
+          <span class="panel-title">Bandeja de PQRS</span>
+          <span class="badge" id="complaintPendingBadge" style="background:rgba(250,204,21,0.2); color:#facc15; margin-left:8px; font-weight:bold;">0 pendientes</span>
+        </div>
+        <div class="panel-body">
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>Radicado</th>
+                  <th>Fecha</th>
+                  <th>Cliente (Teléfono)</th>
+                  <th>Mensaje / Inconformidad</th>
+                  <th>Estado</th>
+                  <th>Notas del Administrador</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="complaintsBody">
+                <tr><td colspan="7" style="text-align:center; color:var(--muted)">Cargando quejas...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- Pie de página Admin -->
     <footer class="admin-footer">
       <a href="https://www.dctelematica.com" target="_blank" rel="noopener" class="powered-by-link" title="DC Telemática - Soluciones Tecnológicas">
@@ -651,6 +700,48 @@
       <button type="submit" class="btn btn-primary btn-block" style="margin-top:8px">
         Guardar Caseta / Kiosko
       </button>
+    </form>
+  </div>
+</div>
+
+<!-- ══ MODAL: Atender / Resolver Queja (PQRS) ═════════════════ -->
+<div class="modal-bg" id="complaintModalBg" hidden onclick="closeComplaintModal(event)">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="complaintModalTitle">
+    <div class="modal-hd">
+      <h3 class="modal-title" id="complaintModalTitle">Gestionar Caso PQRS</h3>
+      <button class="modal-close" onclick="closeComplaintModal()">&times;</button>
+    </div>
+    <form id="complaintForm" onsubmit="saveComplaintResolution(event)">
+      <input type="hidden" id="cId">
+      <div class="fg">
+        <label class="flabel">Radicado</label>
+        <div id="cRadicado" style="font-weight:700; color:var(--cyan); font-size:16px;">—</div>
+      </div>
+      <div class="fg">
+        <label class="flabel">Cliente (Teléfono)</label>
+        <div id="cPhone" style="font-weight:600;">—</div>
+      </div>
+      <div class="fg">
+        <label class="flabel">Mensaje / Inconformidad Reportada</label>
+        <div id="cMessage" style="background:var(--bg-subtle, rgba(255,255,255,0.05)); padding:10px; border-radius:6px; font-size:13px; font-style:italic; border-left:3px solid var(--cyan); white-space:pre-wrap;">—</div>
+      </div>
+      <div class="fg">
+        <label class="flabel">Estado del Caso <span class="req">*</span></label>
+        <select id="cStatus" class="finput" required>
+          <option value="pending">Pendiente</option>
+          <option value="in_progress">En proceso / Revisando</option>
+          <option value="resolved">Resuelto / Concluido</option>
+        </select>
+      </div>
+      <div class="fg">
+        <label class="flabel">Notas de Solución / Administrador</label>
+        <textarea id="cAdminNotes" class="finput" rows="3" placeholder="Ej: Se le generó nueva ficha de reposición o se coordinó en Caseta 1..."></textarea>
+        <span class="fhint">Estas notas quedan registradas en el historial para auditoría</span>
+      </div>
+      <div style="display:flex; justify-content:space-between; margin-top:15px; gap:10px;">
+        <button type="button" class="btn btn-ghost" onclick="closeComplaintModal()">Cancelar</button>
+        <button type="submit" class="btn btn-primary">Guardar Solución</button>
+      </div>
     </form>
   </div>
 </div>

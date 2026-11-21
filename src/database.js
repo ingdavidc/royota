@@ -214,6 +214,18 @@ function _initSchema(db) {
       updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- ── Quejas, Reclamos y Soporte al Cliente (PQRS) ─────────
+    CREATE TABLE IF NOT EXISTS complaints (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      phone       TEXT    NOT NULL,
+      message     TEXT    NOT NULL,
+      status      TEXT    NOT NULL DEFAULT 'pending'
+                          CHECK (status IN ('pending', 'in_progress', 'resolved')),
+      admin_notes TEXT    DEFAULT '',
+      created_at  TEXT    NOT NULL DEFAULT (datetime('now')),
+      resolved_at TEXT    DEFAULT NULL
+    );
+
     -- ── Configuración y Portal Cautivo ──────────────────────
     CREATE TABLE IF NOT EXISTS settings (
       key   TEXT PRIMARY KEY,
@@ -232,6 +244,7 @@ function _initSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_whatsapp_date      ON whatsapp_payments(created_at);
     CREATE INDEX IF NOT EXISTS idx_kiosks_active      ON kiosks(is_active);
     CREATE INDEX IF NOT EXISTS idx_strikes_blocked    ON whatsapp_strikes(blocked_until);
+    CREATE INDEX IF NOT EXISTS idx_complaints_status  ON complaints(status);
   `);
 }
 
