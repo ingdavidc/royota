@@ -478,14 +478,28 @@
       }
     });
 
-    /* ── 3. Auto-mayúsculas y formateo del código al teclear ── */
+    /* ── 3. Parámetros de redirección MikroTik Hotspot ── */
+    function getQueryParam(name) {
+      try {
+        var match = window.location.search.match(new RegExp('[?&]' + name + '=([^&]*)'));
+        return match ? decodeURIComponent(match[1]) : null;
+      } catch (_) { return null; }
+    }
+
+    var qsMac       = getQueryParam('mac');
+    var qsIp        = getQueryParam('ip');
+    var qsLinkLogin = getQueryParam('link-login') || window.MIKROTIK_LOGIN_URL || 'http://192.168.20.1/login';
+    var qsLinkOrig  = getQueryParam('link-orig')  || 'https://www.google.com';
+    var qsError     = getQueryParam('error');
+
+    /* ── 4. Auto-mayúsculas y formateo del código al teclear ── */
     input.addEventListener('input', function () {
       var pos = this.selectionStart;
       this.value = this.value.toUpperCase();
       this.setSelectionRange(pos, pos);
     });
 
-    /* ── 4. Mostrar y ocultar alertas de estado ── */
+    /* ── 5. Mostrar y ocultar alertas de estado ── */
     function showStatus(msg, type) {
       box.className   = 'status-box status-' + type;
       box.textContent = msg;
@@ -498,7 +512,37 @@
       box.textContent = '';
     }
 
-    /* ── 5. Activación de Ficha (Directo a Firestore o Fallback API) ── */
+    if (qsError) {
+      showStatus('Aviso de conexión: ' + qsError, 'warn');
+    }
+
+    /* ── Autologin a MikroTik RouterOS tras validar ficha ── */
+    function submitMikrotikLogin(voucherCode) {
+      showStatus('¡Ficha activada! Conectando tu dispositivo a la red WiFi…', 'ok');
+      setTimeout(function() {
+        var postForm = document.createElement('form');
+        postForm.method = 'POST';
+        postForm.action = qsLinkLogin;
+        postForm.style.display = 'none';
+
+        var u = document.createElement('input');
+        u.type = 'hidden'; u.name = 'username'; u.value = voucherCode;
+        postForm.appendChild(u);
+
+        var p = document.createElement('input');
+        p.type = 'hidden'; p.name = 'password'; p.value = voucherCode;
+        postForm.appendChild(p);
+
+        var dst = document.createElement('input');
+        dst.type = 'hidden'; dst.name = 'dst'; dst.value = qsLinkOrig;
+        postForm.appendChild(dst);
+
+        document.body.appendChild(postForm);
+        postForm.submit();
+      }, 1200);
+    }
+
+    /* ── 6. Activación de Ficha (Backend API con Fallback directo a Firestore) ── */
     form.addEventListener('submit', function (e) {
       e.preventDefault();
 
@@ -514,30 +558,55 @@
       info.setAttribute('hidden', '');
       hideStatus();
 
-      // Siempre procesar la activación por el backend API para registrar en MikroTik RouterOS
-      var xhr = new XMLHttpRequest();
       var fullUrl = (window.API_BASE || '') + '/api/vouchers/activate';
+      var xhr = new XMLHttpRequest();
       xhr.open('POST', fullUrl, true);
       xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.timeout = 15000;
+      xhr.timeout = 7000;
+
+      function fallbackFirestore() {
+        if (window.firebaseDb && window.firebaseDb.activateVoucher) {
+          window.firebaseDb.activateVoucher(code).then(function(res) {
+            btn.disabled    = false;
+            btn.textContent = '⚡ Conectar al Internet';
+            input.value     = '';
+            showStatus(res.message || '¡Ficha activada con éxito!', 'ok');
+            setText('cPlan',     res.plan);
+            setText('cDuration', res.duration);
+            setText('cSpeed',    res.speed);
+            setText('cExpires',  res.expires_at ? fmtDate(res.expires_at) : '—');
+            info.removeAttribute('hidden');
+            submitMikrotikLogin(code);
+          }).catch(function(err) {
+            btn.disabled    = false;
+            btn.textContent = '⚡ Conectar al Internet';
+            showStatus(err.message || 'Código no válido o ya utilizado.', 'error');
+          });
+        } else {
+          btn.disabled    = false;
+          btn.textContent = '⚡ Conectar al Internet';
+          showStatus('No se pudo verificar el código. Intenta de nuevo.', 'error');
+        }
+      }
 
       xhr.ontimeout = function () {
-        btn.disabled    = false;
-        btn.textContent = '⚡ Conectar al Internet';
-        showStatus('Tiempo de espera agotado. Verifica tu señal e intenta de nuevo.', 'error');
+        fallbackFirestore();
+      };
+
+      xhr.onerror = function () {
+        fallbackFirestore();
       };
 
       xhr.onreadystatechange = function () {
         if (xhr.readyState !== 4) return;
 
-        btn.disabled    = false;
-        btn.textContent = '⚡ Conectar al Internet';
-
         var data;
         try { data = JSON.parse(xhr.responseText); } catch (_) { data = {}; }
 
         if (xhr.status === 200) {
-          input.value = '';
+          btn.disabled    = false;
+          btn.textContent = '⚡ Conectar al Internet';
+          input.value     = '';
           showStatus(data.message || '¡Ficha activada con éxito!', 'ok');
 
           setText('cPlan',     data.plan);
@@ -546,22 +615,17 @@
           setText('cExpires',  data.expires_at ? fmtDate(data.expires_at) : '—');
           info.removeAttribute('hidden');
 
-          try { info.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch (_) {}
+          submitMikrotikLogin(code);
+        } else if (xhr.status === 404 || xhr.status === 400 || xhr.status === 409) {
+          btn.disabled    = false;
+          btn.textContent = '⚡ Conectar al Internet';
+          showStatus((data && data.error) ? data.error : 'Código no válido o ya utilizado.', 'error');
         } else {
-          showStatus(
-            (data && data.error) ? data.error : 'Código no válido o ya utilizado.',
-            'error'
-          );
+          fallbackFirestore();
         }
       };
 
-      xhr.onerror = function () {
-        btn.disabled    = false;
-        btn.textContent = '⚡ Conectar al Internet';
-        showStatus('Sin conexión con el servidor. Intenta de nuevo.', 'error');
-      };
-
-      xhr.send(JSON.stringify({ code: code }));
+      xhr.send(JSON.stringify({ code: code, mac: qsMac, ip: qsIp }));
     });
 
     function setText(id, val) {

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="refresh" content="2; url=$(link-orig-esc)">
+  <title>¡Conectado! — Balneario Río Royota</title>
+  <style>
+    body {
+      background: linear-gradient(135deg, #041921 0%, #0a2933 100%);
+      color: #ffffff;
+      font-family: system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 20px;
+    }
+    .card {
+      background: rgba(10, 41, 51, 0.95);
+      border: 1px solid rgba(0, 229, 255, 0.35);
+      border-radius: 20px;
+      padding: 35px 25px;
+      max-width: 400px;
+      width: 100%;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+    }
+    .icon { font-size: 48px; margin-bottom: 12px; }
+    h1 { font-size: 22px; color: #00e5ff; margin-bottom: 8px; }
+    p { font-size: 14px; color: #e0f2f1; line-height: 1.5; margin-bottom: 20px; }
+    .btn {
+      display: inline-block;
+      background: #00e5ff;
+      color: #041921;
+      padding: 12px 24px;
+      border-radius: 12px;
+      font-weight: 800;
+      text-decoration: none;
+    }
+  </style>
+  <script>
+    setTimeout(function() {
+      var orig = "$(link-orig)";
+      if (orig && orig !== "" && orig.indexOf("http") === 0) {
+        window.location.href = orig;
+      }
+    }, 2000);
+  </script>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">✅</div>
+    <h1>¡Conexión Exitosa!</h1>
+    <p>Ya tienes acceso a Internet en el <strong>Balneario Río Royota</strong>. Disfruta tu estadía junto al río 🌿</p>
+    <a class="btn" href="$(link-orig)">Comenzar a navegar</a>
+  </div>
+</body>
+</html>
