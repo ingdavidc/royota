@@ -36,10 +36,8 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
-// CORS: solo en desarrollo (en prod usa reverse-proxy)
-if (config.nodeEnv !== 'production') {
-  app.use(cors());
-}
+// CORS: habilitado para permitir comunicación desde el dominio web y local
+app.use(cors());
 
 // ── Rate Limiting (Protección contra fuerza bruta y DoS) ──────
 const voucherLimiter = rateLimit({
