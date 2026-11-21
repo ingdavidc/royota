@@ -54,6 +54,7 @@
       <li><a class="nav-link"        data-sec="mikrotik"   href="#mikrotik">   <span class="nav-icon">🌐</span><span class="nav-label">MikroTik</span></a></li>
       <li><a class="nav-link"        data-sec="portal"     href="#portal">     <span class="nav-icon">🏖️</span><span class="nav-label">Portal & Info</span></a></li>
       <li><a class="nav-link"        data-sec="whatsapp"   href="#whatsapp">   <span class="nav-icon">🤖</span><span class="nav-label">Bot WhatsApp</span></a></li>
+      <li><a class="nav-link"        data-sec="kiosks"     href="#kiosks">     <span class="nav-icon">🏪</span><span class="nav-label">Casetas & Kioskos</span></a></li>
     </ul>
     <div class="sidebar-footer">
       <a href="https://www.dctelematica.com" target="_blank" rel="noopener" class="powered-by-link" title="DC Telemática - Soluciones Tecnológicas">
@@ -480,6 +481,73 @@
           </div>
         </div>
       </div>
+
+      <!-- Tabla de Seguridad: Números Bloqueados y Strikes -->
+      <div class="panel" style="margin-top: 20px;">
+        <div class="panel-hd">
+          <span class="panel-title">🛡️ Seguridad: Control de Fraudes y Números Bloqueados (24h)</span>
+          <button class="btn btn-sm btn-ghost" onclick="loadWhatsAppStrikes()">🔄 Actualizar</button>
+        </div>
+        <div class="panel-body">
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>Teléfono</th>
+                  <th>Strikes</th>
+                  <th>Estado</th>
+                  <th>Último Motivo / Error</th>
+                  <th>Última Actividad</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody id="waStrikesBody">
+                <tr><td colspan="6" style="text-align:center; color:var(--muted)">Sin números sospechosos registrados.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ GESTIÓN DE KIOSKOS Y CASETAS FÍSICAS ════════════ -->
+    <section id="sec-kiosks" class="sec" hidden>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; flex-wrap:wrap; gap:10px;">
+        <div>
+          <h2 class="sec-title" style="margin-bottom:4px;">🏪 Casetas y Kioskos de Venta</h2>
+          <p style="color:var(--muted); font-size:14px;">
+            Puntos autorizados donde se venden fichas en efectivo. Estos kioskos son sugeridos automáticamente por la IA en WhatsApp y se muestran en el portal cautivo.
+          </p>
+        </div>
+        <button class="btn btn-primary" onclick="openKioskModal()">➕ Nueva Caseta / Kiosko</button>
+      </div>
+
+      <div class="panel">
+        <div class="panel-hd">
+          <span class="panel-title">Lista de Puntos de Venta Físicos</span>
+          <button class="btn btn-sm btn-ghost" onclick="loadKiosksSection()">🔄 Actualizar</button>
+        </div>
+        <div class="panel-body">
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead>
+                <tr>
+                  <th>Orden</th>
+                  <th>Nombre del Punto</th>
+                  <th>Ubicación en Balneario</th>
+                  <th>Contacto / Encargado</th>
+                  <th>Horario / Notas</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="kiosksBody">
+                <tr><td colspan="7" style="text-align:center; color:var(--muted)">Cargando kioskos...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- Pie de página Admin -->
@@ -543,6 +611,45 @@
       </div>
       <button type="submit" class="btn btn-primary btn-block" style="margin-top:8px">
         Guardar Plan
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ══ MODAL: Kiosko / Caseta ═════════════════════════════════ -->
+<div class="modal-bg" id="kioskModalBg" hidden onclick="closeKioskModal(event)">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="kioskModalTitle">
+    <div class="modal-hd">
+      <h3 class="modal-title" id="kioskModalTitle">Nueva Caseta / Kiosko</h3>
+      <button class="modal-close" onclick="closeKioskModal()">&times;</button>
+    </div>
+    <form id="kioskForm">
+      <input type="hidden" id="kioskId">
+      <div class="fg">
+        <label class="flabel">Nombre del Punto <span class="req">*</span></label>
+        <input type="text" id="kName" class="finput" placeholder="Ej: Taquilla Principal o Kiosko 1" required>
+      </div>
+      <div class="fg">
+        <label class="flabel">Ubicación física en el balneario <span class="req">*</span></label>
+        <input type="text" id="kLocation" class="finput" placeholder="Ej: Entrada peatonal frente al estacionamiento" required>
+        <span class="fhint">Esta indicación se le muestra a los clientes para llegar al punto</span>
+      </div>
+      <div class="fg-row">
+        <div class="fg">
+          <label class="flabel">Encargado / Contacto</label>
+          <input type="text" id="kContact" class="finput" placeholder="Ej: Caja Principal">
+        </div>
+        <div class="fg">
+          <label class="flabel">Orden</label>
+          <input type="number" id="kSortOrder" class="finput" value="1" min="0">
+        </div>
+      </div>
+      <div class="fg">
+        <label class="flabel">Horario o Notas adicionales</label>
+        <input type="text" id="kNotes" class="finput" placeholder="Ej: Abierto 8:00 AM a 6:00 PM · Venta en efectivo">
+      </div>
+      <button type="submit" class="btn btn-primary btn-block" style="margin-top:8px">
+        Guardar Caseta / Kiosko
       </button>
     </form>
   </div>

@@ -81,6 +81,7 @@ function getDb() {
   _initSchema(_db);
   _seedAdmin(_db);
   _seedSettings(_db);
+  _seedKiosks(_db);
 
   return _db;
 }
@@ -192,6 +193,27 @@ function _initSchema(db) {
       created_at       TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- ── Kioskos y Puntos de Venta Físicos (Casetas) ─────────
+    CREATE TABLE IF NOT EXISTS kiosks (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT    NOT NULL,
+      location    TEXT    NOT NULL,
+      contact     TEXT    DEFAULT '',
+      notes       TEXT    DEFAULT '',
+      is_active   INTEGER NOT NULL DEFAULT 1,
+      sort_order  INTEGER NOT NULL DEFAULT 0,
+      created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+
+    -- ── Control de Seguridad y Strikes de WhatsApp ───────────
+    CREATE TABLE IF NOT EXISTS whatsapp_strikes (
+      phone          TEXT PRIMARY KEY,
+      strikes        INTEGER NOT NULL DEFAULT 0,
+      blocked_until  TEXT DEFAULT NULL,
+      last_reason    TEXT DEFAULT '',
+      updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
     -- ── Configuración y Portal Cautivo ──────────────────────
     CREATE TABLE IF NOT EXISTS settings (
       key   TEXT PRIMARY KEY,
@@ -208,6 +230,8 @@ function _initSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_sync_log_date      ON sync_log(created_at);
     CREATE INDEX IF NOT EXISTS idx_whatsapp_ref       ON whatsapp_payments(reference_number);
     CREATE INDEX IF NOT EXISTS idx_whatsapp_date      ON whatsapp_payments(created_at);
+    CREATE INDEX IF NOT EXISTS idx_kiosks_active      ON kiosks(is_active);
+    CREATE INDEX IF NOT EXISTS idx_strikes_blocked    ON whatsapp_strikes(blocked_until);
   `);
 }
 
@@ -243,6 +267,23 @@ function _seedSettings(db) {
     }
   });
   tx();
+}
+
+// ── Seed de Kioskos de venta física por defecto ───────────────
+function _seedKiosks(db) {
+  const count = db.prepare('SELECT COUNT(*) AS c FROM kiosks').get().c;
+  if (count === 0) {
+    const insert = db.prepare(`
+      INSERT INTO kiosks (name, location, contact, notes, sort_order)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    const tx = db.transaction(function () {
+      insert.run('Taquilla Principal', 'Entrada peatonal del Balneario', 'Recepción', 'Abierto 7:00 AM - 6:00 PM', 1);
+      insert.run('Restaurante El Río', 'Frente a las piscinas naturales', 'Caja Restaurante', 'Venta de fichas y bebidas frías', 2);
+      insert.run('Kiosko Los Samanes', 'Zona de kioskos y hamacas', 'Encargado Kiosko', 'Venta de fichas en efectivo', 3);
+    });
+    tx();
+  }
 }
 
 /** Obtener todas las configuraciones como objeto */

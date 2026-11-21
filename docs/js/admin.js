@@ -148,6 +148,7 @@ var SECTIONS = {
   mikrotik:  { load: loadMikrotikSection },
   portal:    { load: loadPortalSettings },
   whatsapp:  { load: loadWhatsAppSection },
+  kiosks:    { load: loadKiosksSection },
 };
 
 document.querySelectorAll('.nav-link').forEach(function(a) {
@@ -774,6 +775,7 @@ var _waPollInterval = null;
 function loadWhatsAppSection() {
   checkWhatsAppStatus();
   loadWhatsAppPayments();
+  loadWhatsAppStrikes();
 
   if (_waPollInterval) clearInterval(_waPollInterval);
   _waPollInterval = setInterval(function() {
@@ -870,6 +872,179 @@ function loadWhatsAppPayments() {
     });
   }).catch(function(err) {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#f87171">Error cargando historial de pagos.</td></tr>';
+  });
+}
+
+function loadWhatsAppStrikes() {
+  var tbody = document.getElementById('waStrikesBody');
+  if (!tbody) return;
+
+  apiFetch('GET', '/api/whatsapp/strikes').then(function(data) {
+    tbody.innerHTML = '';
+    var list = Array.isArray(data) ? data : (data.strikes || []);
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:var(--muted)">Sin números sospechosos ni bloqueados registrados.</td></tr>';
+      return;
+    }
+
+    list.forEach(function(s) {
+      var tr = document.createElement('tr');
+      var statusHtml = '';
+      if (s.is_blocked || (s.blocked_until && new Date(s.blocked_until) > new Date())) {
+        statusHtml = '<span class="badge" style="background:rgba(248,113,113,0.2); color:#f87171; font-weight:bold;">🚫 Bloqueado hasta ' + fmtDate(s.blocked_until) + '</span>';
+      } else if (s.strikes > 0) {
+        statusHtml = '<span class="badge" style="background:rgba(250,204,21,0.2); color:#facc15;">⚠️ ' + s.strikes + ' Strike(s)</span>';
+      } else {
+        statusHtml = '<span class="badge" style="background:rgba(74,222,128,0.2); color:#4ade80;">Normal</span>';
+      }
+
+      tr.innerHTML =
+        '<td><strong>' + s.phone + '</strong></td>' +
+        '<td><span class="stat-pill">' + s.strikes + ' / 3</span></td>' +
+        '<td>' + statusHtml + '</td>' +
+        '<td style="font-size:12px; color:var(--muted);">' + (s.last_reason || '—') + '</td>' +
+        '<td>' + fmtDate(s.updated_at) + '</td>' +
+        '<td>' +
+          '<button class="btn btn-sm btn-ghost" onclick="unblockPhone(\'' + s.phone + '\')" title="Desbloquear y limpiar strikes">🔓 Desbloquear</button>' +
+        '</td>';
+      tbody.appendChild(tr);
+    });
+  }).catch(function(err) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#f87171">Error al consultar registros de seguridad.</td></tr>';
+  });
+}
+
+function unblockPhone(phone) {
+  if (!confirm('¿Deseas desbloquear y reiniciar los strikes para el número ' + phone + '?')) return;
+  apiFetch('POST', '/api/whatsapp/unblock', { phone: phone }).then(function(res) {
+    toast(res.message || 'Número desbloqueado', 'ok');
+    loadWhatsAppStrikes();
+  }).catch(function(err) {
+    toast((err && err.error) || 'Error al desbloquear', 'error');
+  });
+}
+
+/* ══════════════════════════════════════════════════════════
+   GESTIÓN DE KIOSKOS Y CASETAS FÍSICAS
+══════════════════════════════════════════════════════════ */
+var _currentKiosks = [];
+
+function loadKiosksSection() {
+  var tbody = document.getElementById('kiosksBody');
+  if (!tbody) return;
+
+  apiFetch('GET', '/api/kiosks?all=true').then(function(kiosks) {
+    _currentKiosks = kiosks || [];
+    tbody.innerHTML = '';
+    if (!_currentKiosks.length) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--muted)">No hay casetas registradas. Haz clic en "Nueva Caseta / Kiosko" para agregar una.</td></tr>';
+      return;
+    }
+
+    _currentKiosks.forEach(function(k) {
+      var tr = document.createElement('tr');
+      var statusBadge = k.is_active
+        ? '<span class="badge" style="background:rgba(74,222,128,0.2); color:#4ade80;">Activo</span>'
+        : '<span class="badge" style="background:rgba(255,255,255,0.1); color:var(--muted);">Inactivo</span>';
+
+      tr.innerHTML =
+        '<td>' + (k.sort_order || 0) + '</td>' +
+        '<td><strong>' + escapeHtml(k.name) + '</strong></td>' +
+        '<td>' + escapeHtml(k.location) + '</td>' +
+        '<td>' + (k.contact ? escapeHtml(k.contact) : '—') + '</td>' +
+        '<td style="font-size:12px; color:var(--muted);">' + (k.notes ? escapeHtml(k.notes) : '—') + '</td>' +
+        '<td>' + statusBadge + '</td>' +
+        '<td>' +
+          '<div style="display:flex; gap:6px;">' +
+            '<button class="btn btn-sm btn-ghost" onclick="editKiosk(' + k.id + ')" title="Editar">✏️</button>' +
+            '<button class="btn btn-sm btn-ghost" onclick="toggleKiosk(' + k.id + ')" title="Activar/Desactivar">' + (k.is_active ? '⏸️' : '▶️') + '</button>' +
+            '<button class="btn btn-sm btn-danger" onclick="deleteKiosk(' + k.id + ')" title="Eliminar">🗑️</button>' +
+          '</div>' +
+        '</td>';
+      tbody.appendChild(tr);
+    });
+  }).catch(function(err) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#f87171">Error cargando casetas y kioskos.</td></tr>';
+  });
+}
+
+function openKioskModal(kiosk) {
+  var bg = document.getElementById('kioskModalBg');
+  var form = document.getElementById('kioskForm');
+  var title = document.getElementById('kioskModalTitle');
+
+  form.reset();
+  if (kiosk) {
+    title.textContent = 'Editar Caseta / Kiosko';
+    document.getElementById('kioskId').value = kiosk.id;
+    document.getElementById('kName').value = kiosk.name || '';
+    document.getElementById('kLocation').value = kiosk.location || '';
+    document.getElementById('kContact').value = kiosk.contact || '';
+    document.getElementById('kSortOrder').value = kiosk.sort_order || 1;
+    document.getElementById('kNotes').value = kiosk.notes || '';
+  } else {
+    title.textContent = 'Nueva Caseta / Kiosko';
+    document.getElementById('kioskId').value = '';
+    document.getElementById('kSortOrder').value = (_currentKiosks.length + 1);
+  }
+
+  bg.removeAttribute('hidden');
+}
+
+function closeKioskModal(e) {
+  if (e && e.target && e.target.id !== 'kioskModalBg' && !e.target.classList.contains('modal-close')) return;
+  var bg = document.getElementById('kioskModalBg');
+  if (bg) bg.setAttribute('hidden', '');
+}
+
+function editKiosk(id) {
+  var k = _currentKiosks.find(function(item) { return item.id === id; });
+  if (k) openKioskModal(k);
+}
+
+function toggleKiosk(id) {
+  apiFetch('PATCH', '/api/kiosks/' + id + '/toggle').then(function(res) {
+    toast(res.message || 'Estado actualizado', 'ok');
+    loadKiosksSection();
+  }).catch(function(err) {
+    toast((err && err.error) || 'Error al cambiar estado', 'error');
+  });
+}
+
+function deleteKiosk(id) {
+  if (!confirm('¿Estás seguro de que deseas eliminar este punto de venta?')) return;
+  apiFetch('DELETE', '/api/kiosks/' + id).then(function(res) {
+    toast(res.message || 'Kiosko eliminado', 'ok');
+    loadKiosksSection();
+  }).catch(function(err) {
+    toast((err && err.error) || 'Error al eliminar kiosko', 'error');
+  });
+}
+
+// Guardar formulario de Kiosko
+var kioskForm = document.getElementById('kioskForm');
+if (kioskForm) {
+  kioskForm.addEventListener('submit', function(e) {
+    e.preventDefault();
+    var id = document.getElementById('kioskId').value;
+    var body = {
+      name: document.getElementById('kName').value.trim(),
+      location: document.getElementById('kLocation').value.trim(),
+      contact: document.getElementById('kContact').value.trim(),
+      sort_order: parseInt(document.getElementById('kSortOrder').value, 10) || 1,
+      notes: document.getElementById('kNotes').value.trim(),
+    };
+
+    var method = id ? 'PUT' : 'POST';
+    var url = id ? ('/api/kiosks/' + id) : '/api/kiosks';
+
+    apiFetch(method, url, body).then(function(res) {
+      toast(res.message || 'Caseta guardada exitosamente', 'ok');
+      closeKioskModal();
+      loadKiosksSection();
+    }).catch(function(err) {
+      toast((err && err.error) || 'Error al guardar caseta', 'error');
+    });
   });
 }
 

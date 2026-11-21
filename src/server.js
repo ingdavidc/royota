@@ -101,6 +101,7 @@ app.use('/api/vouchers', require('./routes/vouchers'));
 app.use('/api/mikrotik', require('./routes/mikrotik'));
 app.use('/api/settings', require('./routes/settings'));
 app.use('/api/whatsapp', require('./routes/whatsapp'));
+app.use('/api/kiosks',   require('./routes/kiosks'));
 
 // ── SPA fallback para el admin ────────────────────────────────
 app.get('/admin',  (req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'admin.html')));

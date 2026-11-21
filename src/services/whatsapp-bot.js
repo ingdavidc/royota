@@ -3,15 +3,14 @@
  * ─────────────────────────────────────────────────────────────
  * Servicio de Automatización de WhatsApp con IA para Hotspot Fichas ROYOTA.
  *
- * Utiliza Baileys (@whiskeysockets/baileys) para conexión directa nativa
- * sin necesidad de contenedores adicionales ni Chrome headless.
- *
- * Flujo:
- * 1. Responde automáticamente consultas de planes y métodos de pago.
- * 2. Recibe imágenes de comprobantes (Daviplata / Llave Bre-B / Transfiya).
- * 3. Analiza el comprobante con Google Gemini Flash (visión multimodal).
- * 4. Valida monto, cuenta de destino y número de comprobante contra duplicados.
- * 5. Genera o despacha una ficha activa y la entrega de inmediato en el chat.
+ * Módulos de Seguridad y Prevención de Fraudes:
+ * 1. Anti-Spam / Rate Limiting (Máx 4 mensajes por minuto).
+ * 2. Agrupamiento Debounce (2.5 segundos para evitar respuestas repetitivas).
+ * 3. Cooldown de comprobantes (30 segundos entre imágenes).
+ * 4. Filtro Anti-Desvío (Silencio de 1 hora si acumula 3 mensajes fuera de tema).
+ * 5. Sistema de 3 Strikes con Bloqueo de 24 Horas y Redirección a Casetas Físicas.
+ * 6. Integración y sugerencia dinámica de Kioskos / Puntos de Venta Físicos.
+ * 7. Aislamiento Total: Generación exclusiva de fichas WSP- sin tocar fichas impresas.
  */
 'use strict';
 
@@ -48,8 +47,13 @@ let _state = {
   lastError: null,
 };
 
-// Control de concurrencia para evitar doble procesamiento de un mismo mensaje
+// ── Control de concurrencia y seguridad en memoria ────────────
 const _processingMessages = new Set();
+const _messageTimestamps  = new Map(); // phone -> [timestamps] (Rate limiting)
+const _imageLastSent      = new Map(); // phone -> timestamp (Cooldown 30s)
+const _debounceTimers     = new Map(); // phone -> timerId (Debounce 2.5s)
+const _offTopicTracker    = new Map(); // phone -> { count: number, silencedUntil: number }
+const _warnedSuspended    = new Map(); // phone -> timestamp (Evitar spam de aviso de bloqueo)
 
 /**
  * Normaliza una cadena de texto para comparación flexible
@@ -70,7 +74,118 @@ function cleanPhoneDigits(str) {
 }
 
 /**
- * Genera el mensaje del catálogo de planes y medios de pago
+ * Obtiene la lista formateada de kioskos / casetas activas
+ */
+function getKiosksFormatted(full = false) {
+  try {
+    const db = getDb();
+    const kiosks = db.prepare('SELECT * FROM kiosks WHERE is_active = 1 ORDER BY sort_order ASC, id ASC').all();
+    if (!kiosks.length) {
+      return '• Taquilla Principal del Balneario (Entrada)';
+    }
+    return kiosks.map(k => {
+      let line = `📍 *${k.name}:* ${k.location}`;
+      if (full && k.notes) line += ` _(${k.notes})_`;
+      return line;
+    }).join('\n');
+  } catch (err) {
+    return '• Taquilla Principal del Balneario';
+  }
+}
+
+/**
+ * Verifica si un número está actualmente bloqueado por strikes
+ */
+function checkPhoneBlocked(phone) {
+  try {
+    const db = getDb();
+    const clean = cleanPhoneDigits(phone);
+    const row = db.prepare('SELECT strikes, blocked_until, last_reason FROM whatsapp_strikes WHERE phone = ?').get(clean);
+    if (!row || !row.blocked_until) return { isBlocked: false, strikes: row ? row.strikes : 0 };
+
+    const blockedUntilDate = new Date(row.blocked_until);
+    if (blockedUntilDate > new Date()) {
+      return { isBlocked: true, blockedUntil: row.blocked_until, strikes: row.strikes, lastReason: row.last_reason };
+    }
+    return { isBlocked: false, strikes: row.strikes };
+  } catch (err) {
+    console.error('[WhatsApp Bot] Error checking block status:', err);
+    return { isBlocked: false, strikes: 0 };
+  }
+}
+
+/**
+ * Registra un intento inválido (Strike) y aplica suspensión de 24h al acumular 3
+ */
+function recordStrike(phone, reason) {
+  const db = getDb();
+  const clean = cleanPhoneDigits(phone);
+  const existing = db.prepare('SELECT strikes FROM whatsapp_strikes WHERE phone = ?').get(clean);
+
+  const currentStrikes = (existing ? existing.strikes : 0) + 1;
+  let blockedUntil = null;
+  let isBlocked = false;
+
+  if (currentStrikes >= 3) {
+    // Bloqueo estricto por 24 horas
+    const in24h = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    blockedUntil = in24h;
+    isBlocked = true;
+    console.warn(`[WhatsApp Bot] 🚫 Número ${clean} BLOQUEADO por 24 horas (3er Strike: ${reason})`);
+  } else {
+    console.warn(`[WhatsApp Bot] ⚠️ Strike #${currentStrikes} asignado a ${clean} (${reason})`);
+  }
+
+  db.prepare(`
+    INSERT INTO whatsapp_strikes (phone, strikes, blocked_until, last_reason, updated_at)
+    VALUES (?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(phone) DO UPDATE SET
+      strikes = excluded.strikes,
+      blocked_until = excluded.blocked_until,
+      last_reason = excluded.last_reason,
+      updated_at = datetime('now')
+  `).run(clean, currentStrikes, blockedUntil, reason);
+
+  return { strikes: currentStrikes, isBlocked, blockedUntil };
+}
+
+/**
+ * Limpia los strikes tras un pago exitoso
+ */
+function clearStrikes(phone) {
+  try {
+    const db = getDb();
+    const clean = cleanPhoneDigits(phone);
+    db.prepare(`
+      UPDATE whatsapp_strikes
+      SET strikes = 0, blocked_until = NULL, last_reason = 'Pago exitoso verificado', updated_at = datetime('now')
+      WHERE phone = ?
+    `).run(clean);
+  } catch (_) {}
+}
+
+/**
+ * Rate Limiting: Máximo 4 mensajes por minuto por usuario
+ */
+function isRateLimited(phone) {
+  const now = Date.now();
+  const windowMs = 60 * 1000;
+  const maxMsgs = 4;
+
+  let timestamps = _messageTimestamps.get(phone) || [];
+  timestamps = timestamps.filter(t => now - t < windowMs);
+
+  if (timestamps.length >= maxMsgs) {
+    return true;
+  }
+
+  timestamps.push(now);
+  _messageTimestamps.set(phone, timestamps);
+  return false;
+}
+
+/**
+ * Genera el mensaje del catálogo de planes, medios de pago y casetas físicas
  */
 function buildMenuMessage() {
   const db = getDb();
@@ -78,8 +193,9 @@ function buildMenuMessage() {
     'SELECT name, duration, speed_limit, price FROM plans WHERE is_active = 1 ORDER BY sort_order ASC, price ASC'
   ).all();
 
-  const businessName = config.business.name || 'WiFi ROYOTA';
+  const businessName = config.business.name || 'Balneario Río Royota';
   const paymentPhone = config.whatsapp.paymentPhone || '3174251419';
+  const kiosksList = getKiosksFormatted(false);
 
   let msg = `📶 *¡Bienvenido a ${businessName}!* 🚀\n`;
   msg += `Compra tu ficha de internet de forma 100% automática.\n\n`;
@@ -90,15 +206,32 @@ function buildMenuMessage() {
     msg += `${idx + 1}️⃣ *${p.name}* (${p.duration}) → *$${formattedPrice} COP*\n`;
   });
 
-  msg += `\n💳 *MEDIOS DE PAGO AUTORIZADOS:*\n`;
+  msg += `\n💳 *MEDIOS DE PAGO VIRTUALES:*\n`;
   msg += `• *Daviplata:* \`${paymentPhone}\`\n`;
   msg += `• *Llave Bre-B (Transfiya):* \`${paymentPhone}\`\n\n`;
-  msg += `📸 *¿CÓMO COMPRAR?*\n`;
-  msg += `1. Realiza la transferencia del valor exacto del plan deseado a nuestro número.\n`;
+  msg += `📸 *¿CÓMO COMPRAR EN LÍNEA?*\n`;
+  msg += `1. Realiza la transferencia del valor exacto a nuestro número.\n`;
   msg += `2. *Envía la captura de pantalla del comprobante aquí mismo.* 📸\n`;
-  msg += `3. Nuestra IA validará tu pago y *te entregará tu código de ficha en segundos.* ⚡\n`;
+  msg += `3. Nuestra IA validará tu pago y *te entregará tu código en segundos.* ⚡\n\n`;
+  msg += `🏪 *¿PREFIERES PAGAR EN EFECTIVO?*\n`;
+  msg += `Puedes adquirir tu ficha física directamente en nuestras casetas autorizadas:\n${kiosksList}\n`;
 
   return msg;
+}
+
+/**
+ * Mensaje de suspensión formal cuando un usuario alcanza 3 strikes
+ */
+function buildSuspensionMessage() {
+  const kiosksList = getKiosksFormatted(true);
+  return `🚫 *NÚMERO TEMPORALMENTE SUSPENDIDO* 🚫\n` +
+    `━━━━━━━━━━━━━━━━━━━━\n` +
+    `Has acumulado 3 intentos no válidos de pago. Por medidas de seguridad y prevención de fraudes, tu número ha sido suspendido por *24 horas* para compras en línea.\n\n` +
+    `🏪 *SOLO ES POSIBLE LA COMPRA EN CASETA FÍSICA:*\n` +
+    `Ahora solo es posible adquirir tu ticket de internet directamente en efectivo en cualquiera de nuestras casetas autorizadas en el balneario:\n\n` +
+    `${kiosksList}\n\n` +
+    `_Te esperamos en el Balneario Río Royota._\n` +
+    `━━━━━━━━━━━━━━━━━━━━`;
 }
 
 /**
@@ -108,13 +241,25 @@ async function processPaymentReceipt(sock, msg, senderJid) {
   const senderPhone = senderJid.replace('@s.whatsapp.net', '');
   const targetPhone = config.whatsapp.paymentPhone || '3174251419';
 
+  // 1. Cooldown de imágenes: máx 1 imagen cada 30 segundos
+  const now = Date.now();
+  const lastImgTime = _imageLastSent.get(senderPhone) || 0;
+  if (now - lastImgTime < 30 * 1000) {
+    const waitSec = Math.ceil((30 * 1000 - (now - lastImgTime)) / 1000);
+    await sock.sendMessage(senderJid, {
+      text: `⏱️ *Espera un momento:* Para evitar saturación, solo puedes enviar un comprobante cada 30 segundos. Por favor espera ${waitSec} segundos.`,
+    }, { quoted: msg });
+    return;
+  }
+  _imageLastSent.set(senderPhone, now);
+
   try {
-    // 1. Reaccionar o avisar al usuario
+    // 2. Avisar al usuario que la IA está analizando
     await sock.sendMessage(senderJid, {
       text: '🔍 *Comprobante recibido.* Estamos validando tu pago con nuestra IA, por favor espera unos segundos...',
     }, { quoted: msg });
 
-    // 2. Descargar la imagen
+    // 3. Descargar la imagen
     const imageBuffer = await downloadMediaMessage(
       msg,
       'buffer',
@@ -129,7 +274,7 @@ async function processPaymentReceipt(sock, msg, senderJid) {
       return;
     }
 
-    // 3. Analizar con Gemini Vision
+    // 4. Analizar con Gemini Vision
     if (!config.whatsapp.geminiApiKey) {
       console.warn('[WhatsApp Bot] Falta GEMINI_API_KEY en configuración.');
       await sock.sendMessage(senderJid, {
@@ -141,59 +286,91 @@ async function processPaymentReceipt(sock, msg, senderJid) {
     const analysis = await analyzeReceipt(imageBuffer, 'image/jpeg');
     console.log('[WhatsApp Bot] Resultado Gemini:', analysis);
 
-    // 4. Validar si es un comprobante de pago
+    // ── VALIDADOR 1: ¿Es un comprobante de pago válido y exitoso? ──
     if (!analysis.is_payment_receipt || !analysis.is_successful) {
       const reason = analysis.rejection_reason || 'La imagen no corresponde a un comprobante de pago exitoso.';
-      await sock.sendMessage(senderJid, {
-        text: `❌ *No se pudo validar el pago*\n\nMotivo: ${reason}\n\nPor favor envía una captura nítida donde se observe el valor, el número de aprobación y la cuenta de destino.`,
-      }, { quoted: msg });
+      const strike = recordStrike(senderPhone, `Comprobante inválido: ${reason}`);
+
+      if (strike.isBlocked) {
+        await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
+      } else {
+        const kiosksShort = getKiosksFormatted(false);
+        const warning = strike.strikes === 2
+          ? `\n\n⚠️ *ADVERTENCIA (Intento 2 de 3):* Al siguiente intento no válido, tu número será bloqueado por 24 horas y solo podrás comprar en caseta física.`
+          : `\n\n*(Intento ${strike.strikes} de 3)*. Si prefieres pagar en efectivo, puedes comprar en nuestras casetas:\n${kiosksShort}`;
+        await sock.sendMessage(senderJid, {
+          text: `❌ *No se pudo validar el pago*\n\nMotivo: ${reason}\n\nPor favor envía una captura nítida donde se observe el valor, el número de aprobación y la cuenta de destino.${warning}`,
+        }, { quoted: msg });
+      }
       return;
     }
 
-    // 5. Validar número de destino (Daviplata / Bre-B)
+    // ── VALIDADOR 2: Destino autorizado (Daviplata / Bre-B) ────────
     const cleanedExtractedDest = cleanPhoneDigits(analysis.destination_phone);
     const cleanedTarget = cleanPhoneDigits(targetPhone);
 
     if (cleanedExtractedDest && !cleanedExtractedDest.includes(cleanedTarget) && !cleanedTarget.includes(cleanedExtractedDest)) {
-      await sock.sendMessage(senderJid, {
-        text: `❌ *Cuenta de destino incorrecta*\n\nEl comprobante muestra destino: *${analysis.destination_phone}*, pero el pago debe ser a la cuenta: *${targetPhone}*.\nSi crees que es un error, por favor comunícate con soporte.`,
-      }, { quoted: msg });
+      const strike = recordStrike(senderPhone, `Destino incorrecto: ${analysis.destination_phone}`);
+      if (strike.isBlocked) {
+        await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
+      } else {
+        await sock.sendMessage(senderJid, {
+          text: `❌ *Cuenta de destino incorrecta*\n\nEl comprobante muestra destino: *${analysis.destination_phone}*, pero el pago debe ser a la cuenta autorizada: *${targetPhone}*.\n*(Intento ${strike.strikes} de 3)*`,
+        }, { quoted: msg });
+      }
       return;
     }
 
-    // 6. Validar referencia anti-fraude (Prevención de comprobantes duplicados)
+    // ── VALIDADOR 3: Referencia única anti-fraude ─────────────────
     const cleanRef = String(analysis.reference_number || '').trim().toUpperCase();
     if (!cleanRef || cleanRef.length < 3) {
-      await sock.sendMessage(senderJid, {
-        text: '❌ No se pudo identificar el número de referencia o aprobación en el comprobante. Por favor envía una imagen más clara.',
-      }, { quoted: msg });
+      const strike = recordStrike(senderPhone, 'Referencia no identificada en la imagen');
+      if (strike.isBlocked) {
+        await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
+      } else {
+        await sock.sendMessage(senderJid, {
+          text: `❌ No se pudo identificar el número de referencia o aprobación en el comprobante. Por favor envía una imagen más clara.\n*(Intento ${strike.strikes} de 3)*`,
+        }, { quoted: msg });
+      }
       return;
     }
 
     const db = getDb();
     const existingRef = db.prepare('SELECT id, created_at FROM whatsapp_payments WHERE reference_number = ?').get(cleanRef);
     if (existingRef) {
-      await sock.sendMessage(senderJid, {
-        text: `⚠️ *Comprobante duplicado*\n\nEste comprobante (Ref: *${cleanRef}*) ya fue registrado y procesado anteriormente el día ${existingRef.created_at}.\nCada comprobante es válido para una única ficha.`,
-      }, { quoted: msg });
+      const strike = recordStrike(senderPhone, `Comprobante duplicado: ${cleanRef}`);
+      if (strike.isBlocked) {
+        await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
+      } else {
+        await sock.sendMessage(senderJid, {
+          text: `⚠️ *Comprobante duplicado*\n\nEste comprobante (Ref: *${cleanRef}*) ya fue registrado y procesado anteriormente el día ${existingRef.created_at}.\nCada comprobante es válido para una única ficha.\n*(Intento ${strike.strikes} de 3)*`,
+        }, { quoted: msg });
+      }
       return;
     }
 
-    // 7. Buscar plan que coincida con el monto pagado
+    // ── VALIDADOR 4: Coincidencia de monto con planes ─────────────
     const paidAmount = Number(analysis.amount);
     const activePlans = db.prepare('SELECT * FROM plans WHERE is_active = 1 ORDER BY price ASC').all();
     const matchedPlan = activePlans.find(p => Math.abs(p.price - paidAmount) < 50);
 
     if (!matchedPlan) {
-      const formattedPaid = paidAmount.toLocaleString('es-CO');
-      let planListStr = activePlans.map(p => `• ${p.name}: $${p.price.toLocaleString('es-CO')}`).join('\n');
-      await sock.sendMessage(senderJid, {
-        text: `⚠️ *Monto no coincide con ningún plan*\n\nDetectamos un pago de *$${formattedPaid} COP*, pero actualmente no coincide con el valor exacto de nuestros planes:\n\n${planListStr}\n\nPor favor comunícate con un administrador para revisar tu caso.`,
-      }, { quoted: msg });
+      const strike = recordStrike(senderPhone, `Monto $${paidAmount} no coincide con planes`);
+      if (strike.isBlocked) {
+        await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
+      } else {
+        const formattedPaid = paidAmount.toLocaleString('es-CO');
+        let planListStr = activePlans.map(p => `• ${p.name}: $${p.price.toLocaleString('es-CO')}`).join('\n');
+        await sock.sendMessage(senderJid, {
+          text: `⚠️ *Monto no coincide con ningún plan*\n\nDetectamos un pago de *$${formattedPaid} COP*, pero actualmente no coincide con el valor exacto de nuestros planes:\n\n${planListStr}\n\n*(Intento ${strike.strikes} de 3)*`,
+        }, { quoted: msg });
+      }
       return;
     }
 
-    // 8. Obtener o generar la ficha para el plan
+    // ── PAGO VÁLIDO: Limpiar strikes acumulados ────────────────────
+    clearStrikes(senderPhone);
+
     // 🔒 AISLAMIENTO TOTAL: El bot SOLO toma o genera fichas con prefijo WSP-
     // NUNCA toma fichas impresas ni lotes de las casetas físicas.
     let voucher = db.prepare(
@@ -230,7 +407,7 @@ async function processPaymentReceipt(sock, msg, senderJid) {
       console.warn('[WhatsApp Bot] Aviso sincronización MikroTik (se activará al navegar):', mkErr.message);
     }
 
-    // 9. Registrar la venta y el pago en la BD de forma atómica
+    // Registrar la venta y el pago en la BD de forma atómica
     const paymentPlatform = analysis.platform || 'Daviplata/Bre-B';
     const transaction = db.transaction(() => {
       // Marcar ficha como vendida
@@ -257,7 +434,7 @@ async function processPaymentReceipt(sock, msg, senderJid) {
     transaction();
     console.log(`[WhatsApp Bot] ✅ Venta completada con éxito. Ficha: ${voucher.code} para ${senderPhone}`);
 
-    // 10. Enviar la ficha al cliente
+    // Enviar la ficha al cliente
     const successMsg = `🎉 *¡PAGO VERIFICADO EXITOSAMENTE!*\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
       `📋 *Plan:* ${matchedPlan.name}\n` +
@@ -385,6 +562,27 @@ async function startWhatsAppBot() {
         _processingMessages.add(msgId);
         setTimeout(() => _processingMessages.delete(msgId), 30000);
 
+        const senderPhone = remoteJid.replace('@s.whatsapp.net', '');
+
+        // ── FILTRO 1: ¿El número está suspendido por 24 horas? ──────
+        const blockStatus = checkPhoneBlocked(senderPhone);
+        if (blockStatus.isBlocked) {
+          const now = Date.now();
+          const lastWarned = _warnedSuspended.get(senderPhone) || 0;
+          // Solo enviar el aviso de suspensión una vez cada 2 horas para no spamear
+          if (now - lastWarned > 2 * 60 * 60 * 1000) {
+            _warnedSuspended.set(senderPhone, now);
+            await sock.sendMessage(remoteJid, { text: buildSuspensionMessage() }, { quoted: msg });
+          }
+          continue; // No procesar ninguna petición de números bloqueados
+        }
+
+        // ── FILTRO 2: Rate Limiting (Máx 4 mensajes por minuto) ─────
+        if (isRateLimited(senderPhone)) {
+          console.warn(`[WhatsApp Bot] Rate limit activo para ${senderPhone}`);
+          continue; // Ignorar silenciosamente mensajes excesivos
+        }
+
         const messageContent = msg.message;
         if (!messageContent) continue;
 
@@ -392,6 +590,8 @@ async function startWhatsAppBot() {
         const isImage = !!(messageContent.imageMessage || (messageContent.documentMessage?.mimetype?.startsWith('image/')));
 
         if (isImage) {
+          // Resetear contador de off-topic porque el usuario está intentando pagar
+          _offTopicTracker.delete(senderPhone);
           await processPaymentReceipt(sock, msg, remoteJid);
           continue;
         }
@@ -402,30 +602,85 @@ async function startWhatsAppBot() {
 
         if (!norm) continue;
 
-        // Palabras clave que disparan el menú / información
-        const isGreetingOrQuery =
-          norm.includes('hola') ||
-          norm.includes('buen') ||
-          norm.includes('precio') ||
-          norm.includes('plan') ||
-          norm.includes('ficha') ||
-          norm.includes('internet') ||
-          norm.includes('comprar') ||
-          norm.includes('cuanto') ||
-          norm.includes('menu') ||
-          norm.includes('daviplata') ||
-          norm.includes('bre-b') ||
-          norm.includes('ayuda');
-
-        if (isGreetingOrQuery) {
-          const menu = buildMenuMessage();
-          await sock.sendMessage(remoteJid, { text: menu }, { quoted: msg });
-        } else {
-          // Respuesta cordial de guía
-          const quickHelp = `👋 ¡Hola! Para ver nuestros planes y precios de internet envía la palabra *PLANES*.\n\n` +
-            `Si ya realizaste tu pago a nuestro Daviplata o Llave Bre-B (*${config.whatsapp.paymentPhone || '3174251419'}*), envía la foto de tu comprobante y recibirás tu ficha al instante. 🎫`;
-          await sock.sendMessage(remoteJid, { text: quickHelp }, { quoted: msg });
+        // ── FILTRO 3: ¿El usuario está en silencio temporal (off-topic)?
+        const offTopicData = _offTopicTracker.get(senderPhone) || { count: 0, silencedUntil: 0 };
+        if (Date.now() < offTopicData.silencedUntil) {
+          continue; // El bot permanece en silencio para este usuario
         }
+
+        // ── DEBOUNCE (2.5 segundos): Agrupar ráfagas de mensajes de texto
+        if (_debounceTimers.has(senderPhone)) {
+          clearTimeout(_debounceTimers.get(senderPhone));
+        }
+
+        const timerId = setTimeout(async () => {
+          _debounceTimers.delete(senderPhone);
+
+          // Palabras clave de consulta de Kioskos / Puntos de Venta
+          const isKioskQuery =
+            norm.includes('caseta') ||
+            norm.includes('kiosko') ||
+            norm.includes('kiosco') ||
+            norm.includes('efectivo') ||
+            norm.includes('donde comprar') ||
+            norm.includes('tienda') ||
+            norm.includes('punto de venta');
+
+          // Palabras clave de planes y compra
+          const isGreetingOrQuery =
+            norm.includes('hola') ||
+            norm.includes('buen') ||
+            norm.includes('precio') ||
+            norm.includes('plan') ||
+            norm.includes('ficha') ||
+            norm.includes('internet') ||
+            norm.includes('wifi') ||
+            norm.includes('comprar') ||
+            norm.includes('cuanto') ||
+            norm.includes('menu') ||
+            norm.includes('daviplata') ||
+            norm.includes('bre-b') ||
+            norm.includes('ayuda');
+
+          if (isKioskQuery) {
+            _offTopicTracker.delete(senderPhone);
+            const kiosksFull = getKiosksFormatted(true);
+            const kioskMsg =
+              `🏪 *PUNTOS DE VENTA FÍSICOS (CASETAS Y KIOSKOS)* 🏖️\n` +
+              `━━━━━━━━━━━━━━━━━━━━\n` +
+              `Puedes comprar tus fichas directamente en efectivo en:\n\n` +
+              `${kiosksFull}\n\n` +
+              `_Te esperamos en el Balneario Río Royota._`;
+            await sock.sendMessage(remoteJid, { text: kioskMsg });
+          } else if (isGreetingOrQuery) {
+            _offTopicTracker.delete(senderPhone);
+            const menu = buildMenuMessage();
+            await sock.sendMessage(remoteJid, { text: menu });
+          } else {
+            // Conversación fuera de tema (Off-topic)
+            offTopicData.count += 1;
+
+            if (offTopicData.count >= 3) {
+              // Silenciar por 1 hora
+              offTopicData.silencedUntil = Date.now() + 60 * 60 * 1000;
+              _offTopicTracker.set(senderPhone, offTopicData);
+
+              const silenceMsg =
+                `🤖 *Atención:* Para evitar saturación del servicio, se ha pausado la atención automática por 1 hora.\n\n` +
+                `Si deseas comprar una ficha de internet, acércate a una de nuestras casetas físicas en el balneario o escribe la palabra *PLANES* más tarde.`;
+              await sock.sendMessage(remoteJid, { text: silenceMsg });
+            } else {
+              _offTopicTracker.set(senderPhone, offTopicData);
+              const offTopicMsg =
+                `👋 ¡Hola! Soy el asistente virtual de *WiFi ROYOTA*.\n\n` +
+                `Solo puedo atender consultas de compra de fichas de internet. Escribe *PLANES* para ver los precios o envía la foto de tu pago por Daviplata / Bre-B para recibir tu ficha.\n\n` +
+                `Si deseas pagar en efectivo, escribe *CASETAS*.`;
+              await sock.sendMessage(remoteJid, { text: offTopicMsg });
+            }
+          }
+        }, 2500);
+
+        _debounceTimers.set(senderPhone, timerId);
       }
     });
 
@@ -472,4 +727,7 @@ module.exports = {
   startWhatsAppBot,
   getBotStatus,
   logoutBot,
+  recordStrike,
+  clearStrikes,
+  checkPhoneBlocked,
 };

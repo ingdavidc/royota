@@ -58,4 +58,32 @@ router.get('/payments', authRequired, (req, res) => {
   });
 });
 
+// Listado de números bloqueados o con strikes de seguridad
+router.get('/strikes', authRequired, (req, res) => {
+  const db = getDb();
+  const strikes = db.prepare(`
+    SELECT phone, strikes, blocked_until, last_reason, updated_at,
+           CASE WHEN blocked_until IS NOT NULL AND datetime(blocked_until) > datetime('now') THEN 1 ELSE 0 END AS is_blocked
+    FROM whatsapp_strikes
+    ORDER BY is_blocked DESC, updated_at DESC
+  `).all();
+  res.json(strikes);
+});
+
+// Desbloquear número manualmente
+router.post('/unblock', authRequired, (req, res) => {
+  const { phone } = req.body;
+  if (!phone) return res.status(400).json({ error: 'phone es requerido' });
+
+  const cleanPhone = String(phone).replace(/\D/g, '');
+  const db = getDb();
+  db.prepare(`
+    UPDATE whatsapp_strikes
+    SET strikes = 0, blocked_until = NULL, last_reason = 'Desbloqueado por administrador', updated_at = datetime('now')
+    WHERE phone = ?
+  `).run(cleanPhone);
+
+  res.json({ message: `Número ${cleanPhone} desbloqueado exitosamente` });
+});
+
 module.exports = router;
