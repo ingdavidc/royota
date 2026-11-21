@@ -40,6 +40,26 @@ app.use(helmet({
 // CORS: habilitado para permitir comunicación desde el dominio web y local
 app.use(cors());
 
+// ── Unificación Arquitectónica: Redirigir accesos web al dominio oficial ──
+const OFFICIAL_ADMIN_URL = 'https://royota.dctelematica.com/admin';
+const OFFICIAL_PORTAL_URL = 'https://royota.dctelematica.com';
+
+app.use((req, res, next) => {
+  const host = (req.headers.host || '').toLowerCase();
+  if (host.includes('onrender.com')) {
+    if (req.path === '/admin' || req.path === '/admin.html') {
+      return res.redirect(301, OFFICIAL_ADMIN_URL);
+    }
+    if (req.path === '/login' || req.path === '/login.html') {
+      return res.redirect(301, 'https://royota.dctelematica.com/login.html');
+    }
+    if (req.path === '/' || req.path === '/index.html') {
+      return res.redirect(301, OFFICIAL_PORTAL_URL);
+    }
+  }
+  next();
+});
+
 // ── Rate Limiting (Protección contra fuerza bruta y DoS) ──────
 const voucherLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minuto
