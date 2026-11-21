@@ -932,13 +932,19 @@ function requestNewQr() {
   }
   apiFetch('POST', '/api/whatsapp/restart').then(function() {
     toast('Generando código QR, un momento...', 'ok');
-    setTimeout(function() {
+    var attempts = 0;
+    var pollQr = setInterval(function() {
+      attempts++;
       checkWhatsAppStatus();
-      if (btn) {
-        btn.disabled = false;
-        btn.textContent = '🔄 Generar Código QR';
+      var qrBox = document.getElementById('waQrBox');
+      if ((qrBox && qrBox.style.display !== 'none') || attempts >= 10) {
+        clearInterval(pollQr);
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '🔄 Generar Código QR';
+        }
       }
-    }, 2000);
+    }, 1500);
   }).catch(function(err) {
     toast((err && err.error) || 'Error al solicitar QR', 'error');
     if (btn) {

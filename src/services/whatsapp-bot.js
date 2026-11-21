@@ -26,6 +26,7 @@ const {
   DisconnectReason,
   fetchLatestBaileysVersion,
   downloadMediaMessage,
+  Browsers,
 } = require('@whiskeysockets/baileys');
 
 const config = require('../config');
@@ -536,7 +537,7 @@ async function startWhatsAppBot(forceClean = false) {
       logger,
       printQRInTerminal: false,
       auth: state,
-      browser: ['Balneario Río Royota', 'Chrome', '1.0.0'],
+      browser: Browsers.ubuntu('Chrome'),
       syncFullHistory: false,
       generateHighQualityLinkPreview: false,
       connectTimeoutMs: 60000,
@@ -570,18 +571,10 @@ async function startWhatsAppBot(forceClean = false) {
       if (connection === 'close') {
         const statusCode = lastDisconnect?.error?.output?.statusCode;
         const isLoggedOut = statusCode === DisconnectReason.loggedOut;
-        const isRestartRequired = statusCode === 515; // 515: Restart Required de WhatsApp tras emparejar
+        const isRestartRequired = statusCode === 515;
         const isRegistered = Boolean(state.creds?.registered);
 
         console.log(`[WhatsApp Bot] Conexión cerrada (Código: ${statusCode}). Registrado: ${isRegistered}`);
-
-        if (isRestartRequired) {
-          // 515: WhatsApp exige reconexión inmediata tras emparejar credenciales
-          console.log('[WhatsApp Bot] Reconexión requerida por WhatsApp (515). Reconectando de inmediato...');
-          _state.status = 'connecting';
-          _reconnectTimer = setTimeout(() => startWhatsAppBot(false), 1500);
-          return;
-        }
 
         _state.status = 'disconnected';
         _state.qr = null;
@@ -591,16 +584,13 @@ async function startWhatsAppBot(forceClean = false) {
         if (isLoggedOut) {
           console.log('[WhatsApp Bot] Sesión cerrada permanentemente (Logged Out). Limpiando credenciales...');
           try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (_) {}
-          _reconnectTimer = setTimeout(() => startWhatsAppBot(true), 3000);
-        } else if (!isRegistered) {
-          // El QR expiró o falló sin llegar a escanearse: limpiar credenciales no registradas
-          console.log('[WhatsApp Bot] Código QR expiró o sesión no registrada. Generando nuevo QR...');
-          try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (_) {}
-          _reconnectTimer = setTimeout(() => startWhatsAppBot(true), 3000);
+          _reconnectTimer = setTimeout(() => startWhatsAppBot(true), 2500);
         } else {
-          // Sesión registrada caída temporalmente (red, etc.), mantener credenciales y reconectar
-          console.log('[WhatsApp Bot] Reconectando sesión activa en 5 segundos...');
-          _reconnectTimer = setTimeout(() => startWhatsAppBot(false), 5000);
+          // Si no es Logout, conservar credenciales para no interrumpir el emparejamiento
+          const delay = isRestartRequired ? 1000 : 3000;
+          console.log(`[WhatsApp Bot] Reconectando sesión de WhatsApp en ${delay}ms...`);
+          _state.status = 'connecting';
+          _reconnectTimer = setTimeout(() => startWhatsAppBot(false), delay);
         }
       } else if (connection === 'open') {
         _state.status = 'connected';
