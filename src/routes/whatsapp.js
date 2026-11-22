@@ -11,10 +11,59 @@
 
 const { Router } = require('express');
 const { authRequired } = require('../middleware/auth');
-const { getBotStatus, logoutBot, restartBot } = require('../services/whatsapp-bot');
+const { getBotStatus, logoutBot, restartBot, sendDirectWhatsAppMessage } = require('../services/whatsapp-bot');
 const { getDb } = require('../database');
 
 const router = Router();
+
+// Enviar mensaje de WhatsApp a un cliente directamente desde el panel
+router.post('/send-message', authRequired, async (req, res) => {
+  const { phone, message, complaint_id, status } = req.body;
+  if (!phone || !message) {
+    return res.status(400).json({ error: 'phone y message son requeridos' });
+  }
+
+  try {
+    const result = await sendDirectWhatsAppMessage(phone, message);
+
+    // Si viene asociado a un caso de PQRS, actualizar estado y notas
+    if (complaint_id) {
+      const nowStr = new Date().toISOString();
+      const noteEntry = `[WhatsApp ${new Date().toLocaleTimeString('es-CO')}]: ${message}`;
+
+      try {
+        const db = getDb();
+        db.prepare(`
+          UPDATE complaints
+          SET admin_notes = CASE WHEN admin_notes IS NULL OR admin_notes = '' THEN ? ELSE admin_notes || '\n' || ? END,
+              status = COALESCE(?, status),
+              updated_at = datetime('now')
+          WHERE id = ?
+        `).run(noteEntry, noteEntry, status || 'resolved', complaint_id);
+      } catch (_) {}
+
+      try {
+        // Actualizar en Firestore para persistencia permanente
+        await fetch(`https://firestore.googleapis.com/v1/projects/fichas-royota/databases/(default)/documents/complaints/${complaint_id}?updateMask.fieldPaths=status&updateMask.fieldPaths=admin_notes&updateMask.fieldPaths=updated_at`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              status: { stringValue: status || 'resolved' },
+              admin_notes: { stringValue: noteEntry },
+              updated_at: { stringValue: nowStr }
+            }
+          })
+        });
+      } catch (_) {}
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error('[WhatsApp Send Message] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Estado de conexión del Bot y Código QR (Público para fácil visualización)
 router.get('/status', (req, res) => {

@@ -1376,19 +1376,123 @@ function loadComplaintsSection() {
   }
 }
 
+var _activeComplaint = null;
+
 function openComplaintModal(id) {
   var c = _currentComplaints.find(function(item) { return String(item.id) === String(id); });
   if (!c) return;
+  _activeComplaint = c;
 
   var bg = document.getElementById('complaintModalBg');
   document.getElementById('cId').value = c.id;
   document.getElementById('cRadicado').textContent = '#' + (c.radicado || ('PQRS-' + String(c.id).padStart(4, '0')));
-  document.getElementById('cPhone').textContent = c.phone + (c.client_name ? (' (' + c.client_name + ')') : '');
+  document.getElementById('cPhone').textContent = (c.client_name ? (c.client_name + ' — ') : '') + c.phone;
   document.getElementById('cMessage').textContent = c.message;
   document.getElementById('cStatus').value = c.status || 'pending';
   document.getElementById('cAdminNotes').value = c.admin_notes || '';
 
+  var replyInput = document.getElementById('cReplyMsg');
+  if (replyInput) replyInput.value = '';
+
   bg.removeAttribute('hidden');
+}
+
+function setReplyTemplate(type) {
+  var replyInput = document.getElementById('cReplyMsg');
+  if (!replyInput || !_activeComplaint) return;
+
+  var name = _activeComplaint.client_name || 'Hola';
+  var rad = _activeComplaint.radicado || 'PQRS-0001';
+
+  if (type === 'ok') {
+    replyInput.value = '¡Hola ' + name + '! Hemos revisado tu caso #' + rad + ' y la velocidad del servicio de internet ha sido normalizada. ¿Nos confirmas por favor si ya puedes navegar sin problemas? Muchas gracias por tu paciencia.';
+    document.getElementById('cStatus').value = 'resolved';
+  } else if (type === 'review') {
+    replyInput.value = '¡Hola ' + name + '! Hemos recibido tu reporte #' + rad + '. Nuestro equipo técnico se encuentra verificando las antenas en el balneario en este momento para solucionar tu conexión a la brevedad.';
+    document.getElementById('cStatus').value = 'in_progress';
+  } else if (type === 'voucher') {
+    replyInput.value = '¡Hola ' + name + '! Lamentamos los inconvenientes con tu conexión. Te hemos generado una nueva ficha de cortesía para reponer tu tiempo sin costo: CÓDIGO: [Escribe o genera la ficha aquí]. Puedes activarla en el portal de inicio.';
+    document.getElementById('cStatus').value = 'resolved';
+  }
+}
+
+function openCustomerInWaWeb() {
+  if (!_activeComplaint || !_activeComplaint.phone) {
+    toast('No hay número de teléfono disponible', 'error');
+    return;
+  }
+  var clean = String(_activeComplaint.phone).replace(/\D/g, '');
+  if (clean.length === 10 && clean.startsWith('3')) clean = '57' + clean;
+  var msg = (document.getElementById('cReplyMsg').value || '').trim();
+  var url = 'https://wa.me/' + clean + (msg ? ('?text=' + encodeURIComponent(msg)) : '');
+  window.open(url, '_blank');
+}
+
+function sendReplyViaBot() {
+  if (!_activeComplaint || !_activeComplaint.phone) {
+    toast('No hay número de teléfono asociado a esta queja', 'error');
+    return;
+  }
+
+  var msg = (document.getElementById('cReplyMsg').value || '').trim();
+  if (!msg) {
+    toast('Por favor escribe el mensaje que deseas enviar al cliente', 'error');
+    document.getElementById('cReplyMsg').focus();
+    return;
+  }
+
+  var btn = document.getElementById('btnSendWaReply');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Enviando...';
+  }
+
+  var statusVal = document.getElementById('cStatus').value || 'resolved';
+  var cleanPhone = String(_activeComplaint.phone).replace(/\D/g, '');
+  if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) cleanPhone = '57' + cleanPhone;
+
+  var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
+  fetch(apiBase + '/api/whatsapp/send-message', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + ((TOKEN && TOKEN !== 'null') ? TOKEN : 'firebase_admin_session')
+    },
+    body: JSON.stringify({
+      phone: cleanPhone,
+      message: msg,
+      complaint_id: _activeComplaint.id,
+      status: statusVal
+    })
+  }).then(function(res) {
+    return res.json().then(function(d) {
+      if (!res.ok) throw new Error(d.error || 'Error enviando mensaje');
+      return d;
+    });
+  }).then(function(res) {
+    toast(res.message || 'Mensaje enviado exitosamente al WhatsApp del cliente', 'ok');
+
+    // Registrar en Firestore
+    if (window.firebaseDb && window.firebaseDb.updateComplaint) {
+      var note = '[Respuesta WhatsApp ' + new Date().toLocaleTimeString('es-CO') + ']: ' + msg;
+      var existingNotes = document.getElementById('cAdminNotes').value.trim();
+      var combinedNotes = existingNotes ? (existingNotes + '\n' + note) : note;
+      window.firebaseDb.updateComplaint(_activeComplaint.id, {
+        status: statusVal,
+        admin_notes: combinedNotes
+      });
+    }
+
+    closeComplaintModal();
+    loadComplaintsSection();
+  }).catch(function(err) {
+    toast('Error enviando mensaje: ' + (err.message || 'Error de red'), 'error');
+  }).finally(function() {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '📤 Enviar Respuesta por WhatsApp';
+    }
+  });
 }
 
 function closeComplaintModal(e) {

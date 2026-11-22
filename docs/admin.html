@@ -768,13 +768,40 @@
         </select>
       </div>
       <div class="fg">
-        <label class="flabel">Notas de Solución / Administrador</label>
-        <textarea id="cAdminNotes" class="finput" rows="3" placeholder="Ej: Se le generó nueva ficha de reposición o se coordinó en Caseta 1..."></textarea>
-        <span class="fhint">Estas notas quedan registradas en el historial para auditoría</span>
+        <label class="flabel">Notas de Solución / Administrador (Internas)</label>
+        <textarea id="cAdminNotes" class="finput" rows="2" placeholder="Ej: Se le generó nueva ficha de reposición o se coordinó en Caseta 1..."></textarea>
+        <span class="fhint">Estas notas quedan registradas en el historial para auditoría interna</span>
       </div>
+
+      <!-- ── RESPONDER DIRECTO AL CLIENTE POR WHATSAPP ── -->
+      <div class="fg" style="margin-top:15px; padding:12px; background:rgba(37,211,102,0.08); border:1px solid rgba(37,211,102,0.3); border-radius:8px;">
+        <label class="flabel" style="color:#4ade80; font-weight:bold; display:flex; align-items:center; justify-content:space-between;">
+          <span>💬 Responder al Cliente por WhatsApp</span>
+          <span style="font-size:11px; font-weight:normal; color:var(--muted);">El bot enviará tu mensaje directo</span>
+        </label>
+        
+        <!-- Plantillas de respuesta rápida -->
+        <div style="display:flex; gap:6px; flex-wrap:wrap; margin:6px 0 8px 0;">
+          <button type="button" class="btn btn-sm btn-ghost" onclick="setReplyTemplate('ok')" style="font-size:11px; padding:3px 8px;">✅ Velocidad Restablecida</button>
+          <button type="button" class="btn btn-sm btn-ghost" onclick="setReplyTemplate('review')" style="font-size:11px; padding:3px 8px;">🔄 En Revisión</button>
+          <button type="button" class="btn btn-sm btn-ghost" onclick="setReplyTemplate('voucher')" style="font-size:11px; padding:3px 8px;">⚡ Reponer Ficha</button>
+        </div>
+
+        <textarea id="cReplyMsg" class="finput" rows="3" placeholder="Escribe aquí el mensaje para enviar directamente al WhatsApp del cliente..." style="border-color:rgba(37,211,102,0.4);"></textarea>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; gap:8px;">
+          <button type="button" class="btn btn-sm btn-ghost" id="btnOpenWaWeb" onclick="openCustomerInWaWeb()" style="font-size:11.5px;" title="Abrir chat en WhatsApp Web">
+            💬 Abrir en WhatsApp Web
+          </button>
+          <button type="button" class="btn btn-sm" id="btnSendWaReply" onclick="sendReplyViaBot()" style="background:#25d366; color:#000; font-weight:bold; border:none; padding:7px 16px; cursor:pointer;">
+            📤 Enviar Respuesta por WhatsApp
+          </button>
+        </div>
+      </div>
+
       <div style="display:flex; justify-content:space-between; margin-top:15px; gap:10px;">
-        <button type="button" class="btn btn-ghost" onclick="closeComplaintModal()">Cancelar</button>
-        <button type="submit" class="btn btn-primary">Guardar Solución</button>
+        <button type="button" class="btn btn-ghost" onclick="closeComplaintModal()">Cerrar</button>
+        <button type="submit" class="btn btn-primary">Guardar Registro</button>
       </div>
     </form>
   </div>
@@ -783,6 +810,6 @@
 <!-- ══ TOAST ════════════════════════════════════════════════= -->
 <div class="toast-wrap" id="toastWrap" aria-live="polite"></div>
 
-<script src="./js/admin.js?v=35"></script>
+<script src="./js/admin.js?v=36"></script>
 </body>
 </html>

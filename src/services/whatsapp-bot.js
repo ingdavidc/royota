@@ -994,6 +994,33 @@ async function restartBot() {
   return await startWhatsAppBot(false);
 }
 
+/**
+ * Enviar mensaje directo a un cliente de WhatsApp desde el panel de administración
+ */
+async function sendDirectWhatsAppMessage(phone, messageText) {
+  if (!_sock || _state.status !== 'connected') {
+    throw new Error('El bot de WhatsApp no está conectado actualmente. Por favor verifica que el bot esté en verde en el panel administrativo.');
+  }
+
+  let clean = String(phone || '').replace(/\D/g, '').trim();
+  if (clean.length === 10 && clean.startsWith('3')) {
+    clean = '57' + clean;
+  }
+  if (!clean || clean.length < 8) {
+    throw new Error('Número de teléfono inválido: ' + phone);
+  }
+
+  const jid = clean + '@s.whatsapp.net';
+  const text = String(messageText || '').trim();
+  if (!text) {
+    throw new Error('El mensaje no puede estar vacío');
+  }
+
+  await _sock.sendMessage(jid, { text });
+  console.log(`[WhatsApp Bot] 💬 Mensaje directo enviado desde el panel a +${clean}`);
+  return { success: true, message: `Mensaje enviado exitosamente al WhatsApp +${clean}` };
+}
+
 module.exports = {
   startWhatsAppBot,
   getBotStatus,
@@ -1002,4 +1029,5 @@ module.exports = {
   recordStrike,
   clearStrikes,
   checkPhoneBlocked,
+  sendDirectWhatsAppMessage,
 };
