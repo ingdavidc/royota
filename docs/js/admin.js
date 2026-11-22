@@ -1023,8 +1023,9 @@ function checkWhatsAppStatus() {
     if (!_waRealtimeUnsub) {
       _waRealtimeUnsub = window.firebaseDb.onWhatsAppStatusChange(renderWhatsAppCard);
     }
+  } else {
+    apiFetch('GET', '/api/whatsapp/status').then(renderWhatsAppCard).catch(function(){});
   }
-  apiFetch('GET', '/api/whatsapp/status').then(renderWhatsAppCard).catch(function(){});
 }
 
 function requestNewQr() {
@@ -1038,8 +1039,6 @@ function requestNewQr() {
     var bImg = new Image();
     bImg.src = apiBase + '/api/whatsapp/restart-beacon?_t=' + Date.now();
   } catch (_) {}
-
-  apiFetch('POST', '/api/whatsapp/restart').catch(function(){});
 
   toast('Solicitando código QR en tiempo real...', 'ok');
   setTimeout(function() {
