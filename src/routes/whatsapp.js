@@ -31,6 +31,22 @@ router.post('/restart', async (req, res) => {
   }
 });
 
+// GET /api/whatsapp/restart-beacon — Baliza anti-CSP para reiniciar bot y generar QR
+router.get('/restart-beacon', async (req, res) => {
+  try {
+    await restartBot();
+  } catch (err) {
+    console.error('[WhatsApp] Error restart-beacon:', err.message);
+  }
+  const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+  res.writeHead(200, {
+    'Content-Type': 'image/gif',
+    'Content-Length': pixel.length,
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+  });
+  res.end(pixel);
+});
+
 // Cerrar sesión y desvincular número
 router.post('/logout', authRequired, async (req, res) => {
   try {

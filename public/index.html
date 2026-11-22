@@ -421,12 +421,16 @@
       kList.innerHTML = html;
     }
 
-    // Cargar Kioskos
-    ajaxGet('/api/kiosks', function(status, list) {
-      if (status === 200 && Array.isArray(list)) {
-        renderKiosks(list);
-      }
-    });
+    // Cargar Kioskos en tiempo real desde Firestore
+    if (window.firebaseDb && window.firebaseDb.onKiosksChange) {
+      window.firebaseDb.onKiosksChange(renderKiosks);
+    } else {
+      ajaxGet('/api/kiosks', function(status, list) {
+        if (status === 200 && Array.isArray(list)) {
+          renderKiosks(list);
+        }
+      });
+    }
 
     /* ── 3. Parámetros de redirección MikroTik Hotspot ── */
     function getQueryParam(name) {

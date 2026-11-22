@@ -46,6 +46,33 @@ function apiFetch(method, url, body) {
         return (window.firebaseDb.deletePlanPermanent ? window.firebaseDb.deletePlanPermanent(planId) : window.firebaseDb.deletePlan(planId));
       }
     }
+    if (url.startsWith('/api/kiosks')) {
+      if (method === 'GET') {
+        var all = url.indexOf('all=true') !== -1;
+        return window.firebaseDb.getKiosks(all);
+      }
+      if (method === 'POST') {
+        return window.firebaseDb.saveKiosk(body).then(function() {
+          return { message: 'Caseta guardada exitosamente' };
+        });
+      }
+      if (url.includes('/toggle') && method === 'PATCH') {
+        var tId = url.split('/api/kiosks/')[1].split('/')[0];
+        return window.firebaseDb.toggleKiosk(tId);
+      }
+      if (method === 'PUT') {
+        var pId = url.split('/api/kiosks/')[1];
+        return window.firebaseDb.saveKiosk(body, pId).then(function() {
+          return { message: 'Caseta actualizada exitosamente' };
+        });
+      }
+      if (method === 'DELETE') {
+        var dId = url.split('/api/kiosks/')[1];
+        return window.firebaseDb.deleteKioskPermanent(dId).then(function() {
+          return { message: 'Caseta eliminada exitosamente' };
+        });
+      }
+    }
     if (url === '/api/vouchers/generate' && method === 'POST') {
       return window.firebaseDb.generateVouchers(body).then(function(res) {
         // Doble garantía de inyección inmediata a MikroTik en nube
@@ -913,85 +940,91 @@ function loadWhatsAppSection() {
   }, 4000);
 }
 
-function checkWhatsAppStatus() {
-  apiFetch('GET', '/api/whatsapp/status').then(function(s) {
-    var pill = document.getElementById('waStatusPill');
-    var qrBox = document.getElementById('waQrBox');
-    var qrImg = document.getElementById('waQrImg');
-    var connBox = document.getElementById('waConnectedBox');
-    var discBox = document.getElementById('waDisconnectedBox');
-    var userEl = document.getElementById('waConnectedUser');
-    var botNumDisp = document.getElementById('waBotNumberDisplay');
+var _waRealtimeUnsub = null;
 
-    if (!pill) return;
+function renderWhatsAppCard(s) {
+  var pill = document.getElementById('waStatusPill');
+  var qrBox = document.getElementById('waQrBox');
+  var qrImg = document.getElementById('waQrImg');
+  var connBox = document.getElementById('waConnectedBox');
+  var discBox = document.getElementById('waDisconnectedBox');
+  var userEl = document.getElementById('waConnectedUser');
+  var botNumDisp = document.getElementById('waBotNumberDisplay');
 
-    if (botNumDisp) {
-      if (s.botPhone) {
-        botNumDisp.textContent = '+' + s.botPhone;
-      } else {
-        botNumDisp.textContent = 'Auto-detectado al escanear';
-      }
-    }
+  if (!pill || !s) return;
 
-    if (s.status === 'connected') {
-      pill.textContent = '🟢 Conectado';
-      pill.style.background = 'rgba(74, 222, 128, 0.2)';
-      pill.style.color = '#4ade80';
-      if (qrBox) qrBox.style.display = 'none';
-      if (discBox) discBox.style.display = 'none';
-      if (connBox) connBox.style.display = 'block';
-      var userDisplayName = s.user ? (s.user.name || (s.botPhone ? ('+' + s.botPhone) : s.user.id)) : (s.botPhone ? ('+' + s.botPhone) : 'Dispositivo WhatsApp');
-      if (userEl) userEl.textContent = 'Vinculado a: ' + userDisplayName;
-
-      // Sincronizar automáticamente el número del bot al input de ajustes y a Firebase
-      if (s.botPhone) {
-        var cleanBot = s.botPhone.replace(/\D/g, '');
-        var setWaInput = document.getElementById('setWhatsappNumber');
-        if (setWaInput && (!setWaInput.value || setWaInput.value === '573123456789' || setWaInput.value === '3174251419')) {
-          setWaInput.value = cleanBot;
-        }
-        if (window.firebaseDb && window.firebaseDb.saveSettings && cleanBot !== window._lastSyncedBotNumber) {
-          window._lastSyncedBotNumber = cleanBot;
-          window.firebaseDb.saveSettings({ whatsapp_number: cleanBot });
-        }
-      }
-    } else if (s.status === 'qr_ready') {
-      pill.textContent = '🟡 Esperando Escaneo de QR';
-      pill.style.background = 'rgba(250, 204, 21, 0.2)';
-      pill.style.color = '#facc15';
-      if (connBox) connBox.style.display = 'none';
-      if (discBox) discBox.style.display = 'none';
-      if (qrBox) {
-        qrBox.style.display = 'block';
-        if (s.qrCodeDataUrl) {
-          qrImg.src = s.qrCodeDataUrl;
-        }
-      }
-    } else if (s.status === 'connecting') {
-      pill.textContent = '🔄 Conectando / Generando QR...';
-      pill.style.background = 'rgba(56, 189, 248, 0.2)';
-      pill.style.color = '#38bdf8';
-      if (qrBox) qrBox.style.display = 'none';
-      if (connBox) connBox.style.display = 'none';
-      if (discBox) discBox.style.display = 'none';
-    } else if (s.status === 'disabled') {
-      pill.textContent = '⚪ Desactivado (WHATSAPP_ENABLED=false)';
-      pill.style.background = 'rgba(255, 255, 255, 0.1)';
-      pill.style.color = 'var(--muted)';
-      if (qrBox) qrBox.style.display = 'none';
-      if (connBox) connBox.style.display = 'none';
-      if (discBox) discBox.style.display = 'none';
+  if (botNumDisp) {
+    if (s.botPhone) {
+      botNumDisp.textContent = '+' + s.botPhone;
     } else {
-      pill.textContent = '🔴 Desconectado';
-      pill.style.background = 'rgba(248, 113, 113, 0.2)';
-      pill.style.color = '#f87171';
-      if (qrBox) qrBox.style.display = 'none';
-      if (connBox) connBox.style.display = 'none';
-      if (discBox) discBox.style.display = 'block';
+      botNumDisp.textContent = 'Auto-detectado al escanear';
     }
-  }).catch(function(err) {
-    console.error('Error comprobando estado de WhatsApp:', err);
-  });
+  }
+
+  if (s.status === 'connected') {
+    pill.textContent = '🟢 Conectado';
+    pill.style.background = 'rgba(74, 222, 128, 0.2)';
+    pill.style.color = '#4ade80';
+    if (qrBox) qrBox.style.display = 'none';
+    if (discBox) discBox.style.display = 'none';
+    if (connBox) connBox.style.display = 'block';
+    var userDisplayName = s.user ? (s.user.name || (s.botPhone ? ('+' + s.botPhone) : s.user.id)) : (s.botPhone ? ('+' + s.botPhone) : 'Dispositivo WhatsApp');
+    if (userEl) userEl.textContent = 'Vinculado a: ' + userDisplayName;
+
+    if (s.botPhone) {
+      var cleanBot = String(s.botPhone).replace(/\D/g, '');
+      var setWaInput = document.getElementById('setWhatsappNumber');
+      if (setWaInput && (!setWaInput.value || setWaInput.value === '573123456789' || setWaInput.value === '3174251419')) {
+        setWaInput.value = cleanBot;
+      }
+      if (window.firebaseDb && window.firebaseDb.saveSettings && cleanBot !== window._lastSyncedBotNumber) {
+        window._lastSyncedBotNumber = cleanBot;
+        window.firebaseDb.saveSettings({ whatsapp_number: cleanBot });
+      }
+    }
+  } else if (s.status === 'qr_ready') {
+    pill.textContent = '🟡 Esperando Escaneo de QR';
+    pill.style.background = 'rgba(250, 204, 21, 0.2)';
+    pill.style.color = '#facc15';
+    if (connBox) connBox.style.display = 'none';
+    if (discBox) discBox.style.display = 'none';
+    if (qrBox) {
+      qrBox.style.display = 'block';
+      if (s.qrCodeDataUrl) {
+        qrImg.src = s.qrCodeDataUrl;
+      }
+    }
+  } else if (s.status === 'connecting') {
+    pill.textContent = '🔄 Conectando / Generando QR...';
+    pill.style.background = 'rgba(56, 189, 248, 0.2)';
+    pill.style.color = '#38bdf8';
+    if (qrBox) qrBox.style.display = 'none';
+    if (connBox) connBox.style.display = 'none';
+    if (discBox) discBox.style.display = 'none';
+  } else if (s.status === 'disabled') {
+    pill.textContent = '⚪ Desactivado (WHATSAPP_ENABLED=false)';
+    pill.style.background = 'rgba(255, 255, 255, 0.1)';
+    pill.style.color = 'var(--muted)';
+    if (qrBox) qrBox.style.display = 'none';
+    if (connBox) connBox.style.display = 'none';
+    if (discBox) discBox.style.display = 'none';
+  } else {
+    pill.textContent = '🔴 Desconectado';
+    pill.style.background = 'rgba(248, 113, 113, 0.2)';
+    pill.style.color = '#f87171';
+    if (qrBox) qrBox.style.display = 'none';
+    if (connBox) connBox.style.display = 'none';
+    if (discBox) discBox.style.display = 'block';
+  }
+}
+
+function checkWhatsAppStatus() {
+  if (window.firebaseDb && window.firebaseDb.onWhatsAppStatusChange) {
+    if (!_waRealtimeUnsub) {
+      _waRealtimeUnsub = window.firebaseDb.onWhatsAppStatusChange(renderWhatsAppCard);
+    }
+  }
+  apiFetch('GET', '/api/whatsapp/status').then(renderWhatsAppCard).catch(function(){});
 }
 
 function requestNewQr() {
@@ -1000,28 +1033,21 @@ function requestNewQr() {
     btn.disabled = true;
     btn.textContent = '⏳ Generando QR...';
   }
-  apiFetch('POST', '/api/whatsapp/restart').then(function() {
-    toast('Generando código QR, un momento...', 'ok');
-    var attempts = 0;
-    var pollQr = setInterval(function() {
-      attempts++;
-      checkWhatsAppStatus();
-      var qrBox = document.getElementById('waQrBox');
-      if ((qrBox && qrBox.style.display !== 'none') || attempts >= 10) {
-        clearInterval(pollQr);
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = '🔄 Generar Código QR';
-        }
-      }
-    }, 1500);
-  }).catch(function(err) {
-    toast((err && err.error) || 'Error al solicitar QR', 'error');
+  var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
+  try {
+    var bImg = new Image();
+    bImg.src = apiBase + '/api/whatsapp/restart-beacon?_t=' + Date.now();
+  } catch (_) {}
+
+  apiFetch('POST', '/api/whatsapp/restart').catch(function(){});
+
+  toast('Solicitando código QR en tiempo real...', 'ok');
+  setTimeout(function() {
     if (btn) {
       btn.disabled = false;
       btn.textContent = '🔄 Generar Código QR';
     }
-  });
+  }, 4000);
 }
 
 function disconnectWhatsApp() {

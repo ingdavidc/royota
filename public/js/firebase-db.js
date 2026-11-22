@@ -127,6 +127,17 @@
       });
     },
 
+    onWhatsAppStatusChange: function(cb) {
+      if (!db) return function(){};
+      return db.collection('telemetry').doc('whatsapp').onSnapshot(function(doc) {
+        if (doc && doc.exists) {
+          cb(doc.data());
+        }
+      }, function(err) {
+        console.warn('[FirebaseDb] WhatsApp realtime error:', err);
+      });
+    },
+
     onPlansChange: function(cb) {
       return db.collection('plans').onSnapshot(function(snap) {
         if (!snap || snap.empty) {
@@ -205,6 +216,73 @@
 
     deletePlanPermanent: function(planId) {
       return db.collection('plans').doc(planId).delete();
+    },
+
+    // ── Kioskos y Casetas (Puntos de Venta Físicos) ───────────
+    getKiosks: function(all) {
+      if (!db) return Promise.resolve([]);
+      var q = db.collection('kiosks');
+      if (!all) q = q.where('is_active', '==', 1);
+      return q.get().then(function(snap) {
+        var list = [];
+        snap.forEach(function(d) {
+          var k = d.data();
+          k.id = d.id;
+          list.push(k);
+        });
+        list.sort(function(a, b) {
+          return (a.sort_order || 0) - (b.sort_order || 0);
+        });
+        return list;
+      }).catch(function(err) {
+        console.warn('[FirebaseDb] Error getKiosks:', err);
+        return [];
+      });
+    },
+
+    saveKiosk: function(kioskData, kioskId) {
+      if (!db) return Promise.reject(new Error('No db'));
+      if (kioskId) {
+        return db.collection('kiosks').doc(String(kioskId)).update(kioskData);
+      } else {
+        kioskData.created_at = new Date().toISOString();
+        if (kioskData.is_active === undefined) kioskData.is_active = 1;
+        return db.collection('kiosks').add(kioskData);
+      }
+    },
+
+    toggleKiosk: function(kioskId) {
+      if (!db) return Promise.reject(new Error('No db'));
+      var ref = db.collection('kiosks').doc(String(kioskId));
+      return ref.get().then(function(doc) {
+        if (!doc.exists) throw new Error('Kiosko no encontrado');
+        var curr = doc.data().is_active;
+        var next = (curr === 1 || curr === true) ? 0 : 1;
+        return ref.update({ is_active: next }).then(function() {
+          return { message: 'Estado actualizado' };
+        });
+      });
+    },
+
+    deleteKioskPermanent: function(kioskId) {
+      if (!db) return Promise.reject(new Error('No db'));
+      return db.collection('kiosks').doc(String(kioskId)).delete();
+    },
+
+    onKiosksChange: function(cb) {
+      if (!db) return function(){};
+      return db.collection('kiosks').onSnapshot(function(snap) {
+        var list = [];
+        snap.forEach(function(d) {
+          var k = d.data();
+          k.id = d.id;
+          if (k.is_active !== 0 && k.is_active !== false) list.push(k);
+        });
+        list.sort(function(a, b) { return (a.sort_order || 0) - (b.sort_order || 0); });
+        cb(list);
+      }, function(err) {
+        console.warn('[FirebaseDb] onKiosksChange error:', err);
+      });
     },
 
     // ── Activación de Ficha Atómica (Anti-Carrera / TOCTOU) ───

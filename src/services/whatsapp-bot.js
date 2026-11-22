@@ -50,6 +50,25 @@ let _state = {
   lastError: null,
 };
 
+async function syncWhatsAppStateToFirestore() {
+  try {
+    const body = {
+      fields: {
+        status: { stringValue: _state.status || 'disconnected' },
+        qrCodeDataUrl: { stringValue: _state.qrCodeDataUrl || '' },
+        botPhone: { stringValue: '573174251419' },
+        user: { stringValue: _state.user ? JSON.stringify(_state.user) : '' },
+        updatedAt: { stringValue: new Date().toISOString() }
+      }
+    };
+    await fetch('https://firestore.googleapis.com/v1/projects/fichas-royota/databases/(default)/documents/telemetry/whatsapp', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+  } catch (_) {}
+}
+
 // ── Control de concurrencia y seguridad en memoria ────────────
 const _processingMessages = new Set();
 const _messageTimestamps  = new Map(); // phone -> [timestamps] (Rate limiting)
@@ -566,6 +585,7 @@ async function startWhatsAppBot(forceClean = false) {
         console.log('╚════════════════════════════════════════════════════════════════════╝\n');
         qrcodeTerminal.generate(qr, { small: true });
         console.log('\n(También puedes ver el QR desde el Panel de Administración)\n');
+        syncWhatsAppStateToFirestore();
       }
 
       if (connection === 'close') {
@@ -580,6 +600,7 @@ async function startWhatsAppBot(forceClean = false) {
         _state.qr = null;
         _state.qrCodeDataUrl = null;
         _state.user = null;
+        syncWhatsAppStateToFirestore();
 
         if (isLoggedOut) {
           console.log('[WhatsApp Bot] Sesión cerrada permanentemente (Logged Out). Limpiando credenciales...');
@@ -590,6 +611,7 @@ async function startWhatsAppBot(forceClean = false) {
           const delay = isRestartRequired ? 1000 : 3000;
           console.log(`[WhatsApp Bot] Reconectando sesión de WhatsApp en ${delay}ms...`);
           _state.status = 'connecting';
+          syncWhatsAppStateToFirestore();
           _reconnectTimer = setTimeout(() => startWhatsAppBot(false), delay);
         }
       } else if (connection === 'open') {
@@ -597,6 +619,7 @@ async function startWhatsAppBot(forceClean = false) {
         _state.qr = null;
         _state.qrCodeDataUrl = null;
         _state.user = sock.user;
+        syncWhatsAppStateToFirestore();
 
         let rawPhone = (sock.user?.id || '').split(':')[0].replace(/\D/g, '');
         if (rawPhone.length === 10 && rawPhone.startsWith('3')) {

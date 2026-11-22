@@ -103,6 +103,39 @@ html, body {
   break-inside: avoid;
   overflow: hidden;
   position: relative;
+  background-color: #fff;
+}
+
+/* Marca de agua (Watermark) con logotipo DC Telemática */
+.ticket::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 75%;
+  height: 75%;
+  background-image: url('./img/logo-dc-watermark.png');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  opacity: 0.09;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Contenido por encima de la marca de agua */
+.ticket > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Modo Carta: 4 columnas */
+.mode-letter .ticket {
+  width: calc(25% - 5px);
+  min-width: 145px;
+  padding: 9px 8px;
+  font-size: 11px;
 }
 
 /* Modo A4: 4 columnas */
@@ -221,6 +254,20 @@ html, body {
     margin: 0;
   }
 
+  /* Carta (Letter: 215.9mm) */
+  .mode-letter {
+    width: 215.9mm;
+  }
+  .mode-letter .tickets-wrap {
+    gap: 3mm;
+    padding: 4mm;
+  }
+  .mode-letter .ticket {
+    width: calc(25% - 3mm);
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
   /* A4 */
   .mode-a4 {
     width: 210mm;
@@ -269,6 +316,7 @@ html, body {
   <div class="ctrl-group">
     <label class="ctrl-label" for="selPaper">Papel:</label>
     <select id="selPaper" class="ctrl-select" onchange="changePaper()">
+      <option value="letter" selected>Carta (4 columnas)</option>
       <option value="a4">A4 (4 columnas)</option>
       <option value="80">Térmica 80mm</option>
       <option value="58">Térmica 58mm</option>
@@ -305,7 +353,7 @@ html, body {
 
 <div id="loadingMsg">⏳ Cargando fichas del lote…</div>
 
-<div id="ticketContainer" class="mode-a4" hidden>
+<div id="ticketContainer" class="mode-letter" hidden>
   <div class="tickets-wrap" id="ticketsWrap"></div>
 </div>
 
