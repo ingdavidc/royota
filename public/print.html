@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Imprimir Fichas — ROYOTA</title>
   <script src="./js/firebase-app-compat.js"></script>
+  <script src="./js/firebase-auth-compat.js"></script>
   <script src="./js/firebase-firestore-compat.js"></script>
-  <script src="./js/config.js"></script>
-  <script src="./js/firebase-db.js"></script>
+  <script src="./js/config.js?v=28"></script>
+  <script src="./js/firebase-db.js?v=28"></script>
   <style>
 /* ============================================================
    VISTA DE IMPRESIÓN — Hotspot Fichas ROYOTA
@@ -335,58 +336,79 @@ html, body {
     return;
   }
 
-  /* ── Cargar nombre del negocio ───────────────────────── */
-  apiGet('/api/config', function(err, cfg) {
-    if (!err && cfg.businessName) {
-      _bizName = cfg.businessName;
-      document.getElementById('inpBizName').value = _bizName;
-      document.title = 'Imprimir — ' + _bizName;
-    }
-  });
+  function loadBatchData() {
+    /* ── Cargar nombre del negocio ───────────────────────── */
+    apiGet('/api/config', function(err, cfg) {
+      if (!err && cfg && cfg.businessName) {
+        _bizName = cfg.businessName;
+        document.getElementById('inpBizName').value = _bizName;
+        document.title = 'Imprimir — ' + _bizName;
+      }
+    });
 
-  /* ── Cargar fichas del lote ──────────────────────────── */
-  apiGet('/api/vouchers/batch/' + batchId, function(err, data) {
-    if (err) {
-      document.getElementById('loadingMsg').textContent =
-        '❌ Error al cargar el lote: ' + (err.error || err.message || 'desconocido');
-      return;
-    }
+    /* ── Cargar fichas del lote ──────────────────────────── */
+    apiGet('/api/vouchers/batch/' + batchId, function(err, data) {
+      if (err || !data) {
+        document.getElementById('loadingMsg').textContent =
+          '❌ Error al cargar el lote: ' + ((err && (err.error || err.message)) || 'desconocido');
+        return;
+      }
 
-    _allVouchers = data.vouchers || [];
-    _batchInfo   = data.batch;
+      _allVouchers = data.vouchers || [];
+      _batchInfo   = data.batch;
 
-    document.getElementById('loadingMsg').hidden      = true;
-    document.getElementById('ticketContainer').hidden = false;
+      document.getElementById('loadingMsg').hidden      = true;
+      document.getElementById('ticketContainer').hidden = false;
 
-    updateBizName();  /* Lee input (que ya tiene el valor del negocio) */
-    renderTickets(_curStatus);
-  });
+      updateBizName();  /* Lee input (que ya tiene el valor del negocio) */
+      renderTickets(_curStatus);
+    });
+  }
 
-  /* ── Helpers de petición HTTP y Firestore ───────────── */
+  // Esperar a que Firebase Auth restaure la sesión del administrador
+  if (typeof firebase !== 'undefined' && firebase.auth) {
+    var unsubscribe = firebase.auth().onAuthStateChanged(function(user) {
+      if (unsubscribe) unsubscribe();
+      loadBatchData();
+    });
+  } else {
+    loadBatchData();
+  }
+
+  /* ── Helpers de petición HTTP y Firestore con Fallback ───────────── */
   function apiGet(url, cb) {
+    function fetchFallback() {
+      var fullUrl = (window.API_BASE || '') + url;
+      var xhr = new XMLHttpRequest();
+      xhr.open('GET', fullUrl, true);
+      xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState !== 4) return;
+        var d;
+        try { d = JSON.parse(xhr.responseText); } catch(_) { d = {}; }
+        if (xhr.status >= 400) cb(d, null);
+        else cb(null, d);
+      };
+      xhr.onerror = function() { cb({ error: 'Error de red' }, null); };
+      xhr.send();
+    }
+
     if (window.firebaseDb && url.startsWith('/api/vouchers/batch/')) {
       var bId = url.split('/api/vouchers/batch/')[1];
       window.firebaseDb.getVoucherBatch(bId).then(function(res) {
-        cb(null, res);
+        if (res && res.vouchers && res.vouchers.length) {
+          cb(null, res);
+        } else {
+          fetchFallback();
+        }
       }).catch(function(err) {
-        cb(err, null);
+        console.warn('[Print] Firestore error, usando fallback HTTP:', err);
+        fetchFallback();
       });
       return;
     }
 
-    var fullUrl = (window.API_BASE || '') + url;
-    var xhr = new XMLHttpRequest();
-    xhr.open('GET', fullUrl, true);
-    xhr.setRequestHeader('Authorization', 'Bearer ' + token);
-    xhr.onreadystatechange = function() {
-      if (xhr.readyState !== 4) return;
-      var d;
-      try { d = JSON.parse(xhr.responseText); } catch(_) { d = {}; }
-      if (xhr.status >= 400) cb(d, null);
-      else cb(null, d);
-    };
-    xhr.onerror = function() { cb({ error: 'Error de red' }, null); };
-    xhr.send();
+    fetchFallback();
   }
 
   /* ── Render de tickets ───────────────────────────────── */
