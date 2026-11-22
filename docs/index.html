@@ -137,7 +137,10 @@
         <!-- Contador regresivo en vivo durante el minuto de cortesía -->
         <div id="waCountdownBox" class="wa-countdown-box" hidden>
           <div class="wa-countdown-timer" id="waCountdownTimer">01:00</div>
-          <div id="waCountdownMsg">⚡ Navegación activa. Realiza tu pago en Nequi/Bancolombia y envía el comprobante al WhatsApp.</div>
+          <div id="waCountdownMsg">⚡ Navegación activa por 1 minuto. Abre tu app de pago (Nequi, Daviplata, banco) para transferir y envía el comprobante por WhatsApp.</div>
+          <button type="button" id="btnReopenWa" class="btn-wa-reopen" style="display:inline-flex; align-items:center; justify-content:center; gap:8px; margin-top:10px; width:100%; padding:10px 14px; background:linear-gradient(135deg, #25d366, #128c7e); color:#ffffff; font-weight:700; font-size:13px; border:none; border-radius:10px; cursor:pointer; box-shadow:0 3px 10px rgba(37,211,102,0.3);">
+            <span>💬 Abrir WhatsApp para enviar comprobante</span>
+          </button>
         </div>
       </div>
 
@@ -268,6 +271,7 @@
     var waCountdownBox   = document.getElementById('waCountdownBox');
     var waCountdownTimer = document.getElementById('waCountdownTimer');
     var waCountdownMsg   = document.getElementById('waCountdownMsg');
+    var btnReopenWa      = document.getElementById('btnReopenWa');
     var btnIrCasetas     = document.getElementById('btnIrCasetas');
     var kiosksSec        = document.getElementById('kiosksSection');
 
@@ -705,12 +709,11 @@
         xhrT.send(JSON.stringify({ mac: clientMac, ip: qsIp }));
       }
 
-      // Generar usuario de 1 minuto para el router MikroTik
-      var macSuffix = clientMac.replace(/[^A-F0-9]/gi, '').slice(-6) || 'ROYOTA';
-      var trialUser = 'WA-' + macSuffix + '-' + newAttempts;
+      // Limpiar cualquier aviso previo de error
+      hideStatus();
 
-      // Iniciar sesión Hotspot para otorgar 1 minuto de navegación (en iframe oculto sin recargar ni abrir about:blank)
-      submitMikrotikLogin(trialUser, '¡1 minuto de navegación otorgado! Conectando para pago móvil…', false);
+      // Iniciar sesión Hotspot de Cortesía (Trial) nativa en MikroTik vía iframe oculto
+      submitMikrotikTrialLogin();
 
       // Contador en vivo de 60 segundos
       if (waCountdownBox) {
@@ -720,7 +723,7 @@
 
         waCountdownTimer.textContent = '01:00';
         waCountdownMsg.textContent = newAttempts === 1
-          ? '⚡ Navegación activa por 1 minuto. Realiza tu transferencia y envía el comprobante por WhatsApp.'
+          ? '⚡ Navegación activa por 1 minuto. Abre tu app de pago (Nequi, Daviplata, banco) para transferir y envía el comprobante por WhatsApp.'
           : '⚠️ Última oportunidad (1 minuto activo). Completa tu pago y envía el comprobante.';
 
         _countdownTimerId = setInterval(function() {
@@ -760,6 +763,16 @@
       e.preventDefault();
       triggerWhatsAppFlow();
     });
+
+    if (btnReopenWa) {
+      btnReopenWa.addEventListener('click', function(e) {
+        e.preventDefault();
+        var num = _settings && _settings.whatsapp_number ? _settings.whatsapp_number : '573174251419';
+        var biz = _settings && _settings.business_name ? _settings.business_name : 'Río Royota';
+        var msg = _pendingWaMsg || _defaultWaMsg || ('¡Hola! Estoy en ' + biz + ' y deseo comprar una ficha de internet WiFi.');
+        openWhatsAppDirect(num, msg);
+      });
+    }
 
     /* ── 5. Control anti-autofocus en iPhone / iOS CNA ── */
     function unlockInputForUser() {
@@ -810,7 +823,44 @@
     }
 
     if (qsError) {
-      showStatus('Aviso de conexión: ' + qsError, 'warn');
+      if (qsError.indexOf('invalid') !== -1) {
+        showStatus('Si aún no tienes ficha física, puedes pedir tu minuto de cortesía abajo para pagar por WhatsApp o app bancaria.', 'warn');
+      } else {
+        showStatus('Aviso de conexión: ' + qsError, 'warn');
+      }
+    }
+
+    /* ── Autologin de Cortesía (MikroTik Hotspot Trial) vía iframe ── */
+    function submitMikrotikTrialLogin() {
+      showStatus('⚡ 1 minuto de navegación otorgado. Abre tu app bancaria (Nequi, Daviplata, etc.) o WhatsApp para completar tu compra.', 'ok');
+      try {
+        var postForm = document.createElement('form');
+        postForm.method = 'POST';
+        postForm.action = qsLinkLogin;
+        postForm.target = 'login_target';
+        postForm.style.display = 'none';
+
+        var trialInput = document.createElement('input');
+        trialInput.type = 'hidden';
+        trialInput.name = 'trial';
+        trialInput.value = 'yes';
+        postForm.appendChild(trialInput);
+
+        var dst = document.createElement('input');
+        dst.type = 'hidden';
+        dst.name = 'dst';
+        dst.value = qsLinkOrig;
+        postForm.appendChild(dst);
+
+        document.body.appendChild(postForm);
+        postForm.submit();
+
+        setTimeout(function() {
+          if (postForm.parentNode) postForm.parentNode.removeChild(postForm);
+        }, 1500);
+      } catch (err) {
+        console.warn('Error enviando trial login:', err);
+      }
     }
 
     /* ── Autologin a MikroTik RouterOS tras validar ficha ── */

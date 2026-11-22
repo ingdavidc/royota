@@ -102,7 +102,10 @@ add dns-name="wifi.balneario-royota.local" \
     hotspot-address=192.168.20.1 \
     html-directory=hotspot \
     http-cookie-lifetime=1d \
-    login-by=http-chap,cookie,http-pap \
+    login-by=http-chap,cookie,http-pap,trial \
+    trial-uptime-limit=2m \
+    trial-uptime-reset=1d \
+    trial-user-profile=perfil-trial-1m \
     name=hsprof-royota \
     use-radius=no
 
@@ -149,12 +152,16 @@ add dst-address=192.168.10.0/24 dst-port=3000 action=accept comment="Servidor Lo
 add dst-address=192.168.20.1 dst-port=53 protocol=udp action=accept comment="DNS Hotspot UDP"
 add dst-address=192.168.20.1 dst-port=53 protocol=tcp action=accept comment="DNS Hotspot TCP"
 
-# Dominios permitidos sin ficha (WhatsApp para compras y Render si el portal está en nube)
+# Dominios permitidos sin ficha (WhatsApp para compras, pagos móviles y Render si el portal está en nube)
 /ip hotspot walled-garden
 add dst-host=*whatsapp* action=allow comment="WhatsApp Web/App"
 add dst-host=*wa.me* action=allow comment="Enlaces WhatsApp"
 add dst-host=*onrender.com* action=allow comment="Servidor en la Nube Render"
 add dst-host=*firestore.googleapis.com* action=allow comment="Firebase Firestore"
+add dst-host=*nequi.com.co action=allow comment="App Nequi"
+add dst-host=*bancolombia.com action=allow comment="App Bancolombia"
+add dst-host=*daviplata.com action=allow comment="App Daviplata"
+add dst-host=*davivienda.com action=allow comment="App Davivienda"
 
 # ------------------------------------------------------------------------------
 # 9. SERVICIO REST API DE ROUTEROS v7 PARA EL SERVIDOR WEB
