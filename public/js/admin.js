@@ -257,9 +257,9 @@ function loadDashboard() {
 function setText(id, v) { var e = document.getElementById(id); if(e) e.textContent = v !== undefined ? v : '—'; }
 
 /* ══════════════════════════════════════════════════════════
-   GENERAR FICHAS (POR CAPACIDAD DE HOJA CARTA: 36 FICHAS/HOJA)
+   GENERAR FICHAS (POR CAPACIDAD DE HOJA CARTA: 48 FICHAS/HOJA - 6 COLS × 8 FILAS)
 ══════════════════════════════════════════════════════════ */
-var TICKETS_PER_LETTER_PAGE = 36;
+var TICKETS_PER_LETTER_PAGE = 48;
 var _lastBatchId   = null;
 var _lastBatchData = null;
 var _plansCache    = [];
@@ -524,7 +524,10 @@ function loadBatches() {
       td(tr, b.plan_name);
       var totalNum = b.vouchers_total !== undefined ? b.vouchers_total : (b.quantity || 0);
       var totalText = String(totalNum);
-      if (totalNum >= 36 && totalNum % 36 === 0) {
+      if (totalNum >= 48 && totalNum % 48 === 0) {
+        var sh = totalNum / 48;
+        totalText += ' (' + sh + (sh === 1 ? ' hoja)' : ' hojas)');
+      } else if (totalNum >= 36 && totalNum % 36 === 0) {
         var sh = totalNum / 36;
         totalText += ' (' + sh + (sh === 1 ? ' hoja)' : ' hojas)');
       }

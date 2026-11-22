@@ -13,9 +13,12 @@
 /* ============================================================
    VISTA DE IMPRESIÓN — Hotspot Fichas ROYOTA
    Soporta:
-     · Impresora térmica 58mm  (2¼") — paper-width-58
-     · Impresora térmica 80mm  (3")  — paper-width-80 (default)
-     · Hoja A4 (4 columnas × N filas)
+     · Hoja Carta (6 columnas × 8 filas = 48 fichas/hoja) — MÁXIMO AHORRO
+     · Hoja Carta (4 columnas × 6 filas = 24 fichas/hoja) — GRANDE
+     · Hoja A4 (6 columnas × 8 filas = 48 fichas/hoja)
+     · Hoja A4 (4 columnas × 6 filas = 24 fichas/hoja)
+     · Impresora térmica 80mm
+     · Impresora térmica 58mm
    ============================================================ */
 
 /* ── Reset y base ─────────────────────────────────────────── */
@@ -23,7 +26,7 @@
 
 html, body {
   font-family: 'Courier New', Courier, monospace;
-  background: #f4f4f4;
+  background: #eef2f6;
   color: #111;
   font-size: 12px;
 }
@@ -35,11 +38,12 @@ html, body {
   z-index: 100;
   background: #1c2a3d;
   color: #e0e9f0;
-  padding: 14px 20px;
+  padding: 12px 20px;
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   align-items: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.3);
 }
 
 .ctrl-title { font-size: 16px; font-weight: 700; color: #00d4ff; }
@@ -85,25 +89,47 @@ html, body {
    CONTENEDOR DE TICKETS
 ══════════════════════════════════════════════════════════ */
 #ticketContainer {
-  padding: 10px;
+  padding: 15px 10px 40px 10px;
 }
 
-/* ── Modos de layout ─────────────────────────────────────── */
-/* Por defecto: A4 — 4 columnas */
 .tickets-wrap {
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+  width: 100%;
+}
+
+/* ── Contenedor por Hoja de Impresión (Paginación) ────────── */
+.print-sheet {
+  background: #ffffff;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.14);
+  box-sizing: border-box;
+  display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  align-content: flex-start;
+  padding: 3.5mm;
+  gap: 1.2mm;
+  width: 215.9mm;
+  min-height: 279.4mm;
+  position: relative;
+  border-radius: 4px;
+}
+
+.mode-a4 .print-sheet {
+  width: 210mm;
+  min-height: 297mm;
 }
 
 /* ── TICKET base ─────────────────────────────────────────── */
 .ticket {
-  border: 1px dashed #999;
+  border: 1px dashed #777;
   page-break-inside: avoid;
   break-inside: avoid;
   overflow: hidden;
   position: relative;
   background-color: #fff;
+  box-sizing: border-box;
 }
 
 /* Marca de agua (Watermark) con logotipo DC Telemática */
@@ -119,270 +145,233 @@ html, body {
   background-repeat: no-repeat;
   background-position: center;
   background-size: contain;
-  opacity: 0.09;
+  opacity: 0.08;
   pointer-events: none;
   z-index: 0;
 }
 
-/* Contenido por encima de la marca de agua */
 .ticket > * {
   position: relative;
   z-index: 1;
 }
 
-/* Modo Carta: 6 columnas (Máximo Ahorro) */
-.mode-letter .tickets-wrap { gap: 4px; }
-.mode-letter .ticket {
-  width: calc(16.666% - 4px);
-  min-width: 105px;
-  padding: 6px 5px;
-  font-size: 9.5px;
-}
-.mode-letter .tk-code { font-size: 1.35em; letter-spacing: 1.5px; }
-.mode-letter .tk-code-wrap { margin: 3px 0; padding: 3px 2px; }
-.mode-letter .tk-biz-name { font-size: 0.9em; letter-spacing: 0.5px; }
-.mode-letter .tk-header { margin-bottom: 2px; padding-bottom: 2px; }
-.mode-letter .tk-details { margin-top: 3px; font-size: 0.85em; }
-.mode-letter .tk-footer { margin-top: 3px; font-size: 0.72em; }
-
-/* Modo Carta: 4 columnas */
-.mode-letter-4 .tickets-wrap { gap: 6px; }
-.mode-letter-4 .ticket {
-  width: calc(25% - 5px);
-  min-width: 145px;
-  padding: 9px 8px;
-  font-size: 11px;
+/* ── Modo Carta / A4: 6 columnas × 8 filas = 48 fichas/hoja ── */
+.mode-letter .print-sheet .ticket,
+.mode-a4 .print-sheet .ticket {
+  width: calc(16.666% - 1.2mm);
+  height: 32.5mm;
+  max-height: 32.5mm;
+  padding: 1.2mm 1.5mm;
+  font-size: 7.2pt;
+  line-height: 1.15;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
-/* Modo A4: 6 columnas (Máximo Ahorro) */
-.mode-a4 .tickets-wrap { gap: 4px; }
-.mode-a4 .ticket {
-  width: calc(16.666% - 4px);
-  min-width: 100px;
-  padding: 6px 5px;
-  font-size: 9.5px;
-}
-.mode-a4 .tk-code { font-size: 1.35em; letter-spacing: 1.5px; }
-.mode-a4 .tk-code-wrap { margin: 3px 0; padding: 3px 2px; }
-.mode-a4 .tk-biz-name { font-size: 0.9em; letter-spacing: 0.5px; }
-.mode-a4 .tk-header { margin-bottom: 2px; padding-bottom: 2px; }
-.mode-a4 .tk-details { margin-top: 3px; font-size: 0.85em; }
-.mode-a4 .tk-footer { margin-top: 3px; font-size: 0.72em; }
-
-/* Modo A4: 4 columnas */
-.mode-a4-4 .tickets-wrap { gap: 6px; }
-.mode-a4-4 .ticket {
-  width: calc(25% - 5px);
-  min-width: 150px;
-  padding: 10px 8px;
-  font-size: 11px;
-}
-
-/* Modo térmica 80mm */
-.mode-80 .tickets-wrap { flex-direction: column; align-items: flex-start; }
-.mode-80 .ticket {
-  width: 72mm;      /* 80mm papel − ~8mm márgenes */
-  padding: 4mm 3mm;
-  font-size: 10pt;
-  margin-bottom: 2mm;
-  page-break-after: always;
-  break-after: page;
-}
-
-/* Modo térmica 58mm */
-.mode-58 .tickets-wrap { flex-direction: column; align-items: flex-start; }
-.mode-58 .ticket {
-  width: 50mm;      /* 58mm papel − ~8mm márgenes */
-  padding: 3mm 2mm;
-  font-size: 9pt;
-  margin-bottom: 2mm;
-  page-break-after: always;
-  break-after: page;
-}
-
-/* ── Contenido interno del ticket ────────────────────────── */
-.tk-header {
-  text-align: center;
-  margin-bottom: 4px;
-  border-bottom: 1px solid #ccc;
-  padding-bottom: 4px;
-}
-.tk-biz-name {
-  font-size: 1.1em;
+.mode-letter .tk-num,
+.mode-a4 .tk-num {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  font-size: 6.5pt;
+  color: #888;
   font-weight: 700;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-}
-.tk-label {
-  font-size: 0.8em;
-  color: #555;
-  margin-top: 1px;
+  line-height: 1;
 }
 
-.tk-code-wrap {
+.mode-letter .tk-header,
+.mode-a4 .tk-header {
   text-align: center;
-  margin: 6px 0;
-  padding: 6px 4px;
-  background: #f9f9f9;
-  border-radius: 4px;
-}
-.tk-code {
-  font-size: 1.8em;
-  font-weight: 900;
-  letter-spacing: 4px;
-  word-break: break-all;
-  line-height: 1.1;
+  margin-bottom: 1px;
+  border-bottom: 1px solid #ccc;
+  padding-bottom: 1px;
 }
 
-.tk-details {
-  margin-top: 5px;
-  font-size: 0.85em;
+.mode-letter .tk-biz-name,
+.mode-a4 .tk-biz-name {
+  font-size: 7.5pt;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  line-height: 1.05;
 }
-.tk-row {
+
+.mode-letter .tk-label,
+.mode-a4 .tk-label {
+  font-size: 5.6pt;
+  color: #555;
+  line-height: 1;
+  margin-top: 0.5px;
+}
+
+.mode-letter .tk-code-wrap,
+.mode-a4 .tk-code-wrap {
+  text-align: center;
+  margin: 1px 0;
+  padding: 1.5px 1px;
+  background: #f4f4f4;
+  border-radius: 3px;
+}
+
+.mode-letter .tk-code,
+.mode-a4 .tk-code {
+  font-size: 11.5pt;
+  font-weight: 900;
+  letter-spacing: 1.2px;
+  line-height: 1;
+  word-break: break-all;
+}
+
+.mode-letter .tk-details,
+.mode-a4 .tk-details {
+  margin: 1px 0;
+  font-size: 6.4pt;
+  line-height: 1.12;
+}
+
+.mode-letter .tk-row,
+.mode-a4 .tk-row {
   display: flex;
   justify-content: space-between;
-  padding: 1px 0;
+  padding: 0.3px 0;
   border-bottom: 1px dotted #ddd;
 }
-.tk-row:last-child { border-bottom: none; }
-.tk-k { color: #555; }
-.tk-v { font-weight: 700; }
+.mode-letter .tk-row:last-child,
+.mode-a4 .tk-row:last-child {
+  border-bottom: none;
+}
 
-.tk-footer {
+.mode-letter .tk-k,
+.mode-a4 .tk-k { color: #555; }
+.mode-letter .tk-v,
+.mode-a4 .tk-v { font-weight: 700; }
+
+.mode-letter .tk-footer,
+.mode-a4 .tk-footer {
   text-align: center;
-  margin-top: 5px;
-  font-size: 0.75em;
-  color: #888;
-  border-top: 1px dashed #bbb;
-  padding-top: 4px;
+  margin-top: 1px;
+  font-size: 5.2pt;
+  color: #777;
+  border-top: 1px dashed #ccc;
+  padding-top: 1px;
+  line-height: 1.05;
 }
 
-/* Número de ficha (para A4) */
-.tk-num {
-  position: absolute;
-  top: 4px; right: 6px;
-  font-size: 9px;
-  color: #bbb;
+/* ── Modo Carta / A4: 4 columnas × 6 filas = 24 fichas/hoja ── */
+.mode-letter-4 .print-sheet .ticket,
+.mode-a4-4 .print-sheet .ticket {
+  width: calc(25% - 2.5mm);
+  height: 43mm;
+  max-height: 43mm;
+  padding: 3mm 3mm;
+  font-size: 9pt;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.mode-letter-4 .tk-code,
+.mode-a4-4 .tk-code {
+  font-size: 14pt;
+  letter-spacing: 2px;
 }
 
-/* ── Modo compacto: solo código (sin detalles) ──────────── */
-.mode-compact .tk-details { display: none; }
-.mode-compact .tk-footer  { display: none; }
+/* ── Modos térmicas (rollo continuo) ── */
+.mode-80 .tickets-wrap,
+.mode-58 .tickets-wrap {
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.mode-80 .ticket {
+  width: 72mm;
+  padding: 4mm 3mm;
+  font-size: 10pt;
+  border: 1px dashed #777;
+  page-break-after: always;
+  break-after: page;
+}
+.mode-58 .ticket {
+  width: 50mm;
+  padding: 3mm 2mm;
+  font-size: 9pt;
+  border: 1px dashed #777;
+  page-break-after: always;
+  break-after: page;
+}
+
+/* ── Modo compacto (solo código) ── */
+.mode-compact .tk-details { display: none !important; }
+.mode-compact .tk-footer  { display: none !important; }
+.mode-compact .tk-code    { font-size: 14pt !important; }
 
 /* ══════════════════════════════════════════════════════════
    REGLAS @media print
 ══════════════════════════════════════════════════════════ */
 @media print {
+  @page {
+    size: letter portrait;
+    margin: 3.5mm 3.5mm 3.5mm 3.5mm;
+  }
+
   .screen-ctrl { display: none !important; }
   #loadingMsg  { display: none !important; }
 
   html, body {
-    background: #fff;
-    color: #000;
+    background: #fff !important;
+    color: #000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
 
   #ticketContainer {
-    padding: 0;
-    margin: 0;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
   }
 
-  /* Carta (Letter: 215.9mm — 6 columnas) */
-  .mode-letter {
-    width: 215.9mm;
-  }
-  .mode-letter .tickets-wrap {
-    gap: 1.5mm;
-    padding: 2.5mm;
-  }
-  .mode-letter .ticket {
-    width: calc(16.666% - 1.5mm);
-    padding: 2.5mm 2mm;
-    page-break-inside: avoid;
-    break-inside: avoid;
-    font-size: 7.5pt;
-  }
-  .mode-letter .tk-code { font-size: 1.25em; letter-spacing: 1.2px; }
-  .mode-letter .tk-code-wrap { margin: 2px 0; padding: 2px 1px; }
-  .mode-letter .tk-biz-name { font-size: 0.85em; letter-spacing: 0.5px; }
-  .mode-letter .tk-label { font-size: 0.7em; }
-  .mode-letter .tk-details { margin-top: 2px; font-size: 0.78em; }
-  .mode-letter .tk-footer { margin-top: 2px; font-size: 0.65em; }
-
-  /* Carta (Letter: 215.9mm — 4 columnas) */
-  .mode-letter-4 {
-    width: 215.9mm;
-  }
-  .mode-letter-4 .tickets-wrap {
-    gap: 3mm;
-    padding: 4mm;
-  }
-  .mode-letter-4 .ticket {
-    width: calc(25% - 3mm);
-    padding: 4mm 3mm;
-    page-break-inside: avoid;
-    break-inside: avoid;
-    font-size: 9pt;
+  .tickets-wrap {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
   }
 
-  /* A4 (210mm — 6 columnas) */
-  .mode-a4 {
-    width: 210mm;
-  }
-  .mode-a4 .tickets-wrap {
-    gap: 1.5mm;
-    padding: 2.5mm;
-  }
-  .mode-a4 .ticket {
-    width: calc(16.666% - 1.5mm);
-    padding: 2.5mm 2mm;
-    page-break-inside: avoid;
-    break-inside: avoid;
-    font-size: 7.5pt;
-  }
-  .mode-a4 .tk-code { font-size: 1.25em; letter-spacing: 1.2px; }
-  .mode-a4 .tk-code-wrap { margin: 2px 0; padding: 2px 1px; }
-  .mode-a4 .tk-biz-name { font-size: 0.85em; letter-spacing: 0.5px; }
-  .mode-a4 .tk-label { font-size: 0.7em; }
-  .mode-a4 .tk-details { margin-top: 2px; font-size: 0.78em; }
-  .mode-a4 .tk-footer { margin-top: 2px; font-size: 0.65em; }
-
-  /* A4 (210mm — 4 columnas) */
-  .mode-a4-4 {
-    width: 210mm;
-  }
-  .mode-a4-4 .tickets-wrap {
-    gap: 3mm;
-    padding: 4mm;
-  }
-  .mode-a4-4 .ticket {
-    width: calc(25% - 3mm);
-    padding: 4mm 3mm;
-    page-break-inside: avoid;
-    break-inside: avoid;
-    font-size: 9pt;
+  /* Hojas tamaño Carta / A4 impresas exactas */
+  .print-sheet {
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: 272mm !important;
+    max-height: 272mm !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-content: flex-start !important;
+    gap: 1.2mm !important;
+    overflow: hidden !important;
+    box-sizing: border-box !important;
   }
 
-  /* Térmica 80mm */
-  .mode-80 {
-    width: 80mm;
+  .print-sheet:last-child {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
   }
+
+  /* Térmicas en impresión */
   .mode-80 .ticket {
-    width: 72mm;
-    border: none;
-    border-bottom: 1px dashed #000;
-  }
-
-  /* Térmica 58mm */
-  .mode-58 {
-    width: 58mm;
+    border: none !important;
+    border-bottom: 1px dashed #000 !important;
+    width: 72mm !important;
   }
   .mode-58 .ticket {
-    width: 50mm;
-    border: none;
-    border-bottom: 1px dashed #000;
+    border: none !important;
+    border-bottom: 1px dashed #000 !important;
+    width: 50mm !important;
   }
-
-  .ticket { border-color: #ccc; }
 }
   </style>
 </head>
@@ -396,9 +385,9 @@ html, body {
   <div class="ctrl-group">
     <label class="ctrl-label" for="selPaper">Papel:</label>
     <select id="selPaper" class="ctrl-select" onchange="changePaper()">
-      <option value="letter" selected>Carta (6 columnas - Ahorro)</option>
+      <option value="letter" selected>Carta (6 cols × 8 filas - 48 fichas/hoja)</option>
       <option value="letter-4">Carta (4 columnas - Grande)</option>
-      <option value="a4">A4 (6 columnas - Ahorro)</option>
+      <option value="a4">A4 (6 cols × 8 filas - 48 fichas/hoja)</option>
       <option value="a4-4">A4 (4 columnas - Grande)</option>
       <option value="80">Térmica 80mm</option>
       <option value="58">Térmica 58mm</option>
@@ -452,7 +441,7 @@ html, body {
   /* ── Leer parámetros de URL ──────────────────────────── */
   var params  = new URLSearchParams(location.search);
   var batchId = params.get('batch');
-  var token   = localStorage.getItem('fichas_token');
+  var token   = localStorage.getItem('fichas_token') || (location.hostname === 'localhost' ? 'dev-token' : null);
 
   if (!batchId) {
     document.getElementById('loadingMsg').textContent =
@@ -490,7 +479,7 @@ html, body {
       document.getElementById('loadingMsg').hidden      = true;
       document.getElementById('ticketContainer').hidden = false;
 
-      updateBizName();  /* Lee input (que ya tiene el valor del negocio) */
+      updateBizName();
       renderTickets(_curStatus);
     });
   }
@@ -541,7 +530,7 @@ html, body {
     fetchFallback();
   }
 
-  /* ── Render de tickets ───────────────────────────────── */
+  /* ── Render de tickets agrupados en hojas carta de 48 fichas ── */
   function renderTickets(statusFilter) {
     var list = statusFilter
       ? _allVouchers.filter(function(v) { return v.status === statusFilter; })
@@ -552,9 +541,17 @@ html, body {
 
     var bi = _bizName || 'WiFi ROYOTA';
     var total = list.length;
+    var paperVal = document.getElementById('selPaper').value;
+
+    var perSheet = 0;
+    if (paperVal === 'letter' || paperVal === 'a4') perSheet = 48; // 6 cols × 8 filas = 48 fichas/hoja
+    else if (paperVal === 'letter-4' || paperVal === 'a4-4') perSheet = 24; // 4 cols × 6 filas = 24 fichas/hoja
+
+    var sheetsCount = perSheet > 0 ? Math.ceil(total / perSheet) : 1;
+    var sheetsText = perSheet > 0 ? ' (' + sheetsCount + (sheetsCount === 1 ? ' hoja)' : ' hojas)') : '';
 
     document.getElementById('ctrlInfo').textContent =
-      (total) + ' ficha(s) | Lote #' + batchId +
+      total + ' ficha(s)' + sheetsText + ' | Lote #' + batchId +
       (_batchInfo ? ' — ' + (_batchInfo.plan_name || '') : '');
 
     if (!total) {
@@ -562,33 +559,53 @@ html, body {
       return;
     }
 
-    list.forEach(function(v, idx) {
-      var div = document.createElement('div');
-      div.className = 'ticket';
+    if (perSheet > 0) {
+      for (var s = 0; s < sheetsCount; s++) {
+        var sheetDiv = document.createElement('div');
+        sheetDiv.className = 'print-sheet';
+        var pageVouchers = list.slice(s * perSheet, (s + 1) * perSheet);
 
-      div.innerHTML =
-        '<div class="tk-num">#' + (idx+1) + '</div>' +
+        pageVouchers.forEach(function(v, pageIdx) {
+          var globalIdx = s * perSheet + pageIdx;
+          sheetDiv.appendChild(createTicketElement(v, globalIdx, bi));
+        });
 
-        '<div class="tk-header">' +
-          '<div class="tk-biz-name">' + esc(bi) + '</div>' +
-          '<div class="tk-label">Acceso a Internet</div>' +
-        '</div>' +
+        wrap.appendChild(sheetDiv);
+      }
+    } else {
+      // Impresoras térmicas continuas
+      list.forEach(function(v, idx) {
+        wrap.appendChild(createTicketElement(v, idx, bi));
+      });
+    }
+  }
 
-        '<div class="tk-code-wrap">' +
-          '<div class="tk-code">' + esc(v.code) + '</div>' +
-        '</div>' +
+  function createTicketElement(v, idx, bi) {
+    var div = document.createElement('div');
+    div.className = 'ticket';
 
-        '<div class="tk-details">' +
-          tkRow('Plan',      v.plan_name || '—') +
-          tkRow('Tiempo',    v.duration  || '—') +
-          tkRow('Velocidad', v.speed_limit || '—') +
-          tkRow('Precio',    v.price != null ? '$' + parseFloat(v.price).toFixed(2) : '—') +
-        '</div>' +
+    div.innerHTML =
+      '<div class="tk-num">#' + (idx+1) + '</div>' +
 
-        '<div class="tk-footer">Ingresa el código en la página de inicio del WiFi</div>';
+      '<div class="tk-header">' +
+        '<div class="tk-biz-name">' + esc(bi) + '</div>' +
+        '<div class="tk-label">Acceso a Internet</div>' +
+      '</div>' +
 
-      wrap.appendChild(div);
-    });
+      '<div class="tk-code-wrap">' +
+        '<div class="tk-code">' + esc(v.code) + '</div>' +
+      '</div>' +
+
+      '<div class="tk-details">' +
+        tkRow('Plan',      v.plan_name || '—') +
+        tkRow('Tiempo',    v.duration  || '—') +
+        tkRow('Velocidad', v.speed_limit || '—') +
+        tkRow('Precio',    v.price != null ? '$' + parseFloat(v.price).toFixed(2) : '—') +
+      '</div>' +
+
+      '<div class="tk-footer">Ingresa el código en la página de inicio del WiFi</div>';
+
+    return div;
   }
 
   function tkRow(label, val) {
@@ -607,10 +624,10 @@ html, body {
     var val = document.getElementById('selPaper').value;
     var container = document.getElementById('ticketContainer');
     container.className = 'mode-' + val;
-    // Preservar clase compact si está activa
     if (document.getElementById('selDetail').value === 'compact') {
       container.className += ' mode-compact';
     }
+    renderTickets(_curStatus);
   };
 
   window.changeDetail = function() {
