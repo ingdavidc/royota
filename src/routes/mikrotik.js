@@ -180,11 +180,43 @@ router.delete('/bindings/:mac', async (req, res) => {
   const db = getDb();
   try {
     db.prepare('DELETE FROM ip_bindings WHERE mac_address = ? COLLATE NOCASE').run(cleanMac);
+    db.prepare('INSERT INTO pending_removals (mac_address) VALUES (?)').run(cleanMac);
     try { await mikrotik.removeIpBinding(cleanMac); } catch (_) {}
     res.json({ ok: true, removed: cleanMac });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// POST /api/mikrotik/sync/push-binding — Inyección directa de IP Binding hacia MikroTik
+router.post('/sync/push-binding', (req, res) => {
+  const { mac_address, comment, type, address } = req.body;
+  if (!mac_address) return res.status(400).json({ error: 'MAC requerida' });
+  const cleanMac = String(mac_address).trim().toUpperCase();
+  if (!REGEX_MAC.test(cleanMac)) {
+    return res.status(400).json({ error: 'MAC inválida' });
+  }
+  const cleanComment = String(comment || 'Dispositivo Exento').slice(0, 80);
+  const cleanType = ['bypassed', 'blocked', 'regular'].includes(type) ? type : 'bypassed';
+  const cleanAddress = address ? String(address).trim() : '';
+
+  const db = getDb();
+  try {
+    db.prepare(`
+      INSERT INTO ip_bindings (mac_address, comment, type, address, server, is_active, mikrotik_synced, created_at)
+      VALUES (?, ?, ?, ?, 'all', 1, 0, datetime('now'))
+      ON CONFLICT(mac_address) DO UPDATE SET
+        comment = excluded.comment,
+        type = excluded.type,
+        address = excluded.address,
+        is_active = 1,
+        mikrotik_synced = 0
+    `).run(cleanMac, cleanComment, cleanType, cleanAddress);
+    console.log(`[Cloud-Sync] 📺 IP Binding ${cleanMac} (${cleanComment}) encolado para MikroTik.`);
+  } catch (err) {
+    console.error('[Cloud-Sync] Error en push-binding:', err.message);
+  }
+  res.json({ ok: true, mac: cleanMac });
 });
 
 // GET /api/mikrotik/sync/binding-beacon — Beacon anti-CSP para registrar IP Bindings
@@ -208,8 +240,26 @@ router.get('/sync/binding-beacon', (req, res) => {
             is_active = 1,
             mikrotik_synced = 0
         `).run(cleanMac, cleanComment, cleanType, cleanAddress);
+        console.log(`[Cloud-Sync] 📺 IP Binding ${cleanMac} (${cleanComment}) vía beacon.`);
       } catch (_) {}
     }
+  }
+  res.setHeader('Content-Type', 'image/gif');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.end(PIXEL_GIF);
+});
+
+// GET /api/mikrotik/sync/remove-binding-beacon — Beacon para eliminar IP Binding en MikroTik
+router.get('/sync/remove-binding-beacon', (req, res) => {
+  const mac = req.query.mac;
+  if (mac) {
+    const cleanMac = String(mac).trim().toUpperCase();
+    try {
+      const db = getDb();
+      db.prepare('DELETE FROM ip_bindings WHERE mac_address = ? COLLATE NOCASE').run(cleanMac);
+      db.prepare('INSERT INTO pending_removals (mac_address) VALUES (?)').run(cleanMac);
+      console.log(`[Cloud-Sync] 🗑️ IP Binding ${cleanMac} encolado para remoción en MikroTik.`);
+    } catch (_) {}
   }
   res.setHeader('Content-Type', 'image/gif');
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
@@ -491,6 +541,26 @@ router.get('/sync/vouchers.rsc', (req, res) => {
     }
   } catch (bErr) {
     console.error('[Cloud-Sync] Error procesando IP Bindings pendientes:', bErr.message);
+  }
+
+  // 5. Extraer eliminaciones pendientes de IP Bindings para remoción en el MikroTik
+  try {
+    const removals = db.prepare('SELECT id, mac_address FROM pending_removals LIMIT 20').all();
+    if (removals.length > 0) {
+      rscCommands += '\n/ip hotspot ip-binding\n';
+      const rIds = [];
+      removals.forEach(r => {
+        rscCommands += `:do { remove [find mac-address="${r.mac_address}"] } on-error={}\n`;
+        rIds.push(r.id);
+      });
+      if (rIds.length > 0) {
+        const ph = rIds.map(() => '?').join(',');
+        db.prepare(`DELETE FROM pending_removals WHERE id IN (${ph})`).run(...rIds);
+        console.log(`[Cloud-Sync] 🗑️ Entregadas ${rIds.length} eliminaciones de IP Binding al MikroTik.`);
+      }
+    }
+  } catch (rErr) {
+    console.error('[Cloud-Sync] Error procesando eliminaciones pendientes:', rErr.message);
   }
 
   res.setHeader('Content-Type', 'text/plain');

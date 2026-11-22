@@ -80,8 +80,8 @@ function apiFetch(method, url, body) {
       }
       if (method === 'POST') {
         return window.firebaseDb.saveIpBinding(body).then(function(res) {
+          var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
           try {
-            var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
             var bImg = new Image();
             bImg.src = apiBase + '/api/mikrotik/sync/binding-beacon?mac=' + encodeURIComponent(body.mac_address) +
               '&comment=' + encodeURIComponent(body.comment || '') +
@@ -89,12 +89,38 @@ function apiFetch(method, url, body) {
               '&address=' + encodeURIComponent(body.address || '') +
               '&_t=' + Date.now();
           } catch (_) {}
+          try {
+            fetch(apiBase + '/api/mikrotik/sync/push-binding', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(body)
+            }).catch(function(){});
+          } catch (_) {}
           return { message: 'Dispositivo registrado en IP Binding exitosamente', id: res && res.id };
         });
       }
       if (method === 'DELETE') {
-        var bindId = decodeURIComponent(url.split('/api/ip-bindings/')[1]);
+        var rawPath = url.split('/api/ip-bindings/')[1] || '';
+        var parts = rawPath.split('?');
+        var bindId = decodeURIComponent(parts[0]);
+        var macParam = '';
+        if (parts[1]) {
+          try {
+            var params = new URLSearchParams(parts[1]);
+            macParam = params.get('mac') || '';
+          } catch (_) {}
+        }
         return window.firebaseDb.deleteIpBinding(bindId).then(function() {
+          var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
+          if (macParam) {
+            try {
+              var bImg = new Image();
+              bImg.src = apiBase + '/api/mikrotik/sync/remove-binding-beacon?mac=' + encodeURIComponent(macParam) + '&_t=' + Date.now();
+            } catch (_) {}
+            try {
+              fetch(apiBase + '/api/mikrotik/bindings/' + encodeURIComponent(macParam), { method: 'DELETE' }).catch(function(){});
+            } catch (_) {}
+          }
           return { message: 'Dispositivo eliminado de IP Binding exitosamente' };
         });
       }
@@ -1945,7 +1971,7 @@ function handleSaveIpBinding(e) {
     type: type,
     address: address
   }).then(function(res) {
-    toast('✅ Dispositivo "' + comment + '" registrado en IP Binding', 'ok');
+    toast('⚡ Dispositivo "' + comment + '" guardado. Inyectado a MikroTik en vivo (3 seg).', 'ok');
     updateRouterosBindingPreview();
     macEl.value = '';
     commentEl.value = '';
@@ -2047,8 +2073,8 @@ function deleteIpBindingItem(id, mac, comment) {
     return;
   }
 
-  apiFetch('DELETE', '/api/ip-bindings/' + encodeURIComponent(id)).then(function() {
-    toast('Dispositivo eliminado de IP Binding', 'ok');
+  apiFetch('DELETE', '/api/ip-bindings/' + encodeURIComponent(id) + '?mac=' + encodeURIComponent(mac)).then(function() {
+    toast('🗑️ Dispositivo eliminado. Remoción enviada a MikroTik en vivo (3 seg).', 'ok');
     loadIpBindings();
     var removeCmd = '/ip hotspot ip-binding remove [find mac-address="' + mac + '"]';
     console.log('[MikroTik Remove CMD]:', removeCmd);

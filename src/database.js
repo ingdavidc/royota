@@ -220,6 +220,13 @@ function _initSchema(db) {
       created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- ── Eliminaciones pendientes para router MikroTik ───────
+    CREATE TABLE IF NOT EXISTS pending_removals (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      mac_address     TEXT    NOT NULL,
+      created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+
     -- ── Control de Seguridad y Strikes de WhatsApp ───────────
     CREATE TABLE IF NOT EXISTS whatsapp_strikes (
       phone          TEXT PRIMARY KEY,
