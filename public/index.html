@@ -137,10 +137,33 @@
         <!-- Contador regresivo en vivo durante el minuto de cortesía -->
         <div id="waCountdownBox" class="wa-countdown-box" hidden>
           <div class="wa-countdown-timer" id="waCountdownTimer">01:00</div>
-          <div id="waCountdownMsg">⚡ Navegación activa por 1 minuto. Abre tu app de pago (Nequi, Daviplata, banco) para transferir y envía el comprobante por WhatsApp.</div>
-          <button type="button" id="btnReopenWa" class="btn-wa-reopen" style="display:inline-flex; align-items:center; justify-content:center; gap:8px; margin-top:10px; width:100%; padding:10px 14px; background:linear-gradient(135deg, #25d366, #128c7e); color:#ffffff; font-weight:700; font-size:13px; border:none; border-radius:10px; cursor:pointer; box-shadow:0 3px 10px rgba(37,211,102,0.3);">
-            <span>💬 Abrir WhatsApp para enviar comprobante</span>
+          <div id="waCountdownMsg" style="font-size:12px; line-height:1.4; color:#e0f2f1; margin:8px 0;">
+            ⚡ <strong>¡1 minuto de internet activo!</strong> Realiza tu pago y envía el comprobante por WhatsApp.
+          </div>
+
+          <!-- Accesos directos a apps de pago -->
+          <div style="display:flex; gap:6px; margin:8px 0; justify-content:center; flex-wrap:wrap;">
+            <a href="nequi://" class="btn-app-chip" style="display:inline-flex; align-items:center; gap:5px; background:#20002c; color:#fff; padding:6px 10px; border-radius:8px; font-size:12px; font-weight:700; text-decoration:none; border:1px solid #da0081;">
+              🟣 Abrir Nequi
+            </a>
+            <a href="daviplata://" class="btn-app-chip" style="display:inline-flex; align-items:center; gap:5px; background:#4a0000; color:#fff; padding:6px 10px; border-radius:8px; font-size:12px; font-weight:700; text-decoration:none; border:1px solid #e20613;">
+              🔴 Abrir Daviplata
+            </a>
+            <a href="bancolombiapersonas://" class="btn-app-chip" style="display:inline-flex; align-items:center; gap:5px; background:#262626; color:#fff; padding:6px 10px; border-radius:8px; font-size:12px; font-weight:700; text-decoration:none; border:1px solid #ffd166;">
+              🟡 Bancolombia
+            </a>
+          </div>
+
+          <button type="button" id="btnReopenWa" class="btn-wa-reopen" style="display:inline-flex; align-items:center; justify-content:center; gap:8px; margin-top:4px; width:100%; padding:10px 14px; background:linear-gradient(135deg, #25d366, #128c7e); color:#ffffff; font-weight:700; font-size:13px; border:none; border-radius:10px; cursor:pointer; box-shadow:0 3px 10px rgba(37,211,102,0.3);">
+            <span>💬 Abrir WhatsApp con el pedido</span>
           </button>
+
+          <!-- Tip visual para cerrar la pantalla sin perder el WiFi -->
+          <div style="margin-top:10px; padding:8px 10px; background:rgba(0,0,0,0.25); border-radius:8px; font-size:11px; color:#b2dfdb; text-align:left; line-height:1.4;">
+            💡 <strong>Para ir al menú de tu teléfono:</strong><br>
+            • <strong>iPhone:</strong> Toca <em>"Listo"</em> arriba a la derecha (o <em>"Cancelar"</em> &rarr; <em>"Usar sin Internet"</em>).<br>
+            • <strong>Android:</strong> Presiona el botón de <em>Inicio (Home)</em> o desliza hacia arriba.
+          </div>
         </div>
       </div>
 
