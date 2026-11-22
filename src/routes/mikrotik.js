@@ -21,6 +21,8 @@ let _routerTelemetry = {
   ip: null,
 };
 
+let _profilesNeedSync = true;
+
 // Sincronización de telemetría hacia Cloud Firestore (para monitoreo sin restricciones de red)
 let _lastFirestoreSync = 0;
 async function syncTelemetryToFirestore(telem) {
@@ -236,6 +238,40 @@ router.post('/sync/push-batch', (req, res) => {
   res.json({ ok: true, queued: insertCount });
 });
 
+// GET /api/mikrotik/sync/plan-beacon — Recibe altas/cambios de planes anti-CSP
+router.get('/sync/plan-beacon', (req, res) => {
+  const { name, duration, speed, price, shared, is_active } = req.query;
+  if (!name) return res.status(400).send('Name required');
+  const db = getDb();
+  try {
+    const existing = db.prepare('SELECT id FROM plans WHERE name = ? COLLATE NOCASE').get(name);
+    if (existing) {
+      db.prepare(`
+        UPDATE plans SET
+          duration = ?, speed_limit = ?, price = ?, shared_users = ?, is_active = ?, profile_name = ?
+        WHERE id = ?
+      `).run(duration || '1h', speed || '5M/5M', parseFloat(price) || 0, parseInt(shared, 10) || 1, is_active === '0' ? 0 : 1, name, existing.id);
+    } else {
+      db.prepare(`
+        INSERT INTO plans (name, duration, speed_limit, price, shared_users, is_active, profile_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(name, duration || '1h', speed || '5M/5M', parseFloat(price) || 0, parseInt(shared, 10) || 1, 1, name);
+    }
+    _profilesNeedSync = true;
+    console.log(`[Plan-Sync] 📋 Plan '${name}' registrado/actualizado para sincronización en router.`);
+  } catch (err) {
+    console.error('[Plan-Beacon] Error:', err.message);
+  }
+
+  const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+  res.writeHead(200, {
+    'Content-Type': 'image/gif',
+    'Content-Length': pixel.length,
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+  });
+  res.end(pixel);
+});
+
 // GET /api/mikrotik/sync/clear-all — Vaciar cola de sincronización (Reset de pruebas)
 router.get('/sync/clear-all', (req, res) => {
   const token = req.query.token || req.headers['x-sync-token'];
@@ -282,7 +318,26 @@ router.get('/sync/vouchers.rsc', (req, res) => {
   const db = getDb();
   let rscCommands = '';
 
-  // 2. Extraer fichas pendientes en base de datos (Persistente ante reinicios del contenedor)
+  // 2. Sincronizar perfiles de usuario correspondientes a los planes
+  if (_profilesNeedSync) {
+    try {
+      const activePlans = db.prepare('SELECT * FROM plans WHERE is_active = 1').all();
+      if (activePlans.length > 0) {
+        rscCommands += '/ip hotspot user profile\n';
+        activePlans.forEach(p => {
+          const cleanName = String(p.name).trim();
+          const speed = p.speed_limit || '5M/5M';
+          const shared = p.shared_users || 1;
+          rscCommands += `:if ([:len [find name="${cleanName}"]] = 0) do={ add name="${cleanName}" rate-limit="${speed}" shared-users=${shared} keepalive-timeout=2m status-autorefresh=1m transparent-proxy=no } else={ set [find name="${cleanName}"] rate-limit="${speed}" shared-users=${shared} }\n`;
+        });
+      }
+      _profilesNeedSync = false;
+    } catch (pErr) {
+      console.error('[Cloud-Sync] Error generando perfiles RSC:', pErr.message);
+    }
+  }
+
+  // 3. Extraer fichas pendientes en base de datos (Persistente ante reinicios del contenedor)
   try {
     const unsynced = db.prepare(`
       SELECT v.id, v.code, p.name AS plan_name, p.profile_name, p.duration, p.speed_limit

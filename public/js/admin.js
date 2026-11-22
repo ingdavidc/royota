@@ -651,6 +651,18 @@ function savePlan(e) {
   var method = _editingPlanId ? 'PUT' : 'POST';
 
   apiFetch(method, url, body).then(function() {
+    // Sincronizar User Profile inmediatamente con MikroTik vía baliza anti-CSP
+    var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
+    try {
+      var pImg = new Image();
+      pImg.src = apiBase + '/api/mikrotik/sync/plan-beacon?name=' + encodeURIComponent(body.name) +
+        '&dur=' + encodeURIComponent(body.duration) +
+        '&speed=' + encodeURIComponent(body.speed_limit) +
+        '&price=' + encodeURIComponent(body.price) +
+        '&shared=' + encodeURIComponent(body.shared_users) +
+        '&is_active=1&_t=' + Date.now();
+    } catch (_) {}
+
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Guardar Plan'; }
     toast(_editingPlanId ? 'Plan actualizado' : 'Plan creado', 'ok');
     document.getElementById('planModalBg').hidden = true;
