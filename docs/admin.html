@@ -397,34 +397,86 @@
       </div>
 
       <form id="portalSettingsForm" onsubmit="savePortalSettings(event)">
+
+        <!-- ══ PANEL DESTACADO: MÓDULO DE COMPRA EN LÍNEA ══ -->
+        <div class="panel" style="border: 2px solid #00d4ff; background: rgba(0, 212, 255, 0.04); margin-bottom: 24px; box-shadow: 0 4px 20px rgba(0, 212, 255, 0.08); border-radius: 12px; overflow: hidden;">
+          <div class="panel-hd" style="background: rgba(0, 212, 255, 0.12); border-bottom: 1px solid rgba(0, 212, 255, 0.25); padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 22px;">💳</span>
+              <div>
+                <span class="panel-title" style="color: #00d4ff; font-weight: 800; font-size: 16px; display: block;">Módulo de Compra en Línea (Daviplata, Bre-B & WhatsApp)</span>
+                <span style="font-size: 12px; color: #8899aa;">Activa o desactiva la compra virtual de fichas y los botones de pedido por WhatsApp en el portal</span>
+              </div>
+            </div>
+            <div id="onlinePurchaseBadge" class="badge badge-success" style="font-size: 12px; padding: 5px 12px; font-weight: 700; letter-spacing: 0.5px;">
+              ● ACTIVO EN EL PORTAL
+            </div>
+          </div>
+
+          <div class="panel-body" style="padding: 20px 18px;">
+            <!-- Switch toggle destacado -->
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; background: rgba(19, 30, 46, 0.95); border: 1.5px solid rgba(0, 212, 255, 0.35); border-radius: 12px; padding: 16px 20px; margin-bottom: 20px;">
+              <div style="flex: 1; min-width: 260px;">
+                <label for="setOnlinePurchaseActive" style="cursor: pointer; font-size: 15px; font-weight: 800; color: #ffffff; display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                  <span>💳</span> Habilitar Módulo de Compra en Línea (Daviplata, Bre-B & WhatsApp)
+                </label>
+                <span style="font-size: 13px; color: #a7d7c5; display: block; line-height: 1.45;">
+                  Al desactivarlo, el portal cautivo ocultará por completo el módulo de pagos y WhatsApp, permitiendo únicamente el ingreso de fichas físicas en efectivo.
+                </span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <label class="switch-box">
+                  <input type="checkbox" id="setOnlinePurchaseActive" checked onchange="handleOnlinePurchaseSwitchChange(this.checked)">
+                  <span class="switch-slider"></span>
+                </label>
+              </div>
+            </div>
+
+            <!-- Campos específicos de Compra en Línea -->
+            <div id="onlinePurchaseFieldsWrap">
+              <div class="two-col" style="margin-bottom: 0;">
+                <div class="fg" style="margin-bottom: 0;">
+                  <label class="flabel">💳 Número / Llave de Pago (Daviplata & Bre-B) <span class="req">*</span></label>
+                  <input type="text" id="setPaymentPhone" class="finput" placeholder="Ej: 3174251419">
+                  <span class="fhint">Número donde los clientes transfieren el dinero por Daviplata o llaves Bre-B de cualquier entidad.</span>
+                </div>
+                <div class="fg" style="margin-bottom: 0;">
+                  <label class="flabel">🤖 Número de WhatsApp del BOT (Venta y entrega de fichas)</label>
+                  <input type="text" id="setWhatsappNumber" class="finput" placeholder="Ej: 573203778210">
+                  <span class="fhint">⚠️ Celular con el WhatsApp del BOT. No pongas aquí el número de Daviplata si es un celular diferente.</span>
+                </div>
+              </div>
+              <div class="fg" style="margin-top: 14px; margin-bottom: 0;">
+                <label class="flabel">Mensaje automático de WhatsApp</label>
+                <textarea id="setWhatsappMessage" class="finput" rows="2" placeholder="Mensaje que el cliente enviará al tocar el botón de WhatsApp"></textarea>
+              </div>
+            </div>
+
+            <!-- Alerta informativa cuando está OFF -->
+            <div id="onlinePurchaseDisabledNotice" style="display: none; padding: 12px 16px; background: rgba(255, 160, 0, 0.12); border: 1px solid rgba(255, 160, 0, 0.35); border-radius: 10px; color: #ffca28; font-size: 13px; line-height: 1.4; margin-top: 10px;">
+              ⚠️ <strong>Módulo de Compra en Línea Desactivado:</strong> En el portal cautivo se ocultará por completo el acordeón de pago virtual (Daviplata/Bre-B), no se mostrará WhatsApp, y en los planes de internet desaparecerán los botones de pedir. Los usuarios únicamente podrán navegar ingresando un código de ficha física comprada en las casetas.
+            </div>
+          </div>
+        </div>
+
         <div class="two-col">
 
-          <!-- Identidad y WhatsApp -->
+          <!-- Identidad Visual del Balneario -->
           <div class="panel">
             <div class="panel-hd">
-              <span class="panel-title">🌊 Identidad del Balneario & WhatsApp</span>
+              <span class="panel-title">🌊 Identidad Visual del Balneario</span>
             </div>
             <div class="panel-body">
               <div class="fg">
                 <label class="flabel">Nombre del Balneario / Negocio <span class="req">*</span></label>
                 <input type="text" id="setBusinessName" class="finput" placeholder="Ej: Balneario Río Royota" required>
-                <span class="fhint">Aparece en la cabecera principal del portal cautivo</span>
+                <span class="fhint">Aparece en la cabecera principal y pie del portal cautivo</span>
               </div>
 
-              <div class="fg">
+              <div class="fg" style="margin-bottom:0;">
                 <label class="flabel">Slogan / Frase de bienvenida</label>
-                <input type="text" id="setBusinessSlogan" class="finput" placeholder="Ej: El paraíso natural junto al río">
-              </div>
-
-              <div class="fg">
-                <label class="flabel">🤖 Número de WhatsApp del BOT (Venta y entrega de fichas)</label>
-                <input type="text" id="setWhatsappNumber" class="finput" placeholder="Ej: 573001234567">
-                <span class="fhint">⚠️ Este es el número del celular o chip del BOT (se auto-detecta al escanear el QR). <strong>NO pongas aquí el número de Daviplata (3174251419) si es un celular diferente.</strong></span>
-              </div>
-
-              <div class="fg">
-                <label class="flabel">Mensaje automático de WhatsApp</label>
-                <textarea id="setWhatsappMessage" class="finput" rows="3" placeholder="Mensaje que el cliente enviará al tocar el botón de WhatsApp"></textarea>
+                <input type="text" id="setBusinessSlogan" class="finput" placeholder="Ej: Un paraíso natural junto al río • Conexión WiFi">
+                <span class="fhint">Subtítulo debajo del nombre principal</span>
               </div>
             </div>
           </div>
@@ -452,9 +504,9 @@
                 <input type="text" id="setInfoTitle" class="finput" placeholder="Ej: ¡Bienvenidos al Balneario Río Royota!">
               </div>
 
-              <div class="fg">
+              <div class="fg" style="margin-bottom:0;">
                 <label class="flabel">Contenido informativo (horarios, normas, puntos de venta)</label>
-                <textarea id="setInfoContent" class="finput" rows="6" placeholder="Escribe aquí los horarios del río, restaurante, recomendaciones de cuidado ambiental y lugares donde comprar fichas..."></textarea>
+                <textarea id="setInfoContent" class="finput" rows="5" placeholder="Escribe aquí los horarios del río, restaurante, recomendaciones de cuidado ambiental y lugares donde comprar fichas..."></textarea>
                 <span class="fhint">Puedes usar emojis y saltos de línea para que se lea ordenado.</span>
               </div>
             </div>

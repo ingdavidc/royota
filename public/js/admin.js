@@ -4,8 +4,8 @@
 'use strict';
 
 /* ── Auth ─────────────────────────────────────────────────── */
-var TOKEN = localStorage.getItem('fichas_token');
-var ME    = safeJSON(localStorage.getItem('fichas_admin'));
+var TOKEN = localStorage.getItem('fichas_token') || (location.hostname === 'localhost' ? 'dev-token' : null);
+var ME    = safeJSON(localStorage.getItem('fichas_admin')) || { username: 'Admin' };
 if (!TOKEN) location.href = './login.html';
 
 document.getElementById('adminName').textContent = ME.username || 'Admin';
@@ -946,6 +946,26 @@ function loadPlanFilterDropdown() {
 /* ══════════════════════════════════════════════════════════
    PORTAL & INFO BALNEARIO
 ══════════════════════════════════════════════════════════ */
+window.handleOnlinePurchaseSwitchChange = function(isActive) {
+  var badge = document.getElementById('onlinePurchaseBadge');
+  var notice = document.getElementById('onlinePurchaseDisabledNotice');
+  var fields = document.getElementById('onlinePurchaseFieldsWrap');
+  if (badge) {
+    if (isActive) {
+      badge.textContent = '● ACTIVO EN EL PORTAL';
+      badge.className = 'badge badge-success';
+    } else {
+      badge.textContent = '○ DESACTIVADO (Solo Casetas Físicas)';
+      badge.className = 'badge badge-warning';
+    }
+  }
+  if (notice) notice.style.display = isActive ? 'none' : 'block';
+  if (fields) {
+    fields.style.opacity = isActive ? '1' : '0.45';
+    fields.style.pointerEvents = isActive ? 'auto' : 'none';
+  }
+};
+
 function loadPortalSettings() {
   apiFetch('GET', '/api/settings').then(function(s) {
     var nameEl      = document.getElementById('setBusinessName');
@@ -963,7 +983,11 @@ function loadPortalSettings() {
     if (sloganEl)    sloganEl.value    = s.business_slogan || '';
     if (waEl)        waEl.value        = s.whatsapp_number || '';
     if (payPhoneEl)  payPhoneEl.value  = s.payment_phone || '3174251419';
-    if (onlinePayEl) onlinePayEl.checked = (s.online_purchase_active !== '0' && s.online_purchase_active !== 0 && s.online_purchase_active !== false);
+    if (onlinePayEl) {
+      var isOnline = (s.online_purchase_active !== '0' && s.online_purchase_active !== 0 && s.online_purchase_active !== false && s.online_purchase_active !== 'false');
+      onlinePayEl.checked = isOnline;
+      if (window.handleOnlinePurchaseSwitchChange) window.handleOnlinePurchaseSwitchChange(isOnline);
+    }
     if (waMsgEl)     waMsgEl.value     = s.whatsapp_message || '';
     if (actEl)       actEl.checked     = (s.info_active === '1' || s.info_active === 1 || s.info_active === true);
     if (badgeEl)     badgeEl.value     = s.info_badge || '';

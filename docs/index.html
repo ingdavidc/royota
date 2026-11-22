@@ -228,6 +228,23 @@
       text-align: left !important;
       display: inline-block !important;
     }
+    /* Ocultamiento absoluto cuando hidden */
+    [hidden], #waSection[hidden], .card[hidden], .portal-accordion[hidden] {
+      display: none !important;
+    }
+    /* Estilos cuando compra en línea está inactiva (planes en modo informativo) */
+    .plan-item.plan-item-static {
+      cursor: default !important;
+      transform: none !important;
+      box-shadow: none !important;
+      border-color: rgba(0, 229, 255, 0.15) !important;
+      background: rgba(6, 28, 36, 0.65) !important;
+    }
+    .plan-item.plan-item-static:hover {
+      transform: none !important;
+      border-color: rgba(0, 229, 255, 0.2) !important;
+      background: rgba(6, 28, 36, 0.65) !important;
+    }
   </style>
   <!-- Firebase SDK Local (Sin bloqueo por CSP ni dependencias CDN) -->
   <script src="./js/firebase-app-compat.js"></script>
@@ -623,10 +640,15 @@
       }
     }
 
+    /* ── Helper de verificación de compra en línea activa ── */
+    function isOnlinePurchaseActive() {
+      var v = _settings && _settings.online_purchase_active;
+      return v !== '0' && v !== 0 && v !== false && v !== 'false';
+    }
+
     /* ── Función para pedir plan directamente ── */
     window.pedirPlan = function(planName, formattedPrice) {
-      var isOnlineActive = _settings.online_purchase_active !== '0' && _settings.online_purchase_active !== 0 && _settings.online_purchase_active !== false;
-      if (!isOnlineActive) {
+      if (!isOnlinePurchaseActive()) {
         if (kiosksSec) {
           kiosksSec.open = true;
           kiosksSec.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -680,7 +702,7 @@
         }
       }
 
-      var isOnlineActive = _settings.online_purchase_active !== '0' && _settings.online_purchase_active !== 0 && _settings.online_purchase_active !== false;
+      var isOnlineActive = isOnlinePurchaseActive();
       if (isOnlineActive) {
         waSec.removeAttribute('hidden');
         waSec.style.display = '';
@@ -712,7 +734,7 @@
       if (updateCache !== false) {
         try { localStorage.setItem('royota_cached_plans', JSON.stringify(_cachedPlans)); } catch (_) {}
       }
-      var isOnlineActive = _settings.online_purchase_active !== '0' && _settings.online_purchase_active !== 0 && _settings.online_purchase_active !== false;
+      var isOnlineActive = isOnlinePurchaseActive();
       var sym = (_settings && _settings.currencySymbol) || '$';
       var html = '';
       for (var i = 0; i < plans.length; i++) {
@@ -727,7 +749,9 @@
           ? ' onclick="pedirPlan(\'' + escapeHtml(p.name) + '\', \'' + formattedPrice + '\')" style="cursor:pointer;" title="Pedir ficha por WhatsApp"'
           : ' style="cursor:default;"';
 
-        html += '<div class="plan-item"' + itemClickAttr + '>' +
+        var itemClass = isOnlineActive ? 'plan-item' : 'plan-item plan-item-static';
+
+        html += '<div class="' + itemClass + '"' + itemClickAttr + '>' +
                   '<div class="plan-info-left">' +
                     '<div class="plan-name">' + escapeHtml(p.name) + '</div>' +
                     '<div class="plan-meta">' +
@@ -741,6 +765,13 @@
                   '</div>' +
                 '</div>';
       }
+
+      if (!isOnlineActive) {
+        html += '<div style="margin-top:12px; padding:10px 14px; background:rgba(0, 229, 255, 0.05); border:1px dashed rgba(0, 229, 255, 0.25); border-radius:10px; font-size:12px; color:#80cbc4; text-align:center; line-height:1.4;">' +
+                  '💵 <strong>Compra física en casetas:</strong> Adquiere tu ficha en efectivo en cualquiera de nuestras casetas autorizadas (ver sección abajo 👇).' +
+                '</div>';
+      }
+
       plansList.innerHTML = html;
     }
 

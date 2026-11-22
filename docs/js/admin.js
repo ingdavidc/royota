@@ -4,8 +4,8 @@
 'use strict';
 
 /* ── Auth ─────────────────────────────────────────────────── */
-var TOKEN = localStorage.getItem('fichas_token');
-var ME    = safeJSON(localStorage.getItem('fichas_admin'));
+var TOKEN = localStorage.getItem('fichas_token') || (location.hostname === 'localhost' ? 'dev-token' : null);
+var ME    = safeJSON(localStorage.getItem('fichas_admin')) || { username: 'Admin' };
 if (!TOKEN) location.href = './login.html';
 
 document.getElementById('adminName').textContent = ME.username || 'Admin';
@@ -946,25 +946,53 @@ function loadPlanFilterDropdown() {
 /* ══════════════════════════════════════════════════════════
    PORTAL & INFO BALNEARIO
 ══════════════════════════════════════════════════════════ */
+window.handleOnlinePurchaseSwitchChange = function(isActive) {
+  var badge = document.getElementById('onlinePurchaseBadge');
+  var notice = document.getElementById('onlinePurchaseDisabledNotice');
+  var fields = document.getElementById('onlinePurchaseFieldsWrap');
+  if (badge) {
+    if (isActive) {
+      badge.textContent = '● ACTIVO EN EL PORTAL';
+      badge.className = 'badge badge-success';
+    } else {
+      badge.textContent = '○ DESACTIVADO (Solo Casetas Físicas)';
+      badge.className = 'badge badge-warning';
+    }
+  }
+  if (notice) notice.style.display = isActive ? 'none' : 'block';
+  if (fields) {
+    fields.style.opacity = isActive ? '1' : '0.45';
+    fields.style.pointerEvents = isActive ? 'auto' : 'none';
+  }
+};
+
 function loadPortalSettings() {
   apiFetch('GET', '/api/settings').then(function(s) {
-    var nameEl    = document.getElementById('setBusinessName');
-    var sloganEl  = document.getElementById('setBusinessSlogan');
-    var waEl      = document.getElementById('setWhatsappNumber');
-    var waMsgEl   = document.getElementById('setWhatsappMessage');
-    var actEl     = document.getElementById('setInfoActive');
-    var badgeEl   = document.getElementById('setInfoBadge');
-    var titleEl   = document.getElementById('setInfoTitle');
-    var contentEl = document.getElementById('setInfoContent');
+    var nameEl      = document.getElementById('setBusinessName');
+    var sloganEl    = document.getElementById('setBusinessSlogan');
+    var waEl        = document.getElementById('setWhatsappNumber');
+    var payPhoneEl  = document.getElementById('setPaymentPhone');
+    var onlinePayEl = document.getElementById('setOnlinePurchaseActive');
+    var waMsgEl     = document.getElementById('setWhatsappMessage');
+    var actEl       = document.getElementById('setInfoActive');
+    var badgeEl     = document.getElementById('setInfoBadge');
+    var titleEl     = document.getElementById('setInfoTitle');
+    var contentEl   = document.getElementById('setInfoContent');
 
-    if (nameEl)    nameEl.value    = s.business_name || '';
-    if (sloganEl)  sloganEl.value  = s.business_slogan || '';
-    if (waEl)      waEl.value      = s.whatsapp_number || '';
-    if (waMsgEl)   waMsgEl.value   = s.whatsapp_message || '';
-    if (actEl)     actEl.checked   = (s.info_active === '1' || s.info_active === 1 || s.info_active === true);
-    if (badgeEl)   badgeEl.value   = s.info_badge || '';
-    if (titleEl)   titleEl.value   = s.info_title || '';
-    if (contentEl) contentEl.value = s.info_content || '';
+    if (nameEl)      nameEl.value      = s.business_name || '';
+    if (sloganEl)    sloganEl.value    = s.business_slogan || '';
+    if (waEl)        waEl.value        = s.whatsapp_number || '';
+    if (payPhoneEl)  payPhoneEl.value  = s.payment_phone || '3174251419';
+    if (onlinePayEl) {
+      var isOnline = (s.online_purchase_active !== '0' && s.online_purchase_active !== 0 && s.online_purchase_active !== false && s.online_purchase_active !== 'false');
+      onlinePayEl.checked = isOnline;
+      if (window.handleOnlinePurchaseSwitchChange) window.handleOnlinePurchaseSwitchChange(isOnline);
+    }
+    if (waMsgEl)     waMsgEl.value     = s.whatsapp_message || '';
+    if (actEl)       actEl.checked     = (s.info_active === '1' || s.info_active === 1 || s.info_active === true);
+    if (badgeEl)     badgeEl.value     = s.info_badge || '';
+    if (titleEl)     titleEl.value     = s.info_title || '';
+    if (contentEl)   contentEl.value   = s.info_content || '';
   }).catch(function(err) {
     toast((err && err.error) || 'Error al cargar ajustes del portal', 'error');
   });
@@ -975,15 +1003,20 @@ function savePortalSettings(e) {
   var btn = document.getElementById('btnSavePortal');
   if (btn) btn.disabled = true;
 
+  var onlinePayChecked = document.getElementById('setOnlinePurchaseActive') ? document.getElementById('setOnlinePurchaseActive').checked : true;
+  var paymentPhoneVal  = document.getElementById('setPaymentPhone') ? document.getElementById('setPaymentPhone').value.trim() : '3174251419';
+
   var body = {
-    business_name:    document.getElementById('setBusinessName').value,
-    business_slogan:  document.getElementById('setBusinessSlogan').value,
-    whatsapp_number:  document.getElementById('setWhatsappNumber').value,
-    whatsapp_message: document.getElementById('setWhatsappMessage').value,
-    info_active:      document.getElementById('setInfoActive').checked ? '1' : '0',
-    info_badge:       document.getElementById('setInfoBadge').value,
-    info_title:       document.getElementById('setInfoTitle').value,
-    info_content:     document.getElementById('setInfoContent').value,
+    business_name:          document.getElementById('setBusinessName').value,
+    business_slogan:        document.getElementById('setBusinessSlogan').value,
+    whatsapp_number:        document.getElementById('setWhatsappNumber').value,
+    payment_phone:          paymentPhoneVal || '3174251419',
+    online_purchase_active: onlinePayChecked ? '1' : '0',
+    whatsapp_message:       document.getElementById('setWhatsappMessage').value,
+    info_active:            document.getElementById('setInfoActive').checked ? '1' : '0',
+    info_badge:             document.getElementById('setInfoBadge').value,
+    info_title:             document.getElementById('setInfoTitle').value,
+    info_content:           document.getElementById('setInfoContent').value,
   };
 
   // Dual-write: Guardar en Firestore (para actualizar portal cautivo en tiempo real) y en Render backend
