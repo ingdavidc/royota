@@ -807,14 +807,56 @@ async function startWhatsAppBot(forceClean = false) {
           if (isComplaint) {
             _offTopicTracker.delete(senderPhone);
             const db = getDb();
+            const senderName = msg.pushName || 'Turista';
+            let cleanPhone = senderPhone.replace('@s.whatsapp.net', '').replace('@lid', '').trim();
+            if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) {
+              cleanPhone = '57' + cleanPhone;
+            }
+
+            // Radicado consecutivo basado en Firestore (persistente)
             let radicado = 'PQRS-0001';
             try {
-              const res = db.prepare('INSERT INTO complaints (phone, message, status) VALUES (?, ?, "pending")')
-                .run(senderPhone, text);
-              radicado = `PQRS-${String(res.lastInsertRowid).padStart(4, '0')}`;
-              console.log(`[WhatsApp Bot] 📋 Queja registrada #${radicado} de ${senderPhone}`);
+              const res = await fetch('https://firestore.googleapis.com/v1/projects/fichas-royota/databases/(default)/documents/complaints?pageSize=300');
+              if (res.ok) {
+                const fData = await res.json();
+                const totalC = (fData.documents || []).length + 1;
+                radicado = `PQRS-${String(totalC).padStart(4, '0')}`;
+              }
+            } catch (_) {
+              try {
+                const row = db.prepare('SELECT COUNT(*) AS c FROM complaints').get();
+                radicado = `PQRS-${String((row?.c || 0) + 1).padStart(4, '0')}`;
+              } catch (_) {}
+            }
+
+            // 1. Guardar en SQLite local
+            try {
+              db.prepare('INSERT INTO complaints (phone, message, status) VALUES (?, ?, "pending")')
+                .run(cleanPhone, text);
             } catch (cErr) {
-              console.error('[WhatsApp Bot] Error guardando queja:', cErr);
+              console.error('[WhatsApp Bot] Error SQLite queja:', cErr.message);
+            }
+
+            // 2. Guardar en Firestore para persistencia permanente y actualización en tiempo real en el panel
+            try {
+              await fetch('https://firestore.googleapis.com/v1/projects/fichas-royota/databases/(default)/documents/complaints', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  fields: {
+                    radicado: { stringValue: radicado },
+                    phone: { stringValue: cleanPhone },
+                    client_name: { stringValue: senderName },
+                    message: { stringValue: text },
+                    status: { stringValue: 'pending' },
+                    admin_notes: { stringValue: '' },
+                    created_at: { stringValue: new Date().toISOString() }
+                  }
+                })
+              });
+              console.log(`[WhatsApp Bot] 📋 Queja guardada en Firestore #${radicado} de ${senderName} (${cleanPhone})`);
+            } catch (fErr) {
+              console.error('[WhatsApp Bot] Error guardando queja en Firestore:', fErr.message);
             }
 
             const kiosksFull = getKiosksFormatted(true);
@@ -822,7 +864,8 @@ async function startWhatsAppBot(forceClean = false) {
               `📋 *SOLICITUD DE SOPORTE / QUEJA REGISTRADA*\n` +
               `━━━━━━━━━━━━━━━━━━━━\n` +
               `Radicado: *#${radicado}*\n` +
-              `Línea: *${senderPhone}*\n` +
+              `Cliente: *${senderName}*\n` +
+              `Línea: *${cleanPhone}*\n` +
               `Estado: *Pendiente de revisión administrativa*\n\n` +
               `Lamentamos mucho los inconvenientes con el servicio. Tu reporte ha quedado registrado formalmente en nuestro panel y el administrador revisará tu caso a la brevedad para darte solución o gestionar la reposición de tu servicio.\n\n` +
               `🏪 *Soporte Presencial en el Balneario:*\n` +

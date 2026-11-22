@@ -294,6 +294,58 @@
       });
     },
 
+    // ── Quejas y PQRS en Tiempo Real ──────────────────────────
+    getComplaints: function(statusFilter) {
+      if (!db) return Promise.resolve({ complaints: [], total: 0, pending: 0 });
+      return db.collection('complaints').get().then(function(snap) {
+        var list = [];
+        var pendingCount = 0;
+        snap.forEach(function(d) {
+          var c = d.data();
+          c.id = d.id;
+          if (c.status === 'pending' || !c.status) pendingCount++;
+          if (!statusFilter || statusFilter === 'all' || c.status === statusFilter) {
+            list.push(c);
+          }
+        });
+        list.sort(function(a, b) {
+          return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+        });
+        return { complaints: list, total: list.length, pending: pendingCount };
+      });
+    },
+
+    onComplaintsChange: function(cb) {
+      if (!db) return function(){};
+      return db.collection('complaints').onSnapshot(function(snap) {
+        var list = [];
+        var pendingCount = 0;
+        snap.forEach(function(d) {
+          var c = d.data();
+          c.id = d.id;
+          if (c.status === 'pending' || !c.status) pendingCount++;
+          list.push(c);
+        });
+        list.sort(function(a, b) {
+          return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+        });
+        cb({ complaints: list, total: list.length, pending: pendingCount });
+      }, function(err) {
+        console.warn('[FirebaseDb] onComplaintsChange error:', err);
+      });
+    },
+
+    updateComplaint: function(id, updates) {
+      if (!db) return Promise.reject(new Error('No db'));
+      updates.updated_at = new Date().toISOString();
+      return db.collection('complaints').doc(String(id)).update(updates);
+    },
+
+    deleteComplaint: function(id) {
+      if (!db) return Promise.reject(new Error('No db'));
+      return db.collection('complaints').doc(String(id)).delete();
+    },
+
     // ── Activación de Ficha Atómica (Anti-Carrera / TOCTOU) ───
     activateVoucher: function(code) {
       var cleanCode = String(code).toUpperCase().trim();

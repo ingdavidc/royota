@@ -1314,7 +1314,7 @@ function loadComplaintsSection() {
 
   if (!tbody) return;
 
-  apiFetch('GET', '/api/complaints?status=' + statusVal).then(function(data) {
+  function renderList(data) {
     _currentComplaints = data.complaints || [];
     if (badge) {
       badge.textContent = (data.pending || 0) + ' pendientes';
@@ -1328,7 +1328,7 @@ function loadComplaintsSection() {
 
     _currentComplaints.forEach(function(c) {
       var tr = document.createElement('tr');
-      var radicado = 'PQRS-' + String(c.id).padStart(4, '0');
+      var radicado = c.radicado || ('PQRS-' + String(c.id).padStart(4, '0'));
 
       var statusBadge = '';
       if (c.status === 'resolved') {
@@ -1339,7 +1339,11 @@ function loadComplaintsSection() {
         statusBadge = '<span class="badge" style="background:rgba(250,204,21,0.2); color:#facc15;">⏳ Pendiente</span>';
       }
 
-      var phoneLink = '<a href="https://wa.me/57' + c.phone + '" target="_blank" rel="noopener" style="color:var(--cyan); text-decoration:none;" title="Chatear en WhatsApp">💬 ' + c.phone + '</a>';
+      var cleanPhone = String(c.phone || '').replace(/\D/g, '');
+      var phoneDisplay = cleanPhone || c.phone || '—';
+      var phoneLink = cleanPhone
+        ? '<a href="https://wa.me/' + (cleanPhone.startsWith('57') ? cleanPhone : ('57' + cleanPhone)) + '" target="_blank" rel="noopener" style="color:var(--cyan); text-decoration:none;" title="Chatear en WhatsApp">💬 ' + (c.client_name ? ('<strong>' + escapeHtml(c.client_name) + '</strong> (' + phoneDisplay + ')') : phoneDisplay) + '</a>'
+        : (c.client_name || c.phone || '—');
 
       tr.innerHTML =
         '<td><strong>#' + radicado + '</strong></td>' +
@@ -1350,26 +1354,36 @@ function loadComplaintsSection() {
         '<td style="font-size:12px; color:var(--muted); max-width:200px;">' + (c.admin_notes ? escapeHtml(c.admin_notes) : '—') + '</td>' +
         '<td>' +
           '<div style="display:flex; gap:6px;">' +
-            '<button class="btn btn-sm btn-ghost" onclick="openComplaintModal(' + c.id + ')" title="Atender / Responder">✏️ Atender</button>' +
-            (c.status !== 'resolved' ? '<button class="btn btn-sm btn-ghost" onclick="quickResolveComplaint(' + c.id + ')" title="Marcar como Resuelto">✅</button>' : '') +
-            '<button class="btn btn-sm btn-danger" onclick="deleteComplaint(' + c.id + ')" title="Eliminar">🗑️</button>' +
+            '<button class="btn btn-sm btn-ghost" onclick="openComplaintModal(\'' + c.id + '\')" title="Atender / Responder">✏️ Atender</button>' +
+            (c.status !== 'resolved' ? '<button class="btn btn-sm btn-ghost" onclick="quickResolveComplaint(\'' + c.id + '\')" title="Marcar como Resuelto">✅</button>' : '') +
+            '<button class="btn btn-sm btn-danger" onclick="deleteComplaint(\'' + c.id + '\')" title="Eliminar">🗑️</button>' +
           '</div>' +
         '</td>';
       tbody.appendChild(tr);
     });
-  }).catch(function(err) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#f87171">Error al cargar la bandeja de quejas.</td></tr>';
-  });
+  }
+
+  if (window.firebaseDb && window.firebaseDb.getComplaints) {
+    window.firebaseDb.getComplaints(statusVal).then(renderList).catch(function() {
+      apiFetch('GET', '/api/complaints?status=' + statusVal).then(renderList).catch(function() {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#f87171">Error al cargar la bandeja de quejas.</td></tr>';
+      });
+    });
+  } else {
+    apiFetch('GET', '/api/complaints?status=' + statusVal).then(renderList).catch(function() {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#f87171">Error al cargar la bandeja de quejas.</td></tr>';
+    });
+  }
 }
 
 function openComplaintModal(id) {
-  var c = _currentComplaints.find(function(item) { return item.id === id; });
+  var c = _currentComplaints.find(function(item) { return String(item.id) === String(id); });
   if (!c) return;
 
   var bg = document.getElementById('complaintModalBg');
   document.getElementById('cId').value = c.id;
-  document.getElementById('cRadicado').textContent = '#PQRS-' + String(c.id).padStart(4, '0');
-  document.getElementById('cPhone').textContent = c.phone;
+  document.getElementById('cRadicado').textContent = '#' + (c.radicado || ('PQRS-' + String(c.id).padStart(4, '0')));
+  document.getElementById('cPhone').textContent = c.phone + (c.client_name ? (' (' + c.client_name + ')') : '');
   document.getElementById('cMessage').textContent = c.message;
   document.getElementById('cStatus').value = c.status || 'pending';
   document.getElementById('cAdminNotes').value = c.admin_notes || '';
@@ -1389,31 +1403,43 @@ function saveComplaintResolution(e) {
   var status = document.getElementById('cStatus').value;
   var admin_notes = document.getElementById('cAdminNotes').value.trim();
 
-  apiFetch('PATCH', '/api/complaints/' + id, { status: status, admin_notes: admin_notes }).then(function(res) {
-    toast(res.message || 'Queja actualizada correctamente', 'ok');
+  var promise = (window.firebaseDb && window.firebaseDb.updateComplaint)
+    ? window.firebaseDb.updateComplaint(id, { status: status, admin_notes: admin_notes })
+    : apiFetch('PATCH', '/api/complaints/' + id, { status: status, admin_notes: admin_notes });
+
+  promise.then(function() {
+    toast('Queja actualizada correctamente', 'ok');
     closeComplaintModal();
     loadComplaintsSection();
   }).catch(function(err) {
-    toast((err && err.error) || 'Error al actualizar queja', 'error');
+    toast((err && err.message) || (err && err.error) || 'Error al actualizar queja', 'error');
   });
 }
 
 function quickResolveComplaint(id) {
-  apiFetch('PATCH', '/api/complaints/' + id, { status: 'resolved', admin_notes: 'Resuelto por administrador' }).then(function(res) {
+  var promise = (window.firebaseDb && window.firebaseDb.updateComplaint)
+    ? window.firebaseDb.updateComplaint(id, { status: 'resolved', admin_notes: 'Resuelto por administrador' })
+    : apiFetch('PATCH', '/api/complaints/' + id, { status: 'resolved', admin_notes: 'Resuelto por administrador' });
+
+  promise.then(function() {
     toast('Queja marcada como resuelta', 'ok');
     loadComplaintsSection();
   }).catch(function(err) {
-    toast((err && err.error) || 'Error al resolver queja', 'error');
+    toast((err && err.message) || (err && err.error) || 'Error al resolver queja', 'error');
   });
 }
 
 function deleteComplaint(id) {
   if (!confirm('¿Deseas eliminar este registro de queja/PQRS?')) return;
-  apiFetch('DELETE', '/api/complaints/' + id).then(function(res) {
-    toast(res.message || 'Registro eliminado', 'ok');
+  var promise = (window.firebaseDb && window.firebaseDb.deleteComplaint)
+    ? window.firebaseDb.deleteComplaint(id)
+    : apiFetch('DELETE', '/api/complaints/' + id);
+
+  promise.then(function() {
+    toast('Registro eliminado', 'ok');
     loadComplaintsSection();
   }).catch(function(err) {
-    toast((err && err.error) || 'Error al eliminar', 'error');
+    toast((err && err.message) || (err && err.error) || 'Error al eliminar', 'error');
   });
 }
 
