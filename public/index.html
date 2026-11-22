@@ -123,13 +123,16 @@
       <div id="waActiveWrap">
         <p class="wa-hint">¿No tienes ficha o deseas recargar tu tiempo?</p>
         <div id="waTrialBadge" class="wa-trial-badge">⚡ 1 min de internet gratis para pagar y enviar comprobante (Intento 1 de 2)</div>
-        <a href="https://wa.me/573174251419?text=%C2%A1Hola!%20Estoy%20en%20R%C3%ADo%20Royota%20y%20deseo%20comprar%20una%20ficha%20de%20internet%20WiFi." id="waButton" class="wa-btn" target="_blank" rel="noopener">
+        <a href="javascript:void(0)" id="waButton" class="wa-btn" role="button">
           <!-- SVG Oficial de WhatsApp -->
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm.01 1.67c2.2 0 4.26.86 5.82 2.42a8.19 8.19 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.19 8.19 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24zm4.52 11.66c-.25-.13-1.47-.72-1.7-.8-.23-.09-.39-.13-.56.13-.17.25-.65.8-.8 1-.14.16-.29.18-.54.06-.25-.13-1.06-.39-2.02-1.25-.75-.67-1.25-1.49-1.4-1.74-.15-.25-.02-.39.11-.51.11-.11.25-.29.38-.44.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.44-.06-.13-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.43h-.48c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1s.9 2.44 1.03 2.61c.13.17 1.77 2.7 4.29 3.79.6.26 1.07.41 1.44.53.6.19 1.15.16 1.58.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.15-1.18-.06-.11-.23-.17-.48-.29z"/>
           </svg>
           <span>Pedir Ficha por WhatsApp</span>
         </a>
+
+        <!-- Iframe oculto para autenticar en MikroTik en segundo plano sin pantalla about:blank -->
+        <iframe name="login_target" id="loginTarget" style="display:none; width:0; height:0; border:0;" aria-hidden="true"></iframe>
 
         <!-- Contador regresivo en vivo durante el minuto de cortesía -->
         <div id="waCountdownBox" class="wa-countdown-box" hidden>
@@ -176,7 +179,7 @@
             </div>
             <div class="plan-price-wrap">
               <div class="plan-price">$2000</div>
-              <a href="https://wa.me/573174251419?text=%C2%A1Hola!%20Deseo%20pedir%20la%20ficha%20de%20internet%20de%201%20Hora%20Basico%20($2000)%20en%20R%C3%ADo%20Royota." class="plan-buy-btn" target="_blank" rel="noopener" onclick="event.stopPropagation();">Pedir 🪪</a>
+              <button type="button" class="plan-buy-btn" onclick="event.stopPropagation(); pedirPlan('1 Hora Basico', '$2000');">Pedir 🪪</button>
             </div>
           </div>
 
@@ -190,7 +193,7 @@
             </div>
             <div class="plan-price-wrap">
               <div class="plan-price">$3000</div>
-              <a href="https://wa.me/573174251419?text=%C2%A1Hola!%20Deseo%20pedir%20la%20ficha%20de%20internet%20de%201%20Hora%20Premium%20($3000)%20en%20R%C3%ADo%20Royota." class="plan-buy-btn" target="_blank" rel="noopener" onclick="event.stopPropagation();">Pedir 🪪</a>
+              <button type="button" class="plan-buy-btn" onclick="event.stopPropagation(); pedirPlan('1 Hora Premium', '$3000');">Pedir 🪪</button>
             </div>
           </div>
         </div>
@@ -233,7 +236,7 @@
       <p id="footerBusinessName">R&iacute;o Royota</p>
       <p>Cuidemos nuestro r&iacute;o y el entorno natural 🌿</p>
       <div class="powered-by-container">
-        <a href="https://www.dctelematica.com" target="_blank" rel="noopener" class="powered-by-link" title="DC Telemática - Soluciones Tecnológicas">
+        <a href="https://www.dctelematica.com" rel="noopener" class="powered-by-link" title="DC Telemática - Soluciones Tecnológicas">
           <span class="powered-by-text">Powered by</span>
           <img src="./img/logo-dc.png?v=1" alt="DC Telemática" class="powered-by-logo">
         </a>
@@ -316,14 +319,29 @@
       }
     } catch (_) {}
 
-    /* ── Helper de enlace WhatsApp con código internacional de Colombia ── */
-    function formatWhatsAppLink(rawNum, msgText) {
+    /* ── Helper de apertura directa a la App de WhatsApp (iOS / Android / Desktop) ── */
+    var _defaultWaMsg = '¡Hola! Estoy en Río Royota y deseo comprar una ficha de internet WiFi.';
+    var _pendingWaMsg = null;
+
+    function openWhatsAppDirect(rawNum, msgText) {
       var num = String(rawNum || '').replace(/[^\d]/g, '');
       if (!num) num = '573174251419';
       if (num.length === 10 && num.startsWith('3')) {
         num = '57' + num;
       }
-      return 'https://wa.me/' + num + '?text=' + encodeURIComponent(msgText);
+      var encoded = encodeURIComponent(msgText || _defaultWaMsg);
+
+      // Detección de dispositivos móviles (iPhone, iPad, Android)
+      var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+
+      if (isMobile) {
+        // Esquema nativo oficial whatsapp:// para abrir la app directamente sin pasar por página web intermedia ni about:blank
+        var appUrl = 'whatsapp://send?phone=' + num + '&text=' + encoded;
+        window.location.href = appUrl;
+      } else {
+        // En navegadores de escritorio (PC/Mac), WhatsApp Web
+        window.open('https://api.whatsapp.com/send?phone=' + num + '&text=' + encoded, '_blank', 'noopener,noreferrer');
+      }
     }
 
     /* ── Función para pedir plan directamente ── */
@@ -338,11 +356,9 @@
         }
         return;
       }
-      var num = _settings && _settings.whatsapp_number ? _settings.whatsapp_number : '573174251419';
       var biz = _settings && _settings.business_name ? _settings.business_name : 'Río Royota';
-      var msg = '¡Hola! Deseo pedir la ficha de internet de ' + planName + ' (' + formattedPrice + ') en ' + biz + '.';
-      waBtn.href = formatWhatsAppLink(num, msg);
-      waBtn.click();
+      var planMsg = '¡Hola! Deseo pedir la ficha de internet de ' + planName + ' (' + formattedPrice + ') en ' + biz + '.';
+      triggerWhatsAppFlow(planMsg);
     };
 
     /* ── Helper AJAX con XMLHttpRequest para WebView cautivo ── */
@@ -375,8 +391,8 @@
         sloganEl.textContent = _settings.business_slogan;
       }
       var biz = _settings.business_name || 'Río Royota';
-      var defMsg = _settings.whatsapp_message || ('¡Hola! Estoy en ' + biz + ' y deseo comprar una ficha de internet WiFi.');
-      waBtn.href = formatWhatsAppLink(_settings.whatsapp_number, defMsg);
+      _defaultWaMsg = _settings.whatsapp_message || ('¡Hola! Estoy en ' + biz + ' y deseo comprar una ficha de internet WiFi.');
+      waBtn.href = 'javascript:void(0)';
       waSec.removeAttribute('hidden');
 
       var isInfoActive = _settings.info_active !== '0' && _settings.info_active !== false && _settings.info_active !== 0;
@@ -403,14 +419,10 @@
         try { localStorage.setItem('royota_cached_plans', JSON.stringify(_cachedPlans)); } catch (_) {}
       }
       var sym = (_settings && _settings.currencySymbol) || '$';
-      var botNum = (_settings && _settings.whatsapp_number) || '573174251419';
-      var biz = (_settings && _settings.business_name) || 'Río Royota';
       var html = '';
       for (var i = 0; i < plans.length; i++) {
         var p = plans[i];
         var formattedPrice = sym + Number(p.price || 0).toLocaleString();
-        var buyMsg = '¡Hola! Deseo pedir la ficha de internet de ' + p.name + ' (' + formattedPrice + ') en ' + biz + '.';
-        var waHref = formatWhatsAppLink(botNum, buyMsg);
 
         html += '<div class="plan-item" onclick="pedirPlan(\'' + escapeHtml(p.name) + '\', \'' + formattedPrice + '\')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">' +
                   '<div class="plan-info-left">' +
@@ -422,7 +434,7 @@
                   '</div>' +
                   '<div class="plan-price-wrap">' +
                     '<div class="plan-price">' + formattedPrice + '</div>' +
-                    '<a href="' + waHref + '" class="plan-buy-btn" target="_blank" rel="noopener" onclick="event.stopPropagation();">Pedir 🪪</a>' +
+                    '<button type="button" class="plan-buy-btn" onclick="event.stopPropagation(); pedirPlan(\'' + escapeHtml(p.name) + '\', \'' + formattedPrice + '\');">Pedir 🪪</button>' +
                   '</div>' +
                 '</div>';
       }
@@ -650,10 +662,10 @@
       });
     }
 
-    // Manejar click en 'Pedir Ficha por WhatsApp'
+    // Manejar flujo unificado de Cortesía 1 min y apertura directa de WhatsApp
     var _countdownTimerId = null;
 
-    waBtn.addEventListener('click', function(e) {
+    function triggerWhatsAppFlow(customMsg) {
       loadLocalTrialState();
       var today = getTodayColombia();
       if (_waTrialState.date !== today) {
@@ -663,7 +675,6 @@
 
       var isBlocked = (_waTrialState.blocked === true || _waTrialState.attempts >= 2) && !_waTrialState.unblocked;
       if (isBlocked) {
-        e.preventDefault();
         renderWaTrialUI();
         showStatus('Has agotado tus 2 intentos gratuitos del día de hoy. Por favor adquiere una ficha física en las casetas autorizadas.', 'error');
         if (kiosksSec) {
@@ -694,12 +705,12 @@
         xhrT.send(JSON.stringify({ mac: clientMac, ip: qsIp }));
       }
 
-      // Generar usuario de 1 minuto para el router
+      // Generar usuario de 1 minuto para el router MikroTik
       var macSuffix = clientMac.replace(/[^A-F0-9]/gi, '').slice(-6) || 'ROYOTA';
       var trialUser = 'WA-' + macSuffix + '-' + newAttempts;
 
-      // Iniciar sesión Hotspot para otorgar 1 minuto de navegación
-      submitMikrotikLogin(trialUser, '¡1 minuto de navegación otorgado! Conectando para pago móvil…');
+      // Iniciar sesión Hotspot para otorgar 1 minuto de navegación (en iframe oculto sin recargar ni abrir about:blank)
+      submitMikrotikLogin(trialUser, '¡1 minuto de navegación otorgado! Conectando para pago móvil…', false);
 
       // Contador en vivo de 60 segundos
       if (waCountdownBox) {
@@ -734,17 +745,32 @@
           }
         }, 1000);
       }
+
+      // Abrir app nativa de WhatsApp directamente
+      var num = _settings && _settings.whatsapp_number ? _settings.whatsapp_number : '573174251419';
+      var biz = _settings && _settings.business_name ? _settings.business_name : 'Río Royota';
+      var msg = customMsg || _defaultWaMsg || ('¡Hola! Estoy en ' + biz + ' y deseo comprar una ficha de internet WiFi.');
+
+      setTimeout(function() {
+        openWhatsAppDirect(num, msg);
+      }, 150);
+    }
+
+    waBtn.addEventListener('click', function(e) {
+      e.preventDefault();
+      triggerWhatsAppFlow();
     });
 
     /* ── 5. Control anti-autofocus en iPhone / iOS CNA ── */
     function unlockInputForUser() {
-      input.removeAttribute('readonly');
-      input.setAttribute('inputmode', 'text');
+      if (input.hasAttribute('readonly')) {
+        input.removeAttribute('readonly');
+        input.setAttribute('inputmode', 'text');
+        input.focus();
+      }
     }
 
-    input.addEventListener('pointerdown', unlockInputForUser);
-    input.addEventListener('touchstart', unlockInputForUser);
-    input.addEventListener('mousedown', unlockInputForUser);
+    input.addEventListener('click', unlockInputForUser);
 
     input.addEventListener('focus', function () {
       if (this.hasAttribute('readonly') || this.getAttribute('inputmode') === 'none') {
@@ -760,6 +786,8 @@
         input.blur();
       }
     }, 100);
+
+
 
     /* ── Auto-mayúsculas y formateo del código al teclear ── */
     input.addEventListener('input', function () {
@@ -786,13 +814,17 @@
     }
 
     /* ── Autologin a MikroTik RouterOS tras validar ficha ── */
-    function submitMikrotikLogin(voucherCode, customMsg) {
+    function submitMikrotikLogin(voucherCode, customMsg, redirectMain) {
       showStatus(customMsg || '¡Ficha activada! Conectando tu dispositivo a la red WiFi…', 'ok');
       setTimeout(function() {
         var postForm = document.createElement('form');
         postForm.method = 'POST';
         postForm.action = qsLinkLogin;
         postForm.style.display = 'none';
+
+        if (!redirectMain) {
+          postForm.target = 'login_target';
+        }
 
         var u = document.createElement('input');
         u.type = 'hidden'; u.name = 'username'; u.value = voucherCode;
@@ -808,7 +840,7 @@
 
         document.body.appendChild(postForm);
         postForm.submit();
-      }, 1000);
+      }, redirectMain ? 1000 : 300);
     }
 
     /* ── 7. Activación de Ficha Física (Desbloquea restricciones previas) ── */
@@ -846,7 +878,7 @@
             setText('cSpeed',    res.speed);
             setText('cExpires',  res.expires_at ? fmtDate(res.expires_at) : '—');
             info.removeAttribute('hidden');
-            submitMikrotikLogin(code);
+            submitMikrotikLogin(code, null, true);
           }).catch(function(err) {
             btn.disabled    = false;
             btn.textContent = '⚡ Conectar al Internet';
@@ -886,7 +918,7 @@
           setText('cExpires',  data.expires_at ? fmtDate(data.expires_at) : '—');
           info.removeAttribute('hidden');
 
-          submitMikrotikLogin(code);
+          submitMikrotikLogin(code, null, true);
         } else if (xhr.status === 404 || xhr.status === 400 || xhr.status === 409) {
           btn.disabled    = false;
           btn.textContent = '⚡ Conectar al Internet';
