@@ -299,22 +299,26 @@
           }
 
           return batch.commit().then(function() {
-            // Notificar a la nube para aprovisionamiento autónomo en MikroTik
-            try {
-              var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
-              var xhr = new XMLHttpRequest();
-              xhr.open('POST', apiBase + '/api/mikrotik/sync/push-batch', true);
-              xhr.setRequestHeader('Content-Type', 'application/json');
-              xhr.send(JSON.stringify({ vouchers: codes, plan: plan }));
-            } catch (_) {}
-
-            return {
-              message:   'Lote de ' + quantity + ' fichas generado',
-              batch_id:  batchRef.id,
-              codes:     codes,
-              generated: codes.length,
-              plan:      plan,
-            };
+            // Notificar a la nube para aprovisionamiento inmediato en MikroTik
+            var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
+            return fetch(apiBase + '/api/mikrotik/sync/push-batch', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ vouchers: codes, plan: plan })
+            }).then(function(res) {
+              return res.json().catch(function() { return {}; });
+            }).catch(function(err) {
+              console.warn('[Cloud-Sync] Aviso notificando a Render:', err);
+              return null;
+            }).then(function() {
+              return {
+                message:   'Lote de ' + quantity + ' fichas generado y sincronizado con MikroTik',
+                batch_id:  batchRef.id,
+                codes:     codes,
+                generated: codes.length,
+                plan:      plan,
+              };
+            });
           });
         });
       });

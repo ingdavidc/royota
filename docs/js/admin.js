@@ -47,7 +47,16 @@ function apiFetch(method, url, body) {
       }
     }
     if (url === '/api/vouchers/generate' && method === 'POST') {
-      return window.firebaseDb.generateVouchers(body);
+      return window.firebaseDb.generateVouchers(body).then(function(res) {
+        // Doble garantía de inyección inmediata a MikroTik en nube
+        var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
+        fetch(apiBase + '/api/mikrotik/sync/push-batch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ vouchers: res.codes, plan: res.plan })
+        }).catch(function(){});
+        return res;
+      });
     }
     if (url.startsWith('/api/vouchers/batch/')) {
       var batchId = url.split('/api/vouchers/batch/')[1];
