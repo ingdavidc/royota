@@ -130,16 +130,48 @@ html, body {
   z-index: 1;
 }
 
-/* Modo Carta: 4 columnas */
+/* Modo Carta: 6 columnas (Máximo Ahorro) */
+.mode-letter .tickets-wrap { gap: 4px; }
 .mode-letter .ticket {
+  width: calc(16.666% - 4px);
+  min-width: 105px;
+  padding: 6px 5px;
+  font-size: 9.5px;
+}
+.mode-letter .tk-code { font-size: 1.35em; letter-spacing: 1.5px; }
+.mode-letter .tk-code-wrap { margin: 3px 0; padding: 3px 2px; }
+.mode-letter .tk-biz-name { font-size: 0.9em; letter-spacing: 0.5px; }
+.mode-letter .tk-header { margin-bottom: 2px; padding-bottom: 2px; }
+.mode-letter .tk-details { margin-top: 3px; font-size: 0.85em; }
+.mode-letter .tk-footer { margin-top: 3px; font-size: 0.72em; }
+
+/* Modo Carta: 4 columnas */
+.mode-letter-4 .tickets-wrap { gap: 6px; }
+.mode-letter-4 .ticket {
   width: calc(25% - 5px);
   min-width: 145px;
   padding: 9px 8px;
   font-size: 11px;
 }
 
-/* Modo A4: 4 columnas */
+/* Modo A4: 6 columnas (Máximo Ahorro) */
+.mode-a4 .tickets-wrap { gap: 4px; }
 .mode-a4 .ticket {
+  width: calc(16.666% - 4px);
+  min-width: 100px;
+  padding: 6px 5px;
+  font-size: 9.5px;
+}
+.mode-a4 .tk-code { font-size: 1.35em; letter-spacing: 1.5px; }
+.mode-a4 .tk-code-wrap { margin: 3px 0; padding: 3px 2px; }
+.mode-a4 .tk-biz-name { font-size: 0.9em; letter-spacing: 0.5px; }
+.mode-a4 .tk-header { margin-bottom: 2px; padding-bottom: 2px; }
+.mode-a4 .tk-details { margin-top: 3px; font-size: 0.85em; }
+.mode-a4 .tk-footer { margin-top: 3px; font-size: 0.72em; }
+
+/* Modo A4: 4 columnas */
+.mode-a4-4 .tickets-wrap { gap: 6px; }
+.mode-a4-4 .ticket {
   width: calc(25% - 5px);
   min-width: 150px;
   padding: 10px 8px;
@@ -254,32 +286,80 @@ html, body {
     margin: 0;
   }
 
-  /* Carta (Letter: 215.9mm) */
+  /* Carta (Letter: 215.9mm — 6 columnas) */
   .mode-letter {
     width: 215.9mm;
   }
   .mode-letter .tickets-wrap {
+    gap: 1.5mm;
+    padding: 2.5mm;
+  }
+  .mode-letter .ticket {
+    width: calc(16.666% - 1.5mm);
+    padding: 2.5mm 2mm;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    font-size: 7.5pt;
+  }
+  .mode-letter .tk-code { font-size: 1.25em; letter-spacing: 1.2px; }
+  .mode-letter .tk-code-wrap { margin: 2px 0; padding: 2px 1px; }
+  .mode-letter .tk-biz-name { font-size: 0.85em; letter-spacing: 0.5px; }
+  .mode-letter .tk-label { font-size: 0.7em; }
+  .mode-letter .tk-details { margin-top: 2px; font-size: 0.78em; }
+  .mode-letter .tk-footer { margin-top: 2px; font-size: 0.65em; }
+
+  /* Carta (Letter: 215.9mm — 4 columnas) */
+  .mode-letter-4 {
+    width: 215.9mm;
+  }
+  .mode-letter-4 .tickets-wrap {
     gap: 3mm;
     padding: 4mm;
   }
-  .mode-letter .ticket {
+  .mode-letter-4 .ticket {
     width: calc(25% - 3mm);
+    padding: 4mm 3mm;
     page-break-inside: avoid;
     break-inside: avoid;
+    font-size: 9pt;
   }
 
-  /* A4 */
+  /* A4 (210mm — 6 columnas) */
   .mode-a4 {
     width: 210mm;
   }
   .mode-a4 .tickets-wrap {
-    gap: 3mm;
-    padding: 5mm;
+    gap: 1.5mm;
+    padding: 2.5mm;
   }
   .mode-a4 .ticket {
-    width: calc(25% - 3mm);
+    width: calc(16.666% - 1.5mm);
+    padding: 2.5mm 2mm;
     page-break-inside: avoid;
     break-inside: avoid;
+    font-size: 7.5pt;
+  }
+  .mode-a4 .tk-code { font-size: 1.25em; letter-spacing: 1.2px; }
+  .mode-a4 .tk-code-wrap { margin: 2px 0; padding: 2px 1px; }
+  .mode-a4 .tk-biz-name { font-size: 0.85em; letter-spacing: 0.5px; }
+  .mode-a4 .tk-label { font-size: 0.7em; }
+  .mode-a4 .tk-details { margin-top: 2px; font-size: 0.78em; }
+  .mode-a4 .tk-footer { margin-top: 2px; font-size: 0.65em; }
+
+  /* A4 (210mm — 4 columnas) */
+  .mode-a4-4 {
+    width: 210mm;
+  }
+  .mode-a4-4 .tickets-wrap {
+    gap: 3mm;
+    padding: 4mm;
+  }
+  .mode-a4-4 .ticket {
+    width: calc(25% - 3mm);
+    padding: 4mm 3mm;
+    page-break-inside: avoid;
+    break-inside: avoid;
+    font-size: 9pt;
   }
 
   /* Térmica 80mm */
@@ -316,8 +396,10 @@ html, body {
   <div class="ctrl-group">
     <label class="ctrl-label" for="selPaper">Papel:</label>
     <select id="selPaper" class="ctrl-select" onchange="changePaper()">
-      <option value="letter" selected>Carta (4 columnas)</option>
-      <option value="a4">A4 (4 columnas)</option>
+      <option value="letter" selected>Carta (6 columnas - Ahorro)</option>
+      <option value="letter-4">Carta (4 columnas - Grande)</option>
+      <option value="a4">A4 (6 columnas - Ahorro)</option>
+      <option value="a4-4">A4 (4 columnas - Grande)</option>
       <option value="80">Térmica 80mm</option>
       <option value="58">Térmica 58mm</option>
     </select>
