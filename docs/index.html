@@ -690,13 +690,22 @@
       if (updateCache !== false) {
         try { localStorage.setItem('royota_cached_plans', JSON.stringify(_cachedPlans)); } catch (_) {}
       }
+      var isOnlineActive = _settings.online_purchase_active !== '0' && _settings.online_purchase_active !== 0 && _settings.online_purchase_active !== false;
       var sym = (_settings && _settings.currencySymbol) || '$';
       var html = '';
       for (var i = 0; i < plans.length; i++) {
         var p = plans[i];
         var formattedPrice = sym + Number(p.price || 0).toLocaleString();
 
-        html += '<div class="plan-item" onclick="pedirPlan(\'' + escapeHtml(p.name) + '\', \'' + formattedPrice + '\')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">' +
+        var buyBtnHtml = isOnlineActive
+          ? '<button type="button" class="plan-buy-btn" onclick="event.stopPropagation(); pedirPlan(\'' + escapeHtml(p.name) + '\', \'' + formattedPrice + '\');">Pedir 🪪</button>'
+          : '';
+
+        var itemClickAttr = isOnlineActive
+          ? ' onclick="pedirPlan(\'' + escapeHtml(p.name) + '\', \'' + formattedPrice + '\')" style="cursor:pointer;" title="Pedir ficha por WhatsApp"'
+          : ' style="cursor:default;"';
+
+        html += '<div class="plan-item"' + itemClickAttr + '>' +
                   '<div class="plan-info-left">' +
                     '<div class="plan-name">' + escapeHtml(p.name) + '</div>' +
                     '<div class="plan-meta">' +
@@ -706,7 +715,7 @@
                   '</div>' +
                   '<div class="plan-price-wrap">' +
                     '<div class="plan-price">' + formattedPrice + '</div>' +
-                    '<button type="button" class="plan-buy-btn" onclick="event.stopPropagation(); pedirPlan(\'' + escapeHtml(p.name) + '\', \'' + formattedPrice + '\');">Pedir 🪪</button>' +
+                    buyBtnHtml +
                   '</div>' +
                 '</div>';
       }
