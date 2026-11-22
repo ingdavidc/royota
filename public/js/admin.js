@@ -1488,21 +1488,46 @@ function openComplaintModal(id) {
   bg.removeAttribute('hidden');
 }
 
+function formatPqrsReply(rawMsg, complaint) {
+  if (!complaint) return rawMsg;
+  var rad = complaint.radicado || ('PQRS-' + String(complaint.id).padStart(4, '0'));
+  var name = complaint.client_name || 'Cliente';
+  var reportedIssue = (complaint.message || '').trim();
+
+  // Si ya tiene el encabezado de radicado o cita previa, no duplicar
+  if (rawMsg.includes('#' + rad) || rawMsg.includes('RESPUESTA A TU REPORTE')) {
+    return rawMsg;
+  }
+
+  var formatted =
+    '📋 *RESPUESTA A TU REPORTE / PQRS*\n' +
+    '━━━━━━━━━━━━━━━━━━━━\n' +
+    'Radicado: *#' + rad + '*\n' +
+    'Hola *' + name + '*, en respuesta a tu caso por:\n' +
+    (reportedIssue ? ('_«' + reportedIssue + '»_\n\n') : '\n') +
+    '*Respuesta de Administración:*\n' +
+    rawMsg + '\n' +
+    '━━━━━━━━━━━━━━━━━━━━\n' +
+    '_Balneario Río Royota — Soporte WiFi_ 🏖️';
+
+  return formatted;
+}
+
 function setReplyTemplate(type) {
   var replyInput = document.getElementById('cReplyMsg');
   if (!replyInput || !_activeComplaint) return;
 
-  var name = _activeComplaint.client_name || 'Hola';
+  var name = _activeComplaint.client_name || 'Cliente';
   var rad = _activeComplaint.radicado || 'PQRS-0001';
 
   if (type === 'ok') {
-    replyInput.value = '¡Hola ' + name + '! Hemos revisado tu caso #' + rad + ' y la velocidad del servicio de internet ha sido normalizada. ¿Nos confirmas por favor si ya puedes navegar sin problemas? Muchas gracias por tu paciencia.';
+    replyInput.value = 'Hemos verificado las antenas y la velocidad del servicio de internet ha sido restablecida y normalizada. ¿Nos confirmas por favor si ya puedes navegar sin problemas? Muchas gracias por tu paciencia.';
     document.getElementById('cStatus').value = 'resolved';
   } else if (type === 'review') {
-    replyInput.value = '¡Hola ' + name + '! Hemos recibido tu reporte #' + rad + '. Nuestro equipo técnico se encuentra verificando las antenas en el balneario en este momento para solucionar tu conexión a la brevedad.';
+    replyInput.value = 'Hemos recibido tu reporte. Nuestro equipo técnico se encuentra verificando las antenas en el balneario en este momento para solucionar tu conexión a la brevedad.';
     document.getElementById('cStatus').value = 'in_progress';
   } else if (type === 'voucher') {
-    replyInput.value = '¡Hola ' + name + '! Lamentamos los inconvenientes con tu conexión. Te hemos generado una nueva ficha de cortesía para reponer tu tiempo sin costo: CÓDIGO: [Escribe o genera la ficha aquí]. Puedes activarla en el portal de inicio.';
+    replyInput.value = 'Lamentamos los inconvenientes con tu conexión. Te hemos generado una nueva ficha de cortesía para reponer tu tiempo sin costo: CÓDIGO: [Escribe aquí el código]. Puedes activarla en el portal de inicio.';
     document.getElementById('cStatus').value = 'resolved';
   }
 }
@@ -1514,8 +1539,9 @@ function openCustomerInWaWeb() {
   }
   var clean = String(_activeComplaint.phone).replace(/\D/g, '');
   if (clean.length === 10 && clean.startsWith('3')) clean = '57' + clean;
-  var msg = (document.getElementById('cReplyMsg').value || '').trim();
-  var url = 'https://wa.me/' + clean + (msg ? ('?text=' + encodeURIComponent(msg)) : '');
+  var rawMsg = (document.getElementById('cReplyMsg').value || '').trim();
+  var finalMsg = rawMsg ? formatPqrsReply(rawMsg, _activeComplaint) : '';
+  var url = 'https://wa.me/' + clean + (finalMsg ? ('?text=' + encodeURIComponent(finalMsg)) : '');
   window.open(url, '_blank');
 }
 
@@ -1525,12 +1551,14 @@ function sendReplyViaBot() {
     return;
   }
 
-  var msg = (document.getElementById('cReplyMsg').value || '').trim();
-  if (!msg) {
+  var rawMsg = (document.getElementById('cReplyMsg').value || '').trim();
+  if (!rawMsg) {
     toast('Por favor escribe el mensaje que deseas enviar al cliente', 'error');
     document.getElementById('cReplyMsg').focus();
     return;
   }
+
+  var formattedMsg = formatPqrsReply(rawMsg, _activeComplaint);
 
   var btn = document.getElementById('btnSendWaReply');
   if (btn) {
@@ -1554,7 +1582,7 @@ function sendReplyViaBot() {
 
   // Enviar mediante Firestore Outbox (100% inmune a bloqueos de CSP y conexión en el navegador)
   if (window.firebaseDb && window.firebaseDb.sendWhatsAppReply) {
-    window.firebaseDb.sendWhatsAppReply(target, msg, _activeComplaint.id, statusVal)
+    window.firebaseDb.sendWhatsAppReply(target, formattedMsg, _activeComplaint.id, statusVal, rawMsg)
       .then(function() {
         onSuccess();
       })
@@ -1565,7 +1593,7 @@ function sendReplyViaBot() {
           var img = new Image();
           var beaconUrl = (window.API_BASE || 'https://royota-bot.onrender.com') +
             '/api/whatsapp/send-beacon?phone=' + encodeURIComponent(target) +
-            '&msg=' + encodeURIComponent(msg) +
+            '&msg=' + encodeURIComponent(formattedMsg) +
             '&complaint_id=' + encodeURIComponent(_activeComplaint.id || '') +
             '&status=' + encodeURIComponent(statusVal) +
             '&t=' + Date.now();
@@ -1579,7 +1607,7 @@ function sendReplyViaBot() {
       var img = new Image();
       var beaconUrl = (window.API_BASE || 'https://royota-bot.onrender.com') +
         '/api/whatsapp/send-beacon?phone=' + encodeURIComponent(target) +
-        '&msg=' + encodeURIComponent(msg) +
+        '&msg=' + encodeURIComponent(formattedMsg) +
         '&complaint_id=' + encodeURIComponent(_activeComplaint.id || '') +
         '&status=' + encodeURIComponent(statusVal) +
         '&t=' + Date.now();

@@ -346,9 +346,10 @@
       return db.collection('complaints').doc(String(id)).delete();
     },
 
-    sendWhatsAppReply: function(phoneOrJid, message, complaintId, status) {
+    sendWhatsAppReply: function(phoneOrJid, message, complaintId, status, noteText) {
       if (!db) return Promise.reject(new Error('No db'));
-      var noteEntry = '[Respuesta WhatsApp ' + new Date().toLocaleTimeString('es-CO') + ']: ' + message;
+      var actualNote = noteText || message;
+      var noteEntry = '[Respuesta WhatsApp ' + new Date().toLocaleTimeString('es-CO') + ']: ' + actualNote;
       var raw = String(phoneOrJid || '').trim();
       var cleanPhone = raw;
       if (!raw.includes('@')) {
