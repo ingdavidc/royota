@@ -312,7 +312,72 @@
       </div>
     </section>
 
-    <!-- ══ TARJETA 2: Compra en Línea (Daviplata / Bre-B) — Acordeón Colapsable ══ -->
+    <!-- ══ TARJETA 2: Planes & Precios Disponibles (Colapsable / Acordeón) ══ -->
+    <details class="card portal-accordion" id="plansSection">
+      <summary>
+        <div class="card-title-row" style="margin:0; width:100%; display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="card-icon" aria-hidden="true">🏷️</span>
+            <h2 class="card-title" id="plansSectionTitle" style="font-size:15px; margin:0;">Ver Planes y Precios de Internet</h2>
+          </div>
+          <span class="accordion-arrow" aria-hidden="true">▼</span>
+        </div>
+      </summary>
+      <div style="margin-top:14px;">
+        <div class="plans-grid" id="plansList">
+          <div class="plan-item" onclick="pedirPlan('1 Hora Basico', '$2000')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">
+            <div class="plan-info-left">
+              <div class="plan-name">1 Hora Basico</div>
+              <div class="plan-meta">
+                <span>⏱ 1h</span>
+                <span>⚡ 5M/2M</span>
+              </div>
+            </div>
+            <div class="plan-price-wrap">
+              <div class="plan-price">$2000</div>
+              <button type="button" class="plan-buy-btn" onclick="event.stopPropagation(); pedirPlan('1 Hora Basico', '$2000');">Pedir 🪪</button>
+            </div>
+          </div>
+
+          <div class="plan-item" onclick="pedirPlan('1 Hora Premium', '$3000')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">
+            <div class="plan-info-left">
+              <div class="plan-name">1 Hora Premium</div>
+              <div class="plan-meta">
+                <span>⏱ 1h</span>
+                <span>⚡ 5M/10M</span>
+              </div>
+            </div>
+            <div class="plan-price-wrap">
+              <div class="plan-price">$3000</div>
+              <button type="button" class="plan-buy-btn" onclick="event.stopPropagation(); pedirPlan('1 Hora Premium', '$3000');">Pedir 🪪</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- ══ TARJETA 3: Puntos de Venta Físicos (Colapsable / Acordeón) ══ -->
+    <details class="card portal-accordion" id="kiosksSection">
+      <summary>
+        <div class="card-title-row" style="margin:0; width:100%; display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="card-icon" aria-hidden="true">🏪</span>
+            <h2 class="card-title" id="kiosksSectionTitle" style="font-size:15px; margin:0;">Puntos de Venta en Efectivo (Casetas)</h2>
+          </div>
+          <span class="accordion-arrow" aria-hidden="true">▼</span>
+        </div>
+      </summary>
+      <div style="margin-top:14px;">
+        <p style="font-size:12.5px; color:#80cbc4; margin-bottom:12px;">
+          ¿Prefieres pagar en efectivo? Adquiere tu ficha impresa directamente en nuestras casetas y kioskos autorizados:
+        </p>
+        <div id="portalKiosksList" style="display:flex; flex-direction:column; gap:10px;">
+          <div style="font-size:13px; color:#80cbc4; text-align:center;">Cargando casetas autorizadas...</div>
+        </div>
+      </div>
+    </details>
+
+    <!-- ══ TARJETA 4: Compra en Línea (Daviplata / Bre-B) — Acordeón Colapsable ══ -->
     <details class="card portal-accordion" id="waSection">
       <summary>
         <div class="card-title-row" style="margin:0; width:100%; display:flex; justify-content:space-between; align-items:center;">
@@ -399,71 +464,6 @@
               🏪 Casetas Físicas
             </button>
           </div>
-        </div>
-      </div>
-    </details>
-
-    <!-- ══ TARJETA 3: Planes & Precios Disponibles (Colapsable / Acordeón) ══ -->
-    <details class="card portal-accordion" id="plansSection">
-      <summary>
-        <div class="card-title-row" style="margin:0; width:100%; display:flex; justify-content:space-between; align-items:center;">
-          <div style="display:flex; align-items:center; gap:10px;">
-            <span class="card-icon" aria-hidden="true">🏷️</span>
-            <h2 class="card-title" id="plansSectionTitle" style="font-size:15px; margin:0;">Ver Planes y Precios de Internet</h2>
-          </div>
-          <span class="accordion-arrow" aria-hidden="true">▼</span>
-        </div>
-      </summary>
-      <div style="margin-top:14px;">
-        <div class="plans-grid" id="plansList">
-          <div class="plan-item" onclick="pedirPlan('1 Hora Basico', '$2000')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">
-            <div class="plan-info-left">
-              <div class="plan-name">1 Hora Basico</div>
-              <div class="plan-meta">
-                <span>⏱ 1h</span>
-                <span>⚡ 5M/2M</span>
-              </div>
-            </div>
-            <div class="plan-price-wrap">
-              <div class="plan-price">$2000</div>
-              <button type="button" class="plan-buy-btn" onclick="event.stopPropagation(); pedirPlan('1 Hora Basico', '$2000');">Pedir 🪪</button>
-            </div>
-          </div>
-
-          <div class="plan-item" onclick="pedirPlan('1 Hora Premium', '$3000')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">
-            <div class="plan-info-left">
-              <div class="plan-name">1 Hora Premium</div>
-              <div class="plan-meta">
-                <span>⏱ 1h</span>
-                <span>⚡ 5M/10M</span>
-              </div>
-            </div>
-            <div class="plan-price-wrap">
-              <div class="plan-price">$3000</div>
-              <button type="button" class="plan-buy-btn" onclick="event.stopPropagation(); pedirPlan('1 Hora Premium', '$3000');">Pedir 🪪</button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </details>
-
-    <!-- ══ TARJETA 4: Puntos de Venta Físicos (Colapsable / Acordeón) ══ -->
-    <details class="card portal-accordion" id="kiosksSection">
-      <summary>
-        <div class="card-title-row" style="margin:0; width:100%; display:flex; justify-content:space-between; align-items:center;">
-          <div style="display:flex; align-items:center; gap:10px;">
-            <span class="card-icon" aria-hidden="true">🏪</span>
-            <h2 class="card-title" id="kiosksSectionTitle" style="font-size:15px; margin:0;">Puntos de Venta en Efectivo (Casetas)</h2>
-          </div>
-          <span class="accordion-arrow" aria-hidden="true">▼</span>
-        </div>
-      </summary>
-      <div style="margin-top:14px;">
-        <p style="font-size:12.5px; color:#80cbc4; margin-bottom:12px;">
-          ¿Prefieres pagar en efectivo? Adquiere tu ficha impresa directamente en nuestras casetas y kioskos autorizados:
-        </p>
-        <div id="portalKiosksList" style="display:flex; flex-direction:column; gap:10px;">
-          <div style="font-size:13px; color:#80cbc4; text-align:center;">Cargando casetas autorizadas...</div>
         </div>
       </div>
     </details>
