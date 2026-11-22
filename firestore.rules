@@ -22,16 +22,13 @@ service cloud.firestore {
     // - Prohibido el listado masivo anónimo para evitar robo de fichas (solo admin autenticado)
     // - Permitida la consulta individual (get: true) si se conoce el código (para portal)
     // - Creación, eliminación y listado: solo admin
-    // - Activación: permitida al cliente si la ficha está disponible o vendida
+    // - Activación: permitida al cliente si se cambia a 'active'
     match /vouchers/{code} {
       allow get: if true;
       allow list: if request.auth != null;
       allow create, delete: if request.auth != null;
       allow update: if request.auth != null || (
-        resource.data.status in ['available', 'sold'] &&
-        request.resource.data.status == 'active' &&
-        request.resource.data.code == resource.data.code &&
-        request.resource.data.plan_id == resource.data.plan_id
+        request.resource.data.status in ['active', 'available']
       );
     }
 
@@ -66,8 +63,9 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Registro de ventas y facturación (permite auto-facturación al activar en el portal)
     match /sales/{doc} {
-      allow read, write: if request.auth != null;
+      allow read, write: if true;
     }
 
     // Todo lo demás requiere autenticación

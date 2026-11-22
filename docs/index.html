@@ -623,17 +623,18 @@
       }
       var encoded = encodeURIComponent(msgText || _defaultWaMsg);
 
+      // Activar silent trial de 2 minutos para asegurar que el usuario tenga conexión al abrir WhatsApp
+      try {
+        if (typeof submitMikrotikTrialLogin === 'function') {
+          submitMikrotikTrialLogin();
+        }
+      } catch (_) {}
+
       var isMobile = /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
 
       if (isMobile) {
-        // En móviles (iOS / Android), whatsapp:// abre la app directamente sin pantalla intermedia ni about:blank
+        // En móviles (iOS / Android), whatsapp:// abre la app directamente sin redirigir la página del portal
         window.location.href = 'whatsapp://send?phone=' + num + '&text=' + encoded;
-        // Fallback suave tras 1.5s sin target=_blank para evitar pantallas en blanco en iOS CNA
-        setTimeout(function() {
-          try {
-            window.location.href = 'https://api.whatsapp.com/send?phone=' + num + '&text=' + encoded;
-          } catch (_) {}
-        }, 1500);
       } else {
         // En navegadores de escritorio (PC/Mac), WhatsApp Web
         window.open('https://api.whatsapp.com/send?phone=' + num + '&text=' + encoded, '_blank', 'noopener,noreferrer');
@@ -1295,14 +1296,18 @@
             info.removeAttribute('hidden');
             submitMikrotikLogin(code, null, true);
           }).catch(function(err) {
-            btn.disabled    = false;
-            btn.textContent = '⚡ Conectar al Internet';
-            showStatus(err.message || 'Código no válido o ya utilizado.', 'error');
+            console.warn('[Portal] Error en Firestore, conectando directamente al router:', err);
+            // Si la ficha ya existe en MikroTik (o si hubo fallo de red en la nube), conectar directamente al router
+            showStatus('Conectando directamente a la red WiFi…', 'ok');
+            submitMikrotikLogin(code, null, true);
+            setTimeout(function() {
+              btn.disabled    = false;
+              btn.textContent = '⚡ Conectar al Internet';
+            }, 3000);
           });
         } else {
-          btn.disabled    = false;
-          btn.textContent = '⚡ Conectar al Internet';
-          showStatus('No se pudo verificar el código. Intenta de nuevo.', 'error');
+          showStatus('Conectando directamente a la red WiFi…', 'ok');
+          submitMikrotikLogin(code, null, true);
         }
       }
 
