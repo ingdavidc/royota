@@ -152,12 +152,15 @@ add dst-address=192.168.10.0/24 dst-port=3000 action=accept comment="Servidor Lo
 add dst-address=192.168.20.1 dst-port=53 protocol=udp action=accept comment="DNS Hotspot UDP"
 add dst-address=192.168.20.1 dst-port=53 protocol=tcp action=accept comment="DNS Hotspot TCP"
 
-# Dominios permitidos sin ficha (WhatsApp para compras, pagos móviles y Render si el portal está en nube)
+# Dominios permitidos sin ficha (Portal oficial, WhatsApp, Firebase, pagos móviles y Render)
 /ip hotspot walled-garden
+add dst-host=*dctelematica.com* action=allow comment="Portal Oficial royota.dctelematica.com"
 add dst-host=*whatsapp* action=allow comment="WhatsApp Web/App"
 add dst-host=*wa.me* action=allow comment="Enlaces WhatsApp"
 add dst-host=*onrender.com* action=allow comment="Servidor en la Nube Render"
 add dst-host=*firestore.googleapis.com* action=allow comment="Firebase Firestore"
+add dst-host=*googleapis.com* action=allow comment="Google APIs"
+add dst-host=*firebaseio.com* action=allow comment="Firebase Realtime"
 add dst-host=*nequi.com.co action=allow comment="App Nequi"
 add dst-host=*bancolombia.com action=allow comment="App Bancolombia"
 add dst-host=*daviplata.com action=allow comment="App Daviplata"
