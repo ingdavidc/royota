@@ -305,17 +305,19 @@ function _seedPlans(db) {
   const count = db.prepare('SELECT COUNT(*) AS c FROM plans').get().c;
   if (count === 0) {
     const insert = db.prepare(`
-      INSERT INTO plans (name, duration, validity_days, speed_limit, price, shared_users, sort_order, is_active)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+      INSERT INTO plans (name, duration, speed_limit, price, shared_users, sort_order, is_active)
+      VALUES (?, ?, ?, ?, ?, ?, 1)
     `);
     const tx = db.transaction(function () {
-      insert.run('1 Hora Basico', '1h', 1, '2M/5M', 2000, 1, 1);
-      insert.run('1 Hora Premium', '1h', 1, '5M/10M', 3000, 1, 2);
-      insert.run('5 Horas Basico', '5h', 3, '2M/5M', 5000, 1, 3);
-      insert.run('5 Horas Premium', '5h', 3, '5M/10M', 8000, 1, 4);
+      insert.run('1 Hora Basico', '1h', '2M/3M', 2000, 1, 1);
+      insert.run('1 Hora Premium', '1h', '5M/10M', 3000, 1, 2);
+      insert.run('5 Horas Basico', '5h', '2M/3M', 5000, 1, 3);
+      insert.run('5 Horas Premium', '5h', '5M/10M', 8000, 1, 4);
+      insert.run('1 Dia Basico', '1d', '2M/3M', 8000, 1, 5);
+      insert.run('1 Dia Premium', '1d', '5M/10M', 10000, 1, 6);
     });
     tx();
-    console.log('[DB] ✅ Planes de internet inicializados por defecto (Royota).');
+    console.log('[DB] ✅ 6 Planes de internet inicializados por defecto (Royota).');
   }
 }
 
