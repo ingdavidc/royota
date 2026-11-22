@@ -214,9 +214,17 @@ add chain=input action=accept in-interface=bridge-hotspot protocol=udp dst-port=
 add chain=input action=drop in-interface=bridge-hotspot comment="BLOQUEO AUDITORIA: Clientes no tocan el Router"
 
 # --- FIREWALL FILTER: CADENA FORWARD (Trafico entre Redes) ---
-# Desactivar FastTrack (Incompatible con Hotspot: evita que conexiones HTTPS evadan el portal)
-# /ip firewall filter disable [find action=fasttrack-connection]
+# Desactivar obligatoriamente FastTrack (Incompatible con Hotspot y causa fugas directas HTTPS)
+/ip firewall filter disable [find action=fasttrack-connection]
 
+# 1. Permitir siempre salida a Internet a los APs de infraestructura Ruijie y Gestion (192.168.20.2 a 192.168.20.9)
+add chain=forward action=accept src-address=192.168.20.2-192.168.20.9 comment="Permitir APs Ruijie a Internet"
+
+# 2. BLOQUEO HERMÉTICO OBLIGATORIO: Todo cliente del rango Hotspot (192.168.20.0/22) que NO esté autenticado se DESCARTA
+# Esta regla DEBE ir antes de 'established,related' para impedir que el iPhone o Android navegue por HTTPS al dar 'Usar sin internet'
+add chain=forward action=drop src-address=192.168.20.0/22 hotspot=!auth comment="BLOQUEO HERMETICO: Hotspot no autenticado NO navega"
+
+# 3. Aceptar conexiones establecidas y relacionadas (solo para clientes ya autenticados o APs)
 add chain=forward action=accept connection-state=established,related comment="Aceptar forward establecido"
 add chain=forward action=drop connection-state=invalid comment="Descartar forward invalido"
 
@@ -225,12 +233,6 @@ add chain=forward action=drop in-interface=bridge-hotspot out-interface=ether2 c
 
 # BLOQUEO DE TÚNELES DNS (Evita bypass pre-autenticación tipo iodine o dnscat)
 add chain=forward action=drop in-interface=bridge-hotspot protocol=udp dst-port=53 hotspot=!from-client comment="BLOQUEO AUDITORIA: Tunel DNS no autorizado"
-
-# Permitir siempre salida a Internet a los APs de infraestructura Ruijie (192.168.20.2 a 192.168.20.9)
-add chain=forward action=accept src-address=192.168.20.2-192.168.20.9 out-interface-list=WAN comment="Permitir APs Ruijie a Internet"
-
-# Bloquear exclusivamente al pool de invitados que NO esten autenticados en el Hotspot (evita fugas HTTPS / Usar sin internet)
-add chain=forward action=drop src-address=192.168.20.10-192.168.23.250 hotspot=!auth out-interface-list=WAN comment="Bloquear invitados Hotspot no autenticados"
 
 # ==============================================================================
 # FIN DEL SCRIPT DE CONFIGURACIÓN
