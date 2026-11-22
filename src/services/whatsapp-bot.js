@@ -221,9 +221,21 @@ function isRateLimited(phone) {
  */
 function buildMenuMessage() {
   const db = getDb();
-  const plans = db.prepare(
-    'SELECT name, duration, speed_limit, price FROM plans WHERE is_active = 1 ORDER BY sort_order ASC, price ASC'
-  ).all();
+  let plans = [];
+  try {
+    plans = db.prepare(
+      'SELECT name, duration, speed_limit, price FROM plans WHERE is_active = 1 ORDER BY sort_order ASC, price ASC'
+    ).all();
+  } catch (_) {}
+
+  if (!plans || !plans.length) {
+    plans = [
+      { name: '1 Hora Basico', duration: '1h', speed_limit: '2M/5M', price: 2000 },
+      { name: '1 Hora Premium', duration: '1h', speed_limit: '5M/10M', price: 3000 },
+      { name: '5 Horas Basico', duration: '5h', speed_limit: '2M/5M', price: 5000 },
+      { name: '5 Horas Premium', duration: '5h', speed_limit: '5M/10M', price: 8000 },
+    ];
+  }
 
   const businessName = config.business.name || 'Balneario Río Royota';
   const paymentPhone = config.whatsapp.paymentPhone || '3174251419';
@@ -859,7 +871,6 @@ async function startWhatsAppBot(forceClean = false) {
               console.error('[WhatsApp Bot] Error guardando queja en Firestore:', fErr.message);
             }
 
-            const kiosksFull = getKiosksFormatted(true);
             const complaintMsg =
               `📋 *SOLICITUD DE SOPORTE / QUEJA REGISTRADA*\n` +
               `━━━━━━━━━━━━━━━━━━━━\n` +
@@ -867,10 +878,7 @@ async function startWhatsAppBot(forceClean = false) {
               `Cliente: *${senderName}*\n` +
               `Línea: *${cleanPhone}*\n` +
               `Estado: *Pendiente de revisión administrativa*\n\n` +
-              `Lamentamos mucho los inconvenientes con el servicio. Tu reporte ha quedado registrado formalmente en nuestro panel y el administrador revisará tu caso a la brevedad para darte solución o gestionar la reposición de tu servicio.\n\n` +
-              `🏪 *Soporte Presencial en el Balneario:*\n` +
-              `Si te encuentras en el balneario, también puedes acercarte a cualquiera de nuestras casetas autorizadas donde el personal te asistirá directamente:\n\n` +
-              `${kiosksFull}\n\n` +
+              `Lamentamos los inconvenientes con el servicio. Tu reporte ha quedado registrado formalmente en nuestro panel y el administrador revisará tu caso a la brevedad para darte solución o gestionar la reposición de tu servicio directamente por este chat.\n\n` +
               `_Por favor conserva tu número de radicado #${radicado}._\n` +
               `━━━━━━━━━━━━━━━━━━━━`;
             await sock.sendMessage(remoteJid, { text: complaintMsg });
