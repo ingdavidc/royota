@@ -58,17 +58,17 @@ function apiFetch(method, url, body) {
         });
       }
       if (url.includes('/toggle') && method === 'PATCH') {
-        var tId = url.split('/api/kiosks/')[1].split('/')[0];
+        var tId = decodeURIComponent(url.split('/api/kiosks/')[1].split('/')[0]);
         return window.firebaseDb.toggleKiosk(tId);
       }
       if (method === 'PUT') {
-        var pId = url.split('/api/kiosks/')[1];
+        var pId = decodeURIComponent(url.split('/api/kiosks/')[1]);
         return window.firebaseDb.saveKiosk(body, pId).then(function() {
           return { message: 'Caseta actualizada exitosamente' };
         });
       }
       if (method === 'DELETE') {
-        var dId = url.split('/api/kiosks/')[1];
+        var dId = decodeURIComponent(url.split('/api/kiosks/')[1]);
         return window.firebaseDb.deleteKioskPermanent(dId).then(function() {
           return { message: 'Caseta eliminada exitosamente' };
         });
@@ -1375,6 +1375,8 @@ function loadKiosksSection() {
         ? '<span class="badge" style="background:rgba(74,222,128,0.2); color:#4ade80;">Activo</span>'
         : '<span class="badge" style="background:rgba(255,255,255,0.1); color:var(--muted);">Inactivo</span>';
 
+      var safeId = String(k.id || '').replace(/'/g, "\\'");
+
       tr.innerHTML =
         '<td>' + (k.sort_order || 0) + '</td>' +
         '<td><strong>' + escapeHtml(k.name) + '</strong></td>' +
@@ -1384,11 +1386,20 @@ function loadKiosksSection() {
         '<td>' + statusBadge + '</td>' +
         '<td>' +
           '<div style="display:flex; gap:6px;">' +
-            '<button class="btn btn-sm btn-ghost" onclick="editKiosk(' + k.id + ')" title="Editar">✏️</button>' +
-            '<button class="btn btn-sm btn-ghost" onclick="toggleKiosk(' + k.id + ')" title="Activar/Desactivar">' + (k.is_active ? '⏸️' : '▶️') + '</button>' +
-            '<button class="btn btn-sm btn-danger" onclick="deleteKiosk(' + k.id + ')" title="Eliminar">🗑️</button>' +
+            '<button type="button" class="btn btn-sm btn-ghost btn-edit-kiosk" onclick="editKiosk(\'' + safeId + '\')" title="Editar">✏️</button>' +
+            '<button type="button" class="btn btn-sm btn-ghost btn-toggle-kiosk" onclick="toggleKiosk(\'' + safeId + '\')" title="Activar/Desactivar">' + (k.is_active ? '⏸️' : '▶️') + '</button>' +
+            '<button type="button" class="btn btn-sm btn-danger btn-delete-kiosk" onclick="deleteKiosk(\'' + safeId + '\')" title="Eliminar">🗑️</button>' +
           '</div>' +
         '</td>';
+
+      // Event listeners directos como respaldo
+      var bEdit = tr.querySelector('.btn-edit-kiosk');
+      if (bEdit) bEdit.addEventListener('click', function() { editKiosk(k.id); });
+      var bToggle = tr.querySelector('.btn-toggle-kiosk');
+      if (bToggle) bToggle.addEventListener('click', function() { toggleKiosk(k.id); });
+      var bDel = tr.querySelector('.btn-delete-kiosk');
+      if (bDel) bDel.addEventListener('click', function() { deleteKiosk(k.id); });
+
       tbody.appendChild(tr);
     });
   }).catch(function(err) {
@@ -1401,22 +1412,30 @@ function openKioskModal(kiosk) {
   var form = document.getElementById('kioskForm');
   var title = document.getElementById('kioskModalTitle');
 
-  form.reset();
+  if (form) form.reset();
   if (kiosk) {
-    title.textContent = 'Editar Caseta / Kiosko';
-    document.getElementById('kioskId').value = kiosk.id;
-    document.getElementById('kName').value = kiosk.name || '';
-    document.getElementById('kLocation').value = kiosk.location || '';
-    document.getElementById('kContact').value = kiosk.contact || '';
-    document.getElementById('kSortOrder').value = kiosk.sort_order || 1;
-    document.getElementById('kNotes').value = kiosk.notes || '';
+    if (title) title.textContent = 'Editar Caseta / Kiosko';
+    var idEl = document.getElementById('kioskId');
+    if (idEl) idEl.value = kiosk.id;
+    var nameEl = document.getElementById('kName');
+    if (nameEl) nameEl.value = kiosk.name || '';
+    var locEl = document.getElementById('kLocation');
+    if (locEl) locEl.value = kiosk.location || '';
+    var contactEl = document.getElementById('kContact');
+    if (contactEl) contactEl.value = kiosk.contact || '';
+    var sortEl = document.getElementById('kSortOrder');
+    if (sortEl) sortEl.value = kiosk.sort_order || 1;
+    var notesEl = document.getElementById('kNotes');
+    if (notesEl) notesEl.value = kiosk.notes || '';
   } else {
-    title.textContent = 'Nueva Caseta / Kiosko';
-    document.getElementById('kioskId').value = '';
-    document.getElementById('kSortOrder').value = (_currentKiosks.length + 1);
+    if (title) title.textContent = 'Nueva Caseta / Kiosko';
+    var idEl2 = document.getElementById('kioskId');
+    if (idEl2) idEl2.value = '';
+    var sortEl2 = document.getElementById('kSortOrder');
+    if (sortEl2) sortEl2.value = (_currentKiosks.length + 1);
   }
 
-  bg.removeAttribute('hidden');
+  if (bg) bg.removeAttribute('hidden');
 }
 
 function closeKioskModal(e) {
@@ -1426,28 +1445,51 @@ function closeKioskModal(e) {
 }
 
 function editKiosk(id) {
-  var k = _currentKiosks.find(function(item) { return item.id === id; });
-  if (k) openKioskModal(k);
+  var k = _currentKiosks.find(function(item) { return String(item.id) === String(id); });
+  if (k) {
+    openKioskModal(k);
+  } else {
+    console.warn('[Admin] Kiosk not found in cache, loading from server for ID:', id);
+    apiFetch('GET', '/api/kiosks?all=true').then(function(kiosks) {
+      _currentKiosks = kiosks || [];
+      var found = _currentKiosks.find(function(item) { return String(item.id) === String(id); });
+      if (found) openKioskModal(found);
+    });
+  }
 }
 
 function toggleKiosk(id) {
-  apiFetch('PATCH', '/api/kiosks/' + id + '/toggle').then(function(res) {
-    toast(res.message || 'Estado actualizado', 'ok');
+  var k = _currentKiosks.find(function(item) { return String(item.id) === String(id); });
+  var kName = k ? k.name : id;
+  apiFetch('PATCH', '/api/kiosks/' + encodeURIComponent(id) + '/toggle').then(function(res) {
+    toast(res.message || ('Estado de ' + kName + ' actualizado'), 'ok');
     loadKiosksSection();
   }).catch(function(err) {
-    toast((err && err.error) || 'Error al cambiar estado', 'error');
+    console.error('Error toggleKiosk:', err);
+    toast((err && (err.message || err.error)) || 'Error al cambiar estado', 'error');
   });
 }
 
 function deleteKiosk(id) {
-  if (!confirm('¿Estás seguro de que deseas eliminar este punto de venta?')) return;
-  apiFetch('DELETE', '/api/kiosks/' + id).then(function(res) {
-    toast(res.message || 'Kiosko eliminado', 'ok');
+  var k = _currentKiosks.find(function(item) { return String(item.id) === String(id); });
+  var kName = k ? k.name : id;
+  if (!confirm('¿Estás seguro de que deseas eliminar el punto de venta "' + kName + '"?')) return;
+  apiFetch('DELETE', '/api/kiosks/' + encodeURIComponent(id)).then(function(res) {
+    toast(res.message || 'Punto de venta eliminado', 'ok');
     loadKiosksSection();
   }).catch(function(err) {
-    toast((err && err.error) || 'Error al eliminar kiosko', 'error');
+    console.error('Error deleteKiosk:', err);
+    toast((err && (err.message || err.error)) || 'Error al eliminar kiosko', 'error');
   });
 }
+
+// Exportar explícitamente a window para invocaciones globales desde onclick en HTML móvil y desktop
+window.loadKiosksSection = loadKiosksSection;
+window.openKioskModal    = openKioskModal;
+window.closeKioskModal   = closeKioskModal;
+window.editKiosk         = editKiosk;
+window.toggleKiosk       = toggleKiosk;
+window.deleteKiosk       = deleteKiosk;
 
 // Guardar formulario de Kiosko
 var kioskForm = document.getElementById('kioskForm');
