@@ -227,11 +227,11 @@ add chain=forward action=drop in-interface=bridge-hotspot out-interface=ether2 c
 # BLOQUEO DE TÚNELES DNS (Evita bypass pre-autenticación tipo iodine o dnscat)
 add chain=forward action=drop in-interface=bridge-hotspot protocol=udp dst-port=53 hotspot=!from-client comment="BLOQUEO AUDITORIA: Tunel DNS no autorizado"
 
-# 🔒 REGLA DE ORO DE SEGURIDAD CONTRA FUGAS (HTTPS / 'Usar sin internet' de iOS):
-# BLOQUEAR TODO TRÁFICO HACIA INTERNET DE CLIENTES QUE NO ESTÉN AUTENTICADOS EN EL HOTSPOT
-# Sin esta regla, el tráfico HTTPS (puerto 443) navega libremente sin ficha.
-add chain=forward action=drop in-interface=bridge-hotspot hotspot=!auth out-interface-list=WAN comment="BLOQUEO HERMETICO: Hotspot no autenticado NO navega en WAN"
-add chain=forward action=drop in-interface=bridge-hotspot hotspot=!auth comment="BLOQUEO HERMETICO: Rechazar todo trafico no autenticado"
+# Permitir siempre salida a Internet a los APs de infraestructura Ruijie (192.168.20.2 a 192.168.20.9)
+add chain=forward action=accept src-address=192.168.20.2-192.168.20.9 out-interface-list=WAN comment="Permitir APs Ruijie a Internet"
+
+# Bloquear exclusivamente al pool de invitados que NO esten autenticados en el Hotspot (evita fugas HTTPS / Usar sin internet)
+add chain=forward action=drop src-address=192.168.20.10-192.168.23.250 hotspot=!auth out-interface-list=WAN comment="Bloquear invitados Hotspot no autenticados"
 
 # ==============================================================================
 # FIN DEL SCRIPT DE CONFIGURACIÓN
