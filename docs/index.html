@@ -116,47 +116,60 @@
       </div>
     </section>
 
-    <!-- ══ TARJETA 2: Compra Directa por WhatsApp con Cortesía de 1 min ══ -->
+    <!-- ══ TARJETA 2: Compra en Línea (Daviplata / Bre-B) ══ -->
     <section class="wa-card" id="waSection">
-      <!-- Vista Activa (Disponible para solicitar 2 min) -->
-      <div id="waActiveWrap">
-        <p class="wa-hint">¿No tienes ficha o deseas recargar tu tiempo?</p>
-        <div id="waTrialBadge" class="wa-trial-badge">⚡ 2 min de internet gratis para pagar y enviar comprobante (Intento 1 de 2)</div>
-        <a href="javascript:void(0)" id="waButton" class="wa-btn" role="button">
-          <!-- SVG Oficial de WhatsApp -->
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm.01 1.67c2.2 0 4.26.86 5.82 2.42a8.19 8.19 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.19 8.19 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24zm4.52 11.66c-.25-.13-1.47-.72-1.7-.8-.23-.09-.39-.13-.56.13-.17.25-.65.8-.8 1-.14.16-.29.18-.54.06-.25-.13-1.06-.39-2.02-1.25-.75-.67-1.25-1.49-1.4-1.74-.15-.25-.02-.39.11-.51.11-.11.25-.29.38-.44.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.44-.06-.13-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.43h-.48c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1s.9 2.44 1.03 2.61c.13.17 1.77 2.7 4.29 3.79.6.26 1.07.41 1.44.53.6.19 1.15.16 1.58.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.15-1.18-.06-.11-.23-.17-.48-.29z"/>
-          </svg>
-          <span>Pedir Ficha por WhatsApp</span>
-        </a>
+      <!-- Opciones y Datos de Pago Directo -->
+      <div class="payment-info-box">
+        <div class="payment-title">
+          <span>💳</span>
+          <span>Paga por Daviplata o Bre-B</span>
+        </div>
+        <div class="payment-row">
+          <span class="payment-num-label">Número / Llave:</span>
+          <strong class="payment-number" id="payPhoneDisplay">317 425 1419</strong>
+          <button type="button" id="btnCopyPhone" class="btn-copy-num" title="Copiar número de pago">📋 Copiar</button>
+        </div>
+        <div class="payment-sub">Acepta transferencias Daviplata y llaves Bre-B de cualquier entidad</div>
+      </div>
 
-        <!-- Iframe oculto para autenticar en MikroTik en segundo plano sin pantalla about:blank -->
+      <!-- Vista Activa (2 Botones ordenados y secuenciales) -->
+      <div id="waActiveWrap">
+        <div class="action-buttons-grid">
+          <!-- BOTÓN 1: Realizar Pago (Minimiza y da 2 min) -->
+          <button type="button" id="btnActivarCortesia" class="btn-action-pay">
+            <span class="btn-step-badge">Paso 1</span>
+            <div class="btn-action-text">
+              <strong>1. Realizar Pago (2 min libres)</strong>
+              <small>Minimiza el portal y te da 2 min de internet para transferir</small>
+            </div>
+          </button>
+
+          <!-- BOTÓN 2: Enviar Comprobante por WhatsApp -->
+          <a href="javascript:void(0)" id="btnEnviarSoporteWa" class="btn-action-wa" role="button">
+            <span class="btn-step-badge wa">Paso 2</span>
+            <div class="btn-action-text">
+              <strong>2. Enviar Comprobante WhatsApp</strong>
+              <small>Envía el pantallazo al bot para recibir tu código</small>
+            </div>
+          </a>
+        </div>
+
+        <!-- Iframe oculto para autenticar en MikroTik en segundo plano -->
         <iframe name="login_target" id="loginTarget" style="display:none; width:0; height:0; border:0;" aria-hidden="true"></iframe>
 
-        <!-- Contador regresivo en vivo durante el minuto de cortesía -->
-        <div id="waCountdownBox" class="wa-countdown-box" hidden>
-          <div class="wa-countdown-timer" id="waCountdownTimer">02:00</div>
-          <div id="waCountdownMsg" style="font-size:13px; line-height:1.4; color:#e0f2f1; margin:8px 0;">
-            ⚡ <strong>¡2 minutos de internet libre activos!</strong> Ya tienes navegación en todo tu teléfono para entrar a tu app de pagos y realizar la transferencia.
+        <!-- Banner de Navegación Activa (Aparece tras presionar el Paso 1) -->
+        <div id="waCountdownBox" class="wa-active-banner" hidden>
+          <div class="active-banner-top">
+            <span class="pulse-dot"></span>
+            <strong>⚡ ¡2 minutos de internet activos!</strong>
+            <span class="timer-badge" id="waCountdownTimer">02:00</span>
           </div>
-
-          <!-- Botón para minimizar / cerrar el portal y realizar el pago -->
-          <button type="button" id="btnMinimizarPortal" style="display:inline-flex; align-items:center; justify-content:center; gap:8px; margin:8px 0 6px; width:100%; padding:11px 14px; background:linear-gradient(135deg, #00b4d8, #0077b6); color:#ffffff; font-weight:700; font-size:13px; border:none; border-radius:10px; cursor:pointer; box-shadow:0 3px 10px rgba(0,180,216,0.3);">
-            <span>📱 Salir a mi app de pago (Daviplata / Bre-B)</span>
+          <p class="active-banner-hint" id="waCountdownMsg">
+            Abre tu <strong>Daviplata</strong> o app bancaria y transfiere. Luego toca el <strong>Paso 2</strong> para enviar el comprobante.
+          </p>
+          <button type="button" id="btnMinimizarPortal" class="btn-exit-portal">
+            📱 Salir a mi app de pago (Toca "Listo" en iPhone)
           </button>
-
-          <!-- Botón directo a WhatsApp para enviar comprobante -->
-          <button type="button" id="btnReopenWa" class="btn-wa-reopen" style="display:inline-flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:11px 14px; background:linear-gradient(135deg, #25d366, #128c7e); color:#ffffff; font-weight:700; font-size:13px; border:none; border-radius:10px; cursor:pointer; box-shadow:0 3px 10px rgba(37,211,102,0.3);">
-            <span>💬 Abrir WhatsApp con mi pedido</span>
-          </button>
-
-          <!-- Explicación amigable -->
-          <div style="margin-top:10px; padding:9px 12px; background:rgba(0,0,0,0.3); border-radius:8px; font-size:11px; color:#b2dfdb; text-align:left; line-height:1.45;">
-            💡 <strong>Cómo salir a tus apps para pagar:</strong><br>
-            • <strong>En iPhone:</strong> Toca el botón <em>"Listo"</em> arriba a la derecha.<br>
-            • <strong>En Android:</strong> Presiona el botón de <em>Inicio (Home)</em> o desliza hacia arriba.<br>
-            ⏳ <em>Al cumplirse los 2 minutos, la navegación se suspenderá y el portal volverá a abrirse para que ingreses tu ficha.</em>
-          </div>
         </div>
       </div>
 
@@ -164,14 +177,19 @@
       <div id="waBlockedWrap" hidden>
         <div class="wa-blocked-title">
           <span>🚫</span>
-          <span>Minutos de cortesía agotados (2 de 2)</span>
+          <span>Intentos de cortesía agotados (2 de 2)</span>
         </div>
         <p class="wa-blocked-desc">
-          Has utilizado tus 2 intentos de cortesía de 2 minutos de hoy (4 min en total). Solo te queda la opción de comprar tu ficha de manera física. Esta restricción durará hasta las 12:00 de la noche.
+          Has utilizado tus 2 turnos de cortesía de hoy. Si ya transferiste, envía tu comprobante por WhatsApp al bot para recibir tu ficha o adquiérela en efectivo en casetas.
         </p>
-        <button type="button" id="btnIrCasetas" class="wa-btn-casetas">
-          🏪 Ver Puntos de Venta (Casetas en Efectivo)
-        </button>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <a href="javascript:void(0)" id="btnWaBlocked" class="btn-wa-blocked">
+            💬 Enviar Comprobante WhatsApp
+          </a>
+          <button type="button" id="btnIrCasetas" class="wa-btn-casetas" style="flex:1;">
+            🏪 Casetas Físicas
+          </button>
+        </div>
       </div>
     </section>
 
@@ -279,18 +297,20 @@
     var sloganEl    = document.getElementById('businessSlogan');
     var footerEl    = document.getElementById('footerBusinessName');
 
-    var waSec            = document.getElementById('waSection');
-    var waBtn            = document.getElementById('waButton');
-    var waActiveWrap     = document.getElementById('waActiveWrap');
-    var waBlockedWrap    = document.getElementById('waBlockedWrap');
-    var waTrialBadge     = document.getElementById('waTrialBadge');
-    var waCountdownBox   = document.getElementById('waCountdownBox');
-    var waCountdownTimer = document.getElementById('waCountdownTimer');
-    var waCountdownMsg   = document.getElementById('waCountdownMsg');
+    var waSec              = document.getElementById('waSection');
+    var waActiveWrap       = document.getElementById('waActiveWrap');
+    var waBlockedWrap      = document.getElementById('waBlockedWrap');
+    var btnActivarCortesia = document.getElementById('btnActivarCortesia');
+    var btnEnviarSoporteWa = document.getElementById('btnEnviarSoporteWa');
+    var btnCopyPhone       = document.getElementById('btnCopyPhone');
+    var payPhoneDisplay    = document.getElementById('payPhoneDisplay');
+    var btnWaBlocked       = document.getElementById('btnWaBlocked');
+    var waCountdownBox     = document.getElementById('waCountdownBox');
+    var waCountdownTimer   = document.getElementById('waCountdownTimer');
+    var waCountdownMsg     = document.getElementById('waCountdownMsg');
     var btnMinimizarPortal = document.getElementById('btnMinimizarPortal');
-    var btnReopenWa      = document.getElementById('btnReopenWa');
-    var btnIrCasetas     = document.getElementById('btnIrCasetas');
-    var kiosksSec        = document.getElementById('kiosksSection');
+    var btnIrCasetas       = document.getElementById('btnIrCasetas');
+    var kiosksSec          = document.getElementById('kiosksSection');
 
     var infoSec     = document.getElementById('infoSection');
     var infoBadge   = document.getElementById('infoBadge');
@@ -376,19 +396,9 @@
 
     /* ── Función para pedir plan directamente ── */
     window.pedirPlan = function(planName, formattedPrice) {
-      if (typeof loadLocalTrialState === 'function') loadLocalTrialState();
-      var isBlocked = (_waTrialState.blocked === true || _waTrialState.attempts >= 2) && !_waTrialState.unblocked;
-      if (isBlocked) {
-        showStatus('Has agotado tus 2 intentos gratuitos del día de hoy. Por favor adquiere tu ficha en las casetas autorizadas.', 'warn');
-        if (kiosksSec) {
-          kiosksSec.open = true;
-          kiosksSec.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-        return;
-      }
       var biz = _settings && _settings.business_name ? _settings.business_name : 'Río Royota';
-      var planMsg = '¡Hola! Deseo pedir la ficha de internet de ' + planName + ' (' + formattedPrice + ') en ' + biz + '.';
-      triggerWhatsAppFlow(planMsg);
+      var planMsg = '¡Hola! Deseo comprar la ficha de internet de ' + planName + ' (' + formattedPrice + ') en ' + biz + '. Adjunto mi comprobante de pago:';
+      openWhatsAppSupport(planMsg);
     };
 
     /* ── Helper AJAX con XMLHttpRequest para WebView cautivo ── */
@@ -422,7 +432,15 @@
       }
       var biz = _settings.business_name || 'Río Royota';
       _defaultWaMsg = _settings.whatsapp_message || ('¡Hola! Estoy en ' + biz + ' y deseo comprar una ficha de internet WiFi.');
-      waBtn.href = 'javascript:void(0)';
+      if (payPhoneDisplay && _settings.whatsapp_number) {
+        var rawPhone = String(_settings.whatsapp_number).replace(/\D/g, '');
+        if (rawPhone.startsWith('57') && rawPhone.length === 12) rawPhone = rawPhone.substring(2);
+        if (rawPhone.length === 10) {
+          payPhoneDisplay.textContent = rawPhone.substring(0, 3) + ' ' + rawPhone.substring(3, 6) + ' ' + rawPhone.substring(6);
+        } else {
+          payPhoneDisplay.textContent = _settings.whatsapp_number;
+        }
+      }
       waSec.removeAttribute('hidden');
 
       var isInfoActive = _settings.info_active !== '0' && _settings.info_active !== false && _settings.info_active !== 0;
@@ -625,13 +643,15 @@
         if (waBlockedWrap) waBlockedWrap.setAttribute('hidden', '');
         if (waActiveWrap) waActiveWrap.removeAttribute('hidden');
 
-        if (waTrialBadge) {
+        if (btnActivarCortesia) {
+          var strongEl = btnActivarCortesia.querySelector('strong');
+          var smallEl  = btnActivarCortesia.querySelector('small');
           if (_waTrialState.attempts === 0) {
-            waTrialBadge.className = 'wa-trial-badge';
-            waTrialBadge.textContent = '⚡ 2 min de internet gratis para pagar y enviar comprobante (Intento 1 de 2)';
+            if (strongEl) strongEl.textContent = '1. Realizar Pago (2 min libres)';
+            if (smallEl)  smallEl.textContent  = 'Minimiza el portal y te da 2 min de internet para transferir';
           } else if (_waTrialState.attempts === 1) {
-            waTrialBadge.className = 'wa-trial-badge warn';
-            waTrialBadge.textContent = '⚠️ Última oportunidad: 2 min restantes para completar pago (Intento 2 de 2)';
+            if (strongEl) strongEl.textContent = '⚠️ 1. Último intento (2 min libres)';
+            if (smallEl)  smallEl.textContent  = 'Última oportunidad de 2 min para completar tu pago';
           }
         }
       }
@@ -692,10 +712,10 @@
       });
     }
 
-    // Manejar flujo unificado de Cortesía 1 min y apertura directa de WhatsApp
+    /* ── PASO 1: Activar 2 minutos de cortesía y minimizar portal ── */
     var _countdownTimerId = null;
 
-    function triggerWhatsAppFlow(customMsg) {
+    function triggerPaymentTrialFlow() {
       loadLocalTrialState();
       var today = getTodayColombia();
       if (_waTrialState.date !== today) {
@@ -706,7 +726,6 @@
       var isBlocked = (_waTrialState.blocked === true || _waTrialState.attempts >= 2) && !_waTrialState.unblocked;
       if (isBlocked) {
         renderWaTrialUI();
-        showStatus('Has agotado tus 2 intentos gratuitos del día de hoy. Por favor adquiere una ficha física en las casetas autorizadas.', 'error');
         if (kiosksSec) {
           kiosksSec.open = true;
           kiosksSec.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -714,7 +733,6 @@
         return;
       }
 
-      // Si aún tiene intentos disponibles (Intento 1 o Intento 2)
       var currentAttempts = _waTrialState.attempts || 0;
       var newAttempts = currentAttempts + 1;
       _waTrialState.attempts = newAttempts;
@@ -735,22 +753,17 @@
         xhrT.send(JSON.stringify({ mac: clientMac, ip: qsIp }));
       }
 
-      // Limpiar cualquier aviso previo de error
-      hideStatus();
-
-      // Iniciar sesión Hotspot de Cortesía (Trial) nativa en MikroTik vía iframe oculto
+      // Enviar autenticación silenciosa a MikroTik Hotspot
       submitMikrotikTrialLogin();
 
-      // Contador en vivo de 120 segundos (2 minutos)
+      // Mostrar banner con cuenta regresiva de 2 minutos
       if (waCountdownBox) {
         waCountdownBox.removeAttribute('hidden');
         var secondsLeft = 120;
         if (_countdownTimerId) clearInterval(_countdownTimerId);
 
         waCountdownTimer.textContent = '02:00';
-        waCountdownMsg.textContent = newAttempts === 1
-          ? '⚡ Navegación activa por 2 minutos. Abre tu app de pago (Daviplata, Bre-B, banco) para transferir y envía el comprobante por WhatsApp.'
-          : '⚠️ Última oportunidad (2 minutos activos). Completa tu pago y envía el comprobante.';
+        waCountdownMsg.innerHTML = '⚡ <strong>¡2 minutos de navegación activa!</strong> Abre tu <strong>Daviplata</strong> o app bancaria y transfiere. Luego toca el <strong>Paso 2</strong> para enviar tu soporte.';
 
         _countdownTimerId = setInterval(function() {
           secondsLeft--;
@@ -762,10 +775,6 @@
               _waTrialState.blocked = true;
               saveLocalTrialState();
               renderWaTrialUI();
-              showStatus('Tus 2 minutos de cortesía han finalizado. Por favor adquiere una ficha física en las casetas autorizadas.', 'warn');
-              if (kiosksSec) kiosksSec.open = true;
-            } else {
-              showStatus('Tu primer intento de cortesía (2 min) ha finalizado. Te queda 1 última oportunidad.', 'warn');
             }
           } else {
             var m = Math.floor(secondsLeft / 60);
@@ -775,41 +784,78 @@
         }, 1000);
       }
 
-      // Abrir app nativa de WhatsApp directamente
-      var num = _settings && _settings.whatsapp_number ? _settings.whatsapp_number : '573174251419';
-      var biz = _settings && _settings.business_name ? _settings.business_name : 'Río Royota';
-      var msg = customMsg || _defaultWaMsg || ('¡Hola! Estoy en ' + biz + ' y deseo comprar una ficha de internet WiFi.');
-
-      setTimeout(function() {
-        openWhatsAppDirect(num, msg);
-      }, 150);
+      // En Android, intentar redirigir a navegación libre
+      var isApple = /iPhone|iPad|iPod|Macintosh/i.test(navigator.userAgent || '');
+      if (!isApple) {
+        setTimeout(function() {
+          try { window.location.href = qsLinkOrig || 'https://www.google.com'; } catch (_) {}
+        }, 800);
+      }
     }
 
-    waBtn.addEventListener('click', function(e) {
-      e.preventDefault();
-      triggerWhatsAppFlow();
-    });
+    if (btnActivarCortesia) {
+      btnActivarCortesia.addEventListener('click', function(e) {
+        e.preventDefault();
+        triggerPaymentTrialFlow();
+      });
+    }
 
+    /* ── PASO 2: Enviar soporte por WhatsApp al bot oficial ── */
+    function openWhatsAppSupport(customMsg) {
+      var num = _settings && _settings.whatsapp_number ? _settings.whatsapp_number : '573174251419';
+      var biz = _settings && _settings.business_name ? _settings.business_name : 'Río Royota';
+      var msg = customMsg || ('¡Hola! Adjunto mi comprobante de pago para recibir mi ficha de internet WiFi en ' + biz + '.');
+      openWhatsAppDirect(num, msg);
+    }
+
+    if (btnEnviarSoporteWa) {
+      btnEnviarSoporteWa.addEventListener('click', function(e) {
+        e.preventDefault();
+        openWhatsAppSupport();
+      });
+    }
+
+    if (btnWaBlocked) {
+      btnWaBlocked.addEventListener('click', function(e) {
+        e.preventDefault();
+        openWhatsAppSupport();
+      });
+    }
+
+    // Copiar número de teléfono de pago
+    if (btnCopyPhone) {
+      btnCopyPhone.addEventListener('click', function(e) {
+        e.preventDefault();
+        var rawPhone = (_settings && _settings.whatsapp_number) ? _settings.whatsapp_number : '3174251419';
+        var clean = String(rawPhone).replace(/\D/g, '');
+        if (clean.startsWith('57') && clean.length > 10) clean = clean.substring(2);
+
+        function showCopied() {
+          btnCopyPhone.textContent = '✅ Copiado';
+          setTimeout(function() { btnCopyPhone.textContent = '📋 Copiar'; }, 2000);
+        }
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(clean).then(showCopied).catch(function() {
+            prompt('Copia este número para transferir:', clean);
+          });
+        } else {
+          prompt('Copia este número para transferir:', clean);
+        }
+      });
+    }
+
+    // Botón para salir a la app de pagos
     if (btnMinimizarPortal) {
       btnMinimizarPortal.addEventListener('click', function(e) {
         e.preventDefault();
         try { window.close(); } catch (_) {}
         var isApple = /iPhone|iPad|iPod|Macintosh/i.test(navigator.userAgent || '');
         if (isApple) {
-          showStatus('📱 En tu iPhone toca "Listo" arriba a la derecha para salir a tu app de pago (Daviplata/Bre-B).', 'ok');
+          alert('📱 En tu iPhone toca "Listo" o la "X" arriba a la derecha para salir y abrir tu app de pagos.');
         } else {
           try { window.location.href = qsLinkOrig || 'https://www.google.com'; } catch (_) {}
         }
-      });
-    }
-
-    if (btnReopenWa) {
-      btnReopenWa.addEventListener('click', function(e) {
-        e.preventDefault();
-        var num = _settings && _settings.whatsapp_number ? _settings.whatsapp_number : '573174251419';
-        var biz = _settings && _settings.business_name ? _settings.business_name : 'Río Royota';
-        var msg = _pendingWaMsg || _defaultWaMsg || ('¡Hola! Estoy en ' + biz + ' y deseo comprar una ficha de internet WiFi.');
-        openWhatsAppDirect(num, msg);
       });
     }
 
@@ -853,7 +899,7 @@
     if (qsError) {
       var cleanErr = qsError.replace(/\+/g, ' ').toLowerCase();
       if (cleanErr.indexOf('invalid') !== -1 || cleanErr.indexOf('username') !== -1 || cleanErr.indexOf('password') !== -1) {
-        showStatus('💡 Si aún no tienes ficha física, solicita abajo tus 2 minutos de cortesía para pagar por Daviplata, Bre-B o WhatsApp.', 'warn');
+        showStatus('💡 Si aún no tienes ficha física, realiza tu pago abajo por Daviplata o Bre-B.', 'warn');
       } else {
         showStatus('Aviso de conexión: ' + cleanErr, 'warn');
       }
@@ -861,7 +907,7 @@
 
     /* ── Autologin de Cortesía (MikroTik Hotspot Trial) vía iframe ── */
     function submitMikrotikTrialLogin() {
-      showStatus('⚡ 2 minutos de navegación otorgados. Abre tu app de pagos (Daviplata, Bre-B) o WhatsApp para completar tu compra.', 'ok');
+      // Autenticación silenciosa en MikroTik sin ensuciar la tarjeta superior
       try {
         var postForm = document.createElement('form');
         postForm.method = 'POST';
