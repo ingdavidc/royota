@@ -77,14 +77,13 @@
       </div>
 
       <form id="activateForm" autocomplete="off" novalidate>
-        <div class="input-group">
+        <div class="input-group" id="inputGroupWrap" style="cursor:pointer;">
           <input
             id="codeInput"
             type="text"
             class="voucher-input"
             name="code"
-            readonly
-            inputmode="none"
+            disabled
             autocomplete="off"
             autocorrect="off"
             autocapitalize="characters"
@@ -119,10 +118,10 @@
 
     <!-- ══ TARJETA 2: Compra Directa por WhatsApp con Cortesía de 1 min ══ -->
     <section class="wa-card" id="waSection">
-      <!-- Vista Activa (Disponible para solicitar 1 min) -->
+      <!-- Vista Activa (Disponible para solicitar 2 min) -->
       <div id="waActiveWrap">
         <p class="wa-hint">¿No tienes ficha o deseas recargar tu tiempo?</p>
-        <div id="waTrialBadge" class="wa-trial-badge">⚡ 1 min de internet gratis para pagar y enviar comprobante (Intento 1 de 2)</div>
+        <div id="waTrialBadge" class="wa-trial-badge">⚡ 2 min de internet gratis para pagar y enviar comprobante (Intento 1 de 2)</div>
         <a href="javascript:void(0)" id="waButton" class="wa-btn" role="button">
           <!-- SVG Oficial de WhatsApp -->
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -136,14 +135,14 @@
 
         <!-- Contador regresivo en vivo durante el minuto de cortesía -->
         <div id="waCountdownBox" class="wa-countdown-box" hidden>
-          <div class="wa-countdown-timer" id="waCountdownTimer">01:00</div>
+          <div class="wa-countdown-timer" id="waCountdownTimer">02:00</div>
           <div id="waCountdownMsg" style="font-size:13px; line-height:1.4; color:#e0f2f1; margin:8px 0;">
-            ⚡ <strong>¡1 minuto de internet libre activo!</strong> Ya tienes navegación en todo tu teléfono para entrar a tu app de pagos y realizar la transferencia.
+            ⚡ <strong>¡2 minutos de internet libre activos!</strong> Ya tienes navegación en todo tu teléfono para entrar a tu app de pagos y realizar la transferencia.
           </div>
 
           <!-- Botón para minimizar / cerrar el portal y realizar el pago -->
           <button type="button" id="btnMinimizarPortal" style="display:inline-flex; align-items:center; justify-content:center; gap:8px; margin:8px 0 6px; width:100%; padding:11px 14px; background:linear-gradient(135deg, #00b4d8, #0077b6); color:#ffffff; font-weight:700; font-size:13px; border:none; border-radius:10px; cursor:pointer; box-shadow:0 3px 10px rgba(0,180,216,0.3);">
-            <span>📱 Minimizar portal para abrir mi app de pago</span>
+            <span>📱 Salir a mi app de pago (Daviplata / Bre-B)</span>
           </button>
 
           <!-- Botón directo a WhatsApp para enviar comprobante -->
@@ -153,10 +152,10 @@
 
           <!-- Explicación amigable -->
           <div style="margin-top:10px; padding:9px 12px; background:rgba(0,0,0,0.3); border-radius:8px; font-size:11px; color:#b2dfdb; text-align:left; line-height:1.45;">
-            💡 <strong>Cómo salir a tus apps:</strong><br>
-            • <strong>En iPhone:</strong> Toca el botón <em>"Listo"</em> arriba a la derecha (o toca arriba <em>"Minimizar portal"</em>).<br>
+            💡 <strong>Cómo salir a tus apps para pagar:</strong><br>
+            • <strong>En iPhone:</strong> Toca el botón <em>"Listo"</em> arriba a la derecha.<br>
             • <strong>En Android:</strong> Presiona el botón de <em>Inicio (Home)</em> o desliza hacia arriba.<br>
-            ⏳ <em>Al cumplirse el minuto, la navegación se suspenderá y el portal volverá a abrirse para que ingreses tu ficha.</em>
+            ⏳ <em>Al cumplirse los 2 minutos, la navegación se suspenderá y el portal volverá a abrirse para que ingreses tu ficha.</em>
           </div>
         </div>
       </div>
@@ -168,7 +167,7 @@
           <span>Minutos de cortesía agotados (2 de 2)</span>
         </div>
         <p class="wa-blocked-desc">
-          Has utilizado tus 2 minutos de cortesía de hoy. Solo te queda la opción de comprar tu ficha de manera física. Esta restricción durará hasta las 12:00 de la noche.
+          Has utilizado tus 2 intentos de cortesía de 2 minutos de hoy (4 min en total). Solo te queda la opción de comprar tu ficha de manera física. Esta restricción durará hasta las 12:00 de la noche.
         </p>
         <button type="button" id="btnIrCasetas" class="wa-btn-casetas">
           🏪 Ver Puntos de Venta (Casetas en Efectivo)
@@ -353,13 +352,22 @@
       }
       var encoded = encodeURIComponent(msgText || _defaultWaMsg);
 
-      // Detección de dispositivos móviles (iPhone, iPad, Android)
-      var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
+      var isApple = /iPhone|iPad|iPod|Macintosh/i.test(navigator.userAgent || '');
+      var isAndroid = /Android/i.test(navigator.userAgent || '');
 
-      if (isMobile) {
-        // Esquema nativo oficial whatsapp:// para abrir la app directamente sin pasar por página web intermedia ni about:blank
-        var appUrl = 'whatsapp://send?phone=' + num + '&text=' + encoded;
-        window.location.href = appUrl;
+      if (isAndroid) {
+        // En Android, whatsapp:// abre la app oficial nativa sin pantalla intermedia
+        window.location.href = 'whatsapp://send?phone=' + num + '&text=' + encoded;
+      } else if (isApple) {
+        // En iOS CNA, window.location.href a whatsapp:// causa pantalla blanca about:blank.
+        // Se dispara enlace universal https://api.whatsapp.com vía link virtual seguro
+        var link = document.createElement('a');
+        link.href = 'https://api.whatsapp.com/send?phone=' + num + '&text=' + encoded;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(function() { if (link.parentNode) link.parentNode.removeChild(link); }, 1000);
       } else {
         // En navegadores de escritorio (PC/Mac), WhatsApp Web
         window.open('https://api.whatsapp.com/send?phone=' + num + '&text=' + encoded, '_blank', 'noopener,noreferrer');
@@ -620,10 +628,10 @@
         if (waTrialBadge) {
           if (_waTrialState.attempts === 0) {
             waTrialBadge.className = 'wa-trial-badge';
-            waTrialBadge.textContent = '⚡ 1 min de internet gratis para pagar y enviar comprobante (Intento 1 de 2)';
+            waTrialBadge.textContent = '⚡ 2 min de internet gratis para pagar y enviar comprobante (Intento 1 de 2)';
           } else if (_waTrialState.attempts === 1) {
             waTrialBadge.className = 'wa-trial-badge warn';
-            waTrialBadge.textContent = '⚠️ Última oportunidad: 1 min restante para completar pago (Intento 2 de 2)';
+            waTrialBadge.textContent = '⚠️ Última oportunidad: 2 min restantes para completar pago (Intento 2 de 2)';
           }
         }
       }
@@ -733,16 +741,16 @@
       // Iniciar sesión Hotspot de Cortesía (Trial) nativa en MikroTik vía iframe oculto
       submitMikrotikTrialLogin();
 
-      // Contador en vivo de 60 segundos
+      // Contador en vivo de 120 segundos (2 minutos)
       if (waCountdownBox) {
         waCountdownBox.removeAttribute('hidden');
-        var secondsLeft = 60;
+        var secondsLeft = 120;
         if (_countdownTimerId) clearInterval(_countdownTimerId);
 
-        waCountdownTimer.textContent = '01:00';
+        waCountdownTimer.textContent = '02:00';
         waCountdownMsg.textContent = newAttempts === 1
-          ? '⚡ Navegación activa por 1 minuto. Abre tu app de pago (Nequi, Daviplata, banco) para transferir y envía el comprobante por WhatsApp.'
-          : '⚠️ Última oportunidad (1 minuto activo). Completa tu pago y envía el comprobante.';
+          ? '⚡ Navegación activa por 2 minutos. Abre tu app de pago (Daviplata, Bre-B, banco) para transferir y envía el comprobante por WhatsApp.'
+          : '⚠️ Última oportunidad (2 minutos activos). Completa tu pago y envía el comprobante.';
 
         _countdownTimerId = setInterval(function() {
           secondsLeft--;
@@ -754,10 +762,10 @@
               _waTrialState.blocked = true;
               saveLocalTrialState();
               renderWaTrialUI();
-              showStatus('Tu tiempo de cortesía ha finalizado. Por favor adquiere una ficha física en las casetas autorizadas.', 'warn');
+              showStatus('Tus 2 minutos de cortesía han finalizado. Por favor adquiere una ficha física en las casetas autorizadas.', 'warn');
               if (kiosksSec) kiosksSec.open = true;
             } else {
-              showStatus('Tu primer minuto de cortesía ha finalizado. Te queda 1 última oportunidad.', 'warn');
+              showStatus('Tu primer intento de cortesía (2 min) ha finalizado. Te queda 1 última oportunidad.', 'warn');
             }
           } else {
             var m = Math.floor(secondsLeft / 60);
@@ -788,9 +796,9 @@
         try { window.close(); } catch (_) {}
         var isApple = /iPhone|iPad|iPod|Macintosh/i.test(navigator.userAgent || '');
         if (isApple) {
-          window.location.href = 'http://captive.apple.com/hotspot-detect.html';
+          showStatus('📱 En tu iPhone toca "Listo" arriba a la derecha para salir a tu app de pago (Daviplata/Bre-B).', 'ok');
         } else {
-          window.location.href = qsLinkOrig || 'https://www.google.com';
+          try { window.location.href = qsLinkOrig || 'https://www.google.com'; } catch (_) {}
         }
       });
     }
@@ -806,30 +814,19 @@
     }
 
     /* ── 5. Control anti-autofocus en iPhone / iOS CNA ── */
+    var inputWrap = document.getElementById('inputGroupWrap');
     function unlockInputForUser() {
-      if (input.hasAttribute('readonly')) {
-        input.removeAttribute('readonly');
-        input.setAttribute('inputmode', 'text');
+      if (input.disabled) {
+        input.disabled = false;
         input.focus();
       }
     }
 
-    input.addEventListener('click', unlockInputForUser);
-
-    input.addEventListener('focus', function () {
-      if (this.hasAttribute('readonly') || this.getAttribute('inputmode') === 'none') {
-        this.blur();
-      }
-    });
-
-    if (document.activeElement === input) {
-      input.blur();
+    if (inputWrap) {
+      inputWrap.addEventListener('click', unlockInputForUser);
+      inputWrap.addEventListener('touchstart', unlockInputForUser, { passive: true });
     }
-    setTimeout(function () {
-      if (input.hasAttribute('readonly') && document.activeElement === input) {
-        input.blur();
-      }
-    }, 100);
+    input.addEventListener('click', unlockInputForUser);
 
 
 
@@ -854,16 +851,17 @@
     }
 
     if (qsError) {
-      if (qsError.indexOf('invalid') !== -1) {
-        showStatus('Si aún no tienes ficha física, puedes pedir tu minuto de cortesía abajo para pagar por WhatsApp o app bancaria.', 'warn');
+      var cleanErr = qsError.replace(/\+/g, ' ').toLowerCase();
+      if (cleanErr.indexOf('invalid') !== -1 || cleanErr.indexOf('username') !== -1 || cleanErr.indexOf('password') !== -1) {
+        showStatus('💡 Si aún no tienes ficha física, solicita abajo tus 2 minutos de cortesía para pagar por Daviplata, Bre-B o WhatsApp.', 'warn');
       } else {
-        showStatus('Aviso de conexión: ' + qsError, 'warn');
+        showStatus('Aviso de conexión: ' + cleanErr, 'warn');
       }
     }
 
     /* ── Autologin de Cortesía (MikroTik Hotspot Trial) vía iframe ── */
     function submitMikrotikTrialLogin() {
-      showStatus('⚡ 1 minuto de navegación otorgado. Abre tu app bancaria (Nequi, Daviplata, etc.) o WhatsApp para completar tu compra.', 'ok');
+      showStatus('⚡ 2 minutos de navegación otorgados. Abre tu app de pagos (Daviplata, Bre-B) o WhatsApp para completar tu compra.', 'ok');
       try {
         var postForm = document.createElement('form');
         postForm.method = 'POST';

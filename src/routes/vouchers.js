@@ -348,15 +348,33 @@ router.post('/activate', async (req, res) => {
       comment:         `Ficha generada por sistema ROYOTA`,
     });
 
-    const expiresAt = new Date(Date.now() + parseDurationMs(voucher.duration)).toISOString();
+    // Vigencia estricta: No puede sobrepasar las 12 de la noche de hoy (America/Bogota)
+    const durMs = parseDurationMs(voucher.duration);
+    const planExpiry = Date.now() + durMs;
+    const bogotaDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+    const midnightTime = new Date(`${bogotaDateStr}T23:59:59.999-05:00`).getTime();
+    const finalExpiryMs = Math.min(planExpiry, midnightTime);
+    const expiresAt = new Date(finalExpiryMs).toISOString();
 
     // Actualizar estado en BD
     db.prepare(`
       UPDATE vouchers
-      SET status = 'active', activated_at = datetime('now'),
-          expires_at = ?, mikrotik_synced = 1
+      SET status = 'active', is_sold = 1, sold_at = COALESCE(sold_at, datetime('now')),
+          activated_at = datetime('now'), expires_at = ?, mikrotik_synced = 1
       WHERE id = ?
     `).run(expiresAt, voucher.id);
+
+    // Auto-facturación y registro contable automático al activar en portal
+    if (voucher.status === 'available') {
+      try {
+        db.prepare(`
+          INSERT INTO sales (voucher_id, plan_id, amount, payment_method, admin_id, notes)
+          VALUES (?, ?, ?, 'activacion_portal', 1, 'Auto-facturación por activación en portal')
+        `).run(voucher.id, voucher.plan_id, voucher.price || 0);
+      } catch (errSale) {
+        console.warn('[Vouchers] Aviso registrando auto-facturación:', errSale.message);
+      }
+    }
 
     // Si se envió la MAC del cliente, desbloquear cualquier restricción de prueba previa
     if (req.body.mac) {
@@ -533,24 +551,24 @@ router.post('/trial/request', async (req, res) => {
     `).run(cleanMac, dateStr, newAttempts, isBlocked);
   }
 
-  // Generar código de usuario Hotspot de 1 minuto
+  // Generar usuario Hotspot de cortesía de 2 minutos
   const macSuffix = cleanMac.replace(/[^A-F0-9]/gi, '').slice(-6);
   const trialUser = `WA-${macSuffix}-${newAttempts}`;
 
   try {
     await mikrotik.createHotspotUser(trialUser, trialUser, {
       profile:     'default',
-      limitUptime: '1m',
+      limitUptime: '2m',
       rateLimit:   '5M/5M',
-      comment:     `Cortesía WhatsApp 1m (Intento ${newAttempts}/2 - ${cleanMac})`,
+      comment:     `Cortesía WhatsApp 2m (Intento ${newAttempts}/2 - ${cleanMac})`,
     });
   } catch (err) {
     console.warn('[Trial] Aviso creando usuario en MikroTik:', err.message);
   }
 
   const msg = newAttempts === 1
-    ? '¡1 minuto de navegación otorgado! Realiza tu transferencia y envía el comprobante por WhatsApp.'
-    : '¡Última oportunidad! Te queda 1 minuto para completar tu pago y enviar el comprobante.';
+    ? '¡2 minutos de navegación otorgados! Realiza tu transferencia y envía el comprobante por WhatsApp.'
+    : '¡Última oportunidad! Te quedan 2 minutos para completar tu pago y enviar el comprobante.';
 
   res.json({
     ok: true,
@@ -558,7 +576,7 @@ router.post('/trial/request', async (req, res) => {
     attempt: newAttempts,
     remaining: Math.max(0, 2 - newAttempts),
     blocked: isBlocked === 1,
-    duration: '1m',
+    duration: '2m',
     message: msg,
   });
 });

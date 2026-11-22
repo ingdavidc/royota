@@ -54,6 +54,12 @@
     }
   }
 
+  function getBogotaMidnight() {
+    var now = new Date();
+    var bogotaDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(now);
+    return new Date(bogotaDateStr + 'T23:59:59.999-05:00');
+  }
+
   function generateCode(length, charsetType, prefix) {
     length = length || 8;
     charsetType = charsetType || 'full';
@@ -398,13 +404,36 @@
           }
 
           var durMs = parseDurationMs(v.duration);
-          var expiresAt = new Date(Date.now() + durMs).toISOString();
+          var planExpiry = Date.now() + durMs;
+          var midnightExpiry = getBogotaMidnight().getTime();
+          // Vigencia estricta hasta medianoche (23:59:59.999 hora Colombia)
+          var finalExpiryMs = Math.min(planExpiry, midnightExpiry);
+          var expiresAt = new Date(finalExpiryMs).toISOString();
+          var nowIso = new Date().toISOString();
 
           transaction.update(vRef, {
             status:       'active',
-            activated_at: new Date().toISOString(),
+            is_sold:      true,
+            sold_at:      v.sold_at || nowIso,
+            activated_at: nowIso,
             expires_at:   expiresAt,
           });
+
+          // Facturación y registro de venta automático al activar ficha
+          if (v.status === 'available') {
+            var saleRef = db.collection('sales').doc();
+            transaction.set(saleRef, {
+              voucher_code:   v.code,
+              voucher_id:     cleanCode,
+              plan_id:        v.plan_id || '',
+              plan_name:      v.plan_name || 'Estándar',
+              amount:         v.price || 0,
+              payment_method: 'activacion_portal',
+              notes:          'Auto-facturación por activación en portal',
+              created_at:     nowIso,
+              date:           new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date())
+            });
+          }
 
           return {
             message:    '¡Ficha activada con éxito! Ya puedes navegar.',
@@ -488,7 +517,7 @@
             attempt: newAttempts,
             remaining: Math.max(0, 2 - newAttempts),
             blocked: isBlocked,
-            duration: '1m'
+            duration: '2m'
           };
         });
       });
@@ -666,36 +695,73 @@
 
     // ── Estadísticas (Dashboard) ──────────────────────────────
     getStats: function() {
-      var pV = db.collection('vouchers').get();
-      var pS = db.collection('sales').get();
+      var self = this;
+      var pCleanup = (typeof self.cleanupMidnightVouchers === 'function') ? self.cleanupMidnightVouchers() : Promise.resolve();
 
-      return Promise.all([pV, pS]).then(function(res) {
-        var vSnap = res[0];
-        var sSnap = res[1];
+      return pCleanup.then(function() {
+        var pV = db.collection('vouchers').get();
+        var pS = db.collection('sales').get();
 
-        var stats = { available: 0, sold: 0, active: 0, expired: 0 };
-        vSnap.forEach(function(d) {
-          var st = d.data().status;
-          if (stats[st] !== undefined) stats[st]++;
+        return Promise.all([pV, pS]).then(function(res) {
+          var vSnap = res[0];
+          var sSnap = res[1];
+
+          var stats = { available: 0, sold: 0, active: 0, expired: 0 };
+          vSnap.forEach(function(d) {
+            var st = d.data().status;
+            if (stats[st] !== undefined) stats[st]++;
+          });
+
+          var todayRev = 0, monthRev = 0;
+          var now = new Date();
+          var todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(now);
+          var monthStr = todayStr.slice(0, 7);
+
+          sSnap.forEach(function(d) {
+            var s = d.data();
+            var dt = (s.created_at || '').slice(0, 10);
+            if (dt === todayStr || (s.date && s.date === todayStr)) todayRev += (s.amount || 0);
+            if (dt.startsWith(monthStr)) monthRev += (s.amount || 0);
+          });
+
+          return {
+            vouchers: stats,
+            revenue:  { today: todayRev, month: monthRev },
+            top_plans: [],
+          };
         });
+      });
+    },
 
-        var todayRev = 0, monthRev = 0;
-        var now = new Date();
-        var todayStr = now.toISOString().slice(0, 10);
-        var monthStr = now.toISOString().slice(0, 7);
-
-        sSnap.forEach(function(d) {
-          var s = d.data();
-          var dt = s.created_at || '';
-          if (dt.startsWith(todayStr)) todayRev += (s.amount || 0);
-          if (dt.startsWith(monthStr)) monthRev += (s.amount || 0);
+    // ── Limpieza estricta de medianoche: fichas activas no pasan de las 12am ──
+    cleanupMidnightVouchers: function() {
+      if (!db) return Promise.resolve();
+      var now = new Date();
+      var nowIso = now.toISOString();
+      var todayBogotaStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(now);
+      return db.collection('vouchers').where('status', '==', 'active').get().then(function(snap) {
+        if (snap.empty) return;
+        var batch = db.batch();
+        var count = 0;
+        snap.forEach(function(doc) {
+          var v = doc.data();
+          var actDate = v.activated_at ? v.activated_at.slice(0, 10) : '';
+          if ((v.expires_at && v.expires_at <= nowIso) || (actDate && actDate < todayBogotaStr)) {
+            batch.update(doc.ref, {
+              status:        'expired',
+              expired_at:    nowIso,
+              expire_reason: 'medianoche_estricta'
+            });
+            count++;
+          }
         });
-
-        return {
-          vouchers: stats,
-          revenue:  { today: todayRev, month: monthRev },
-          top_plans: [],
-        };
+        if (count > 0) {
+          return batch.commit().then(function() {
+            console.log('[FirebaseDb] ' + count + ' fichas iniciadas expiradas automáticamente a medianoche.');
+          });
+        }
+      }).catch(function(err) {
+        console.warn('[FirebaseDb] Error en cleanupMidnightVouchers:', err);
       });
     },
 

@@ -266,6 +266,13 @@ details.portal-accordion[open] .accordion-arrow {
   box-shadow: 0 0 16px rgba(0, 229, 255, 0.35);
 }
 
+.voucher-input:disabled {
+  opacity: 1;
+  -webkit-text-fill-color: #ffffff;
+  cursor: pointer;
+  background: rgba(4, 25, 33, 0.85);
+}
+
 .voucher-input::-webkit-input-placeholder {
   font-size: 12px;
   letter-spacing: 1px;

@@ -42,8 +42,10 @@ async function _runCleanup() {
     SELECT id, code, mikrotik_synced
     FROM   vouchers
     WHERE  status = 'active'
-      AND  expires_at IS NOT NULL
-      AND  expires_at <= datetime('now')
+      AND  (
+        (expires_at IS NOT NULL AND expires_at <= datetime('now'))
+        OR (activated_at IS NOT NULL AND date(activated_at) < date('now'))
+      )
   `).all();
 
   if (!expired.length) return;

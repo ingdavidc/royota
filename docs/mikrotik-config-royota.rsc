@@ -105,7 +105,7 @@ add dns-name="wifi.balneario-royota.local" \
     login-by=http-chap,cookie,http-pap,trial \
     trial-uptime-limit=2m \
     trial-uptime-reset=1d \
-    trial-user-profile=perfil-trial-1m \
+    trial-user-profile=perfil-trial-2m \
     name=hsprof-royota \
     use-radius=no
 
@@ -126,21 +126,21 @@ set [find default=yes] \
     status-autorefresh=1m \
     transparent-proxy=no
 
-# Perfil exclusivo para 1 minuto de navegación de cortesía para pagos por WhatsApp
-add name=perfil-trial-1m \
+# Perfil exclusivo para 2 minutos de navegación de cortesía para pagos móviles (Daviplata / Bre-B)
+add name=perfil-trial-2m \
     rate-limit=5M/5M \
-    keepalive-timeout=1m \
+    keepalive-timeout=2m \
     status-autorefresh=30s \
     shared-users=1 \
-    comment="Cortesía 1 minuto para pago móvil y WhatsApp"
+    comment="Cortesía 2 minutos para pago móvil Daviplata/Bre-B"
 
-# Programador a medianoche (00:00:00) para reiniciar los intentos diarios de cortesía
+# Programador a medianoche (00:00:00) para eliminar todas las fichas iniciadas y reiniciar cortesías
 /system scheduler
-add name=reset-trials-midnight \
+add name=reset-midnight-royota \
     start-time=00:00:00 \
     interval=1d \
-    on-event="/ip hotspot user remove [find comment~\"Cortes\\eda WhatsApp\"]; :log info \"[ROYOTA] Intentos diarios de cortesía reiniciados a medianoche.\"" \
-    comment="Reinicio diario de intentos de cortesía a medianoche"
+    on-event="/ip hotspot active remove [find]; /ip hotspot user remove [find comment~\"Ficha\"]; /ip hotspot user remove [find comment~\"Cortes\\eda\"]; /ip hotspot user remove [find comment~\"WA-\"]; /ip hotspot user remove [find uptime>0s]; :log info \"[ROYOTA] Medianoche: Fichas iniciadas eliminadas y cortesías reiniciadas.\"" \
+    comment="Eliminación estricta de fichas iniciadas a medianoche y reinicio de cortesías"
 
 # ------------------------------------------------------------------------------
 # 8. WALLED GARDEN (ACCESO EXCLUSIVO AL PORTAL CAUTIVO PREVIO AL PAGO)
