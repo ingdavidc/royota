@@ -1196,6 +1196,21 @@
       }
     }
 
+    function isProbeUrl(url) {
+      if (!url) return true;
+      var u = String(url).toLowerCase();
+      return (
+        u.indexOf('captive.apple.com') !== -1 ||
+        u.indexOf('hotspot-detect') !== -1 ||
+        u.indexOf('apple.com/library/test') !== -1 ||
+        u.indexOf('connectivitycheck') !== -1 ||
+        u.indexOf('clients3.google.com/generate_204') !== -1 ||
+        u.indexOf('gstatic.com/generate_204') !== -1 ||
+        u.indexOf('msftconnecttest') !== -1 ||
+        u.indexOf('detectportal') !== -1
+      );
+    }
+
     /* ── Autologin de Cortesía (MikroTik Hotspot Trial) vía iframe ── */
     function submitMikrotikTrialLogin() {
       // Autenticación silenciosa en MikroTik sin ensuciar la tarjeta superior
@@ -1212,10 +1227,15 @@
         trialInput.value = 'yes';
         postForm.appendChild(trialInput);
 
+        var dstUrl = qsLinkOrig;
+        if (!dstUrl || isProbeUrl(dstUrl)) {
+          dstUrl = (window.MIKROTIK_LOGIN_URL ? window.MIKROTIK_LOGIN_URL.replace('/login', '/status') : 'http://192.168.20.1/status');
+        }
+
         var dst = document.createElement('input');
         dst.type = 'hidden';
         dst.name = 'dst';
-        dst.value = qsLinkOrig;
+        dst.value = dstUrl;
         postForm.appendChild(dst);
 
         document.body.appendChild(postForm);
@@ -1250,8 +1270,13 @@
         p.type = 'hidden'; p.name = 'password'; p.value = voucherCode;
         postForm.appendChild(p);
 
+        var dstUrl = qsLinkOrig;
+        if (!dstUrl || isProbeUrl(dstUrl)) {
+          dstUrl = (window.MIKROTIK_LOGIN_URL ? window.MIKROTIK_LOGIN_URL.replace('/login', '/status') : 'http://192.168.20.1/status');
+        }
+
         var dst = document.createElement('input');
-        dst.type = 'hidden'; dst.name = 'dst'; dst.value = qsLinkOrig;
+        dst.type = 'hidden'; dst.name = 'dst'; dst.value = dstUrl;
         postForm.appendChild(dst);
 
         document.body.appendChild(postForm);

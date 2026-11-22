@@ -2,58 +2,111 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="refresh" content="2; url=$(link-orig-esc)">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>¡Conectado! — Balneario Río Royota</title>
   <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       background: linear-gradient(135deg, #041921 0%, #0a2933 100%);
       color: #ffffff;
-      font-family: system-ui, -apple-system, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       min-height: 100vh;
       display: flex;
       align-items: center;
       justify-content: center;
       text-align: center;
-      padding: 20px;
+      padding: 20px 16px;
     }
     .card {
       background: rgba(10, 41, 51, 0.95);
       border: 1px solid rgba(0, 229, 255, 0.35);
       border-radius: 20px;
-      padding: 35px 25px;
-      max-width: 400px;
+      padding: 35px 24px;
+      max-width: 420px;
       width: 100%;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+      box-shadow: 0 20px 45px rgba(0,0,0,0.6);
     }
-    .icon { font-size: 48px; margin-bottom: 12px; }
-    h1 { font-size: 22px; color: #00e5ff; margin-bottom: 8px; }
-    p { font-size: 14px; color: #e0f2f1; line-height: 1.5; margin-bottom: 20px; }
+    .icon { font-size: 54px; margin-bottom: 12px; }
+    h1 { font-size: 23px; color: #00e5ff; margin-bottom: 8px; font-weight: 800; }
+    p { font-size: 14.5px; color: #e0f2f1; line-height: 1.5; margin-bottom: 16px; }
+    .instructions-box {
+      background: rgba(0, 229, 255, 0.08);
+      border: 1.5px solid rgba(0, 229, 255, 0.3);
+      border-radius: 14px;
+      padding: 16px;
+      margin: 18px 0;
+      text-align: left;
+    }
+    .instructions-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: #00e5ff;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .instructions-desc {
+      font-size: 13px;
+      color: #b2dfdb;
+      line-height: 1.45;
+    }
     .btn {
-      display: inline-block;
-      background: #00e5ff;
+      display: block;
+      width: 100%;
+      background: linear-gradient(135deg, #00e5ff 0%, #00b0ff 100%);
       color: #041921;
-      padding: 12px 24px;
+      padding: 14px 20px;
       border-radius: 12px;
       font-weight: 800;
+      font-size: 15px;
       text-decoration: none;
+      box-shadow: 0 6px 16px rgba(0, 229, 255, 0.3);
+      cursor: pointer;
     }
   </style>
   <script>
-    setTimeout(function() {
-      var orig = "$(link-orig)";
-      if (orig && orig !== "" && orig.indexOf("http") === 0) {
+    function isProbeUrl(url) {
+      if (!url) return true;
+      var u = String(url).toLowerCase();
+      return (
+        u.indexOf('captive.apple.com') !== -1 ||
+        u.indexOf('hotspot-detect') !== -1 ||
+        u.indexOf('apple.com/library/test') !== -1 ||
+        u.indexOf('connectivitycheck') !== -1 ||
+        u.indexOf('clients3.google.com/generate_204') !== -1 ||
+        u.indexOf('gstatic.com/generate_204') !== -1 ||
+        u.indexOf('msftconnecttest') !== -1 ||
+        u.indexOf('detectportal') !== -1
+      );
+    }
+
+    // Si el usuario navegaba a un sitio web real (ej. google.com), redirigir
+    // Si era una prueba técnica de Apple o Android, NO redirigir a la pantalla blanca Success
+    var orig = "$(link-orig)";
+    if (orig && orig !== "" && orig.indexOf("http") === 0 && !isProbeUrl(orig)) {
+      setTimeout(function() {
         window.location.href = orig;
-      }
-    }, 2000);
+      }, 2500);
+    }
   </script>
 </head>
 <body>
   <div class="card">
-    <div class="icon">✅</div>
+    <div class="icon">🌴✅</div>
     <h1>¡Conexión Exitosa!</h1>
-    <p>Ya tienes acceso a Internet en el <strong>Balneario Río Royota</strong>. Disfruta tu estadía junto al río 🌿</p>
-    <a class="btn" href="$(link-orig)">Comenzar a navegar</a>
+    <p>Ya estás conectado a la red WiFi del <strong>Balneario Río Royota</strong>.</p>
+    
+    <div class="instructions-box">
+      <div class="instructions-title">
+        <span>📱</span> En tu celular (iPhone / Android):
+      </div>
+      <div class="instructions-desc">
+        Toca el botón azul <strong>(✓)</strong> o <strong>"Listo"</strong> arriba a la derecha para cerrar esta ventana y abrir tus aplicaciones (WhatsApp, redes sociales, navegador).
+      </div>
+    </div>
+
+    <a class="btn" href="https://www.google.com">Comenzar a navegar</a>
   </div>
 </body>
 </html>
