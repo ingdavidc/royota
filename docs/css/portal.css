@@ -169,6 +169,49 @@ body {
   -webkit-backdrop-filter: blur(8px);
 }
 
+/* ── Acordeones Colapsables (Planes y Puntos de Venta) ────────── */
+details.portal-accordion {
+  padding: 16px 20px;
+  cursor: pointer;
+  -webkit-transition: all 0.25s ease;
+  transition: all 0.25s ease;
+}
+
+details.portal-accordion[open] {
+  padding: 20px;
+  border-color: rgba(0, 229, 255, 0.38);
+}
+
+details.portal-accordion summary {
+  list-style: none;
+  outline: none;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+details.portal-accordion summary::-webkit-details-marker {
+  display: none;
+}
+
+details.portal-accordion summary::marker {
+  display: none;
+  content: "";
+}
+
+.accordion-arrow {
+  font-size: 13px;
+  color: #00e5ff;
+  -webkit-transition: -webkit-transform 0.25s ease;
+  transition: transform 0.25s ease;
+  display: inline-block;
+}
+
+details.portal-accordion[open] .accordion-arrow {
+  -webkit-transform: rotate(180deg);
+          transform: rotate(180deg);
+}
+
 .card-title-row {
   display: -webkit-box;
   display: -ms-flexbox;

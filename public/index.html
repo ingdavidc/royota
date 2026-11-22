@@ -12,7 +12,7 @@
     Compatible con XMLHttpRequest nativo.
   -->
   <title>WiFi Río Royota — Conectarse</title>
-  <link rel="stylesheet" href="./css/portal.css?v=5">
+  <link rel="stylesheet" href="./css/portal.css?v=6">
   <!-- Firebase SDK Local (Sin bloqueo por CSP ni dependencias CDN) -->
   <script src="./js/firebase-app-compat.js"></script>
   <script src="./js/firebase-auth-compat.js"></script>
@@ -83,6 +83,10 @@
             type="text"
             class="voucher-input"
             name="code"
+            readonly
+            onfocus="this.removeAttribute('readonly')"
+            onclick="this.removeAttribute('readonly')"
+            ontouchstart="this.removeAttribute('readonly')"
             inputmode="text"
             autocomplete="off"
             autocorrect="off"
@@ -128,56 +132,70 @@
       </a>
     </section>
 
-    <!-- ══ TARJETA 3: Planes & Precios Disponibles ══════════════ -->
-    <section class="card" id="plansSection" aria-labelledby="plansSectionTitle">
-      <div class="card-title-row">
-        <span class="card-icon" aria-hidden="true">🏷️</span>
-        <h2 class="card-title" id="plansSectionTitle">Planes y Precios de Internet</h2>
-      </div>
-      <div class="plans-grid" id="plansList">
-        <div class="plan-item" onclick="pedirPlan('1 Hora Basico', '$2000')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">
-          <div class="plan-info-left">
-            <div class="plan-name">1 Hora Basico</div>
-            <div class="plan-meta">
-              <span>⏱ 1h</span>
-              <span>⚡ 5M/2M</span>
+    <!-- ══ TARJETA 3: Planes & Precios Disponibles (Colapsable / Acordeón) ══ -->
+    <details class="card portal-accordion" id="plansSection">
+      <summary>
+        <div class="card-title-row" style="margin:0; width:100%; display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="card-icon" aria-hidden="true">🏷️</span>
+            <h2 class="card-title" id="plansSectionTitle" style="font-size:15px; margin:0;">Ver Planes y Precios de Internet</h2>
+          </div>
+          <span class="accordion-arrow" aria-hidden="true">▼</span>
+        </div>
+      </summary>
+      <div style="margin-top:14px;">
+        <div class="plans-grid" id="plansList">
+          <div class="plan-item" onclick="pedirPlan('1 Hora Basico', '$2000')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">
+            <div class="plan-info-left">
+              <div class="plan-name">1 Hora Basico</div>
+              <div class="plan-meta">
+                <span>⏱ 1h</span>
+                <span>⚡ 5M/2M</span>
+              </div>
+            </div>
+            <div class="plan-price-wrap">
+              <div class="plan-price">$2000</div>
+              <a href="https://wa.me/573174251419?text=%C2%A1Hola!%20Deseo%20pedir%20la%20ficha%20de%20internet%20de%201%20Hora%20Basico%20($2000)%20en%20R%C3%ADo%20Royota." class="plan-buy-btn" target="_blank" rel="noopener" onclick="event.stopPropagation();">Pedir 🪪</a>
             </div>
           </div>
-          <div class="plan-price-wrap">
-            <div class="plan-price">$2000</div>
-            <a href="https://wa.me/573174251419?text=%C2%A1Hola!%20Deseo%20pedir%20la%20ficha%20de%20internet%20de%201%20Hora%20Basico%20($2000)%20en%20R%C3%ADo%20Royota." class="plan-buy-btn" target="_blank" rel="noopener" onclick="event.stopPropagation();">Pedir 🪪</a>
-          </div>
-        </div>
 
-        <div class="plan-item" onclick="pedirPlan('1 Hora Premium', '$3000')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">
-          <div class="plan-info-left">
-            <div class="plan-name">1 Hora Premium</div>
-            <div class="plan-meta">
-              <span>⏱ 1h</span>
-              <span>⚡ 5M/10M</span>
+          <div class="plan-item" onclick="pedirPlan('1 Hora Premium', '$3000')" style="cursor:pointer;" title="Pedir ficha por WhatsApp">
+            <div class="plan-info-left">
+              <div class="plan-name">1 Hora Premium</div>
+              <div class="plan-meta">
+                <span>⏱ 1h</span>
+                <span>⚡ 5M/10M</span>
+              </div>
+            </div>
+            <div class="plan-price-wrap">
+              <div class="plan-price">$3000</div>
+              <a href="https://wa.me/573174251419?text=%C2%A1Hola!%20Deseo%20pedir%20la%20ficha%20de%20internet%20de%201%20Hora%20Premium%20($3000)%20en%20R%C3%ADo%20Royota." class="plan-buy-btn" target="_blank" rel="noopener" onclick="event.stopPropagation();">Pedir 🪪</a>
             </div>
           </div>
-          <div class="plan-price-wrap">
-            <div class="plan-price">$3000</div>
-            <a href="https://wa.me/573174251419?text=%C2%A1Hola!%20Deseo%20pedir%20la%20ficha%20de%20internet%20de%201%20Hora%20Premium%20($3000)%20en%20R%C3%ADo%20Royota." class="plan-buy-btn" target="_blank" rel="noopener" onclick="event.stopPropagation();">Pedir 🪪</a>
-          </div>
         </div>
       </div>
-    </section>
+    </details>
 
-    <!-- ══ TARJETA 4: Puntos de Venta Físicos (Casetas & Kioskos) ═ -->
-    <section class="card" id="kiosksSection" aria-labelledby="kiosksSectionTitle">
-      <div class="card-title-row">
-        <span class="card-icon" aria-hidden="true">🏪</span>
-        <h2 class="card-title" id="kiosksSectionTitle">Puntos de Venta en Efectivo</h2>
+    <!-- ══ TARJETA 4: Puntos de Venta Físicos (Colapsable / Acordeón) ══ -->
+    <details class="card portal-accordion" id="kiosksSection">
+      <summary>
+        <div class="card-title-row" style="margin:0; width:100%; display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="card-icon" aria-hidden="true">🏪</span>
+            <h2 class="card-title" id="kiosksSectionTitle" style="font-size:15px; margin:0;">Puntos de Venta en Efectivo (Casetas)</h2>
+          </div>
+          <span class="accordion-arrow" aria-hidden="true">▼</span>
+        </div>
+      </summary>
+      <div style="margin-top:14px;">
+        <p style="font-size:12.5px; color:#80cbc4; margin-bottom:12px;">
+          ¿Prefieres pagar en efectivo? Adquiere tu ficha impresa directamente en nuestras casetas y kioskos autorizados:
+        </p>
+        <div id="portalKiosksList" style="display:flex; flex-direction:column; gap:10px;">
+          <div style="font-size:13px; color:#80cbc4; text-align:center;">Cargando casetas autorizadas...</div>
+        </div>
       </div>
-      <p style="font-size:13px; color:#80cbc4; margin-bottom:14px;">
-        ¿Prefieres pagar en efectivo? Adquiere tu ficha impresa directamente en nuestras casetas y kioskos autorizados:
-      </p>
-      <div id="portalKiosksList" style="display:flex; flex-direction:column; gap:10px;">
-        <div style="font-size:13px; color:#80cbc4; text-align:center;">Cargando casetas autorizadas...</div>
-      </div>
-    </section>
+    </details>
 
     <!-- ══ TARJETA 5: Información del Balneario (Editable en Admin) ══ -->
     <section class="info-card" id="infoSection">
