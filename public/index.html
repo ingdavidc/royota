@@ -255,13 +255,13 @@
       </div>
 
       <form id="activateForm" autocomplete="off" novalidate>
-        <div class="input-group" id="inputGroupWrap" style="cursor:pointer;">
+        <div class="input-group" id="inputGroupWrap">
           <input
             id="codeInput"
             type="text"
             class="voucher-input"
             name="code"
-            disabled
+            readonly
             autocomplete="off"
             autocorrect="off"
             autocapitalize="characters"
@@ -551,22 +551,17 @@
       }
       var encoded = encodeURIComponent(msgText || _defaultWaMsg);
 
-      var isApple = /iPhone|iPad|iPod|Macintosh/i.test(navigator.userAgent || '');
-      var isAndroid = /Android/i.test(navigator.userAgent || '');
+      var isMobile = /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
 
-      if (isAndroid) {
-        // En Android, whatsapp:// abre la app oficial nativa sin pantalla intermedia
+      if (isMobile) {
+        // En móviles (iOS / Android), whatsapp:// abre la app directamente sin pantalla intermedia ni about:blank
         window.location.href = 'whatsapp://send?phone=' + num + '&text=' + encoded;
-      } else if (isApple) {
-        // En iOS CNA, window.location.href a whatsapp:// causa pantalla blanca about:blank.
-        // Se dispara enlace universal https://api.whatsapp.com vía link virtual seguro
-        var link = document.createElement('a');
-        link.href = 'https://api.whatsapp.com/send?phone=' + num + '&text=' + encoded;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
-        document.body.appendChild(link);
-        link.click();
-        setTimeout(function() { if (link.parentNode) link.parentNode.removeChild(link); }, 1000);
+        // Fallback suave tras 1.5s sin target=_blank para evitar pantallas en blanco en iOS CNA
+        setTimeout(function() {
+          try {
+            window.location.href = 'https://api.whatsapp.com/send?phone=' + num + '&text=' + encoded;
+          } catch (_) {}
+        }, 1500);
       } else {
         // En navegadores de escritorio (PC/Mac), WhatsApp Web
         window.open('https://api.whatsapp.com/send?phone=' + num + '&text=' + encoded, '_blank', 'noopener,noreferrer');
@@ -1041,19 +1036,22 @@
     }
 
     /* ── 5. Control anti-autofocus en iPhone / iOS CNA ── */
-    var inputWrap = document.getElementById('inputGroupWrap');
-    function unlockInputForUser() {
-      if (input.disabled) {
-        input.disabled = false;
-        input.focus();
+    // El atributo readonly nativo en el HTML impide que iOS CNA abra el teclado al cargar.
+    // Solo cuando el usuario hace clic o tap intencionalmente en el campo, se habilita la edición.
+    input.addEventListener('click', function () {
+      if (this.hasAttribute('readonly')) {
+        this.removeAttribute('readonly');
+        this.focus();
       }
-    }
-
-    if (inputWrap) {
-      inputWrap.addEventListener('click', unlockInputForUser);
-      inputWrap.addEventListener('touchstart', unlockInputForUser, { passive: true });
-    }
-    input.addEventListener('click', unlockInputForUser);
+    });
+    input.addEventListener('focus', function () {
+      this.removeAttribute('readonly');
+    });
+    input.addEventListener('blur', function () {
+      if (!this.value || this.value.trim() === '') {
+        this.setAttribute('readonly', 'readonly');
+      }
+    });
 
 
 
