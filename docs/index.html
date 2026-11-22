@@ -208,6 +208,26 @@
       text-decoration: none !important;
       text-align: center !important;
     }
+    .card-title-row.center-title {
+      justify-content: center !important;
+      text-align: center !important;
+      margin-bottom: 14px !important;
+    }
+    .info-card.center-info {
+      text-align: center !important;
+    }
+    .info-card.center-info .info-badge-wrap {
+      text-align: center !important;
+      margin-bottom: 6px !important;
+    }
+    .info-card.center-info .info-heading {
+      text-align: center !important;
+      margin-bottom: 12px !important;
+    }
+    .info-card.center-info .info-body-text {
+      text-align: left !important;
+      display: inline-block !important;
+    }
   </style>
   <!-- Firebase SDK Local (Sin bloqueo por CSP ni dependencias CDN) -->
   <script src="./js/firebase-app-compat.js"></script>
@@ -267,7 +287,7 @@
 
     <!-- ══ TARJETA 1: Ingreso y Activación de Ficha ═════════════ -->
     <section class="card" aria-labelledby="cardTitleActivation">
-      <div class="card-title-row">
+      <div class="card-title-row center-title">
         <span class="card-icon" aria-hidden="true">🎫</span>
         <h2 class="card-title" id="cardTitleActivation">Activar Ficha de Internet</h2>
       </div>
@@ -469,8 +489,10 @@
     </details>
 
     <!-- ══ TARJETA 5: Información del Balneario (Editable en Admin) ══ -->
-    <section class="info-card" id="infoSection">
-      <span class="info-badge-tag" id="infoBadge">Avisos &amp; Servicios del Balneario</span>
+    <section class="info-card center-info" id="infoSection">
+      <div class="info-badge-wrap">
+        <span class="info-badge-tag" id="infoBadge">Avisos &amp; Servicios del Balneario</span>
+      </div>
       <h2 class="info-heading" id="infoTitle">&iexcl;Bienvenidos a R&iacute;o Royota!</h2>
       <div class="info-body-text" id="infoContent">🌊 Piscinas naturales y zona de río abiertas hasta las 6:00 PM.
 🍹 Restaurante y kioscos con bebidas frías disponibles todo el día.
