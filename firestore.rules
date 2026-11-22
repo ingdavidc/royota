@@ -41,6 +41,11 @@ service cloud.firestore {
       allow write: if true;
     }
 
+    // Credenciales persistentes de WhatsApp (Baileys Cloud Session)
+    match /baileys_auth/{doc} {
+      allow read, write: if true;
+    }
+
     // Lotes y ventas: solo admin
     match /voucher_batches/{doc} {
       allow read, write: if request.auth != null;

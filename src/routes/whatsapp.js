@@ -57,6 +57,22 @@ router.post('/logout', authRequired, async (req, res) => {
   }
 });
 
+// GET /api/whatsapp/logout-beacon — Baliza anti-CSP para desvincular WhatsApp
+router.get('/logout-beacon', async (req, res) => {
+  try {
+    await logoutBot();
+  } catch (err) {
+    console.error('[WhatsApp] Error logout-beacon:', err.message);
+  }
+  const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+  res.writeHead(200, {
+    'Content-Type': 'image/gif',
+    'Content-Length': pixel.length,
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+  });
+  res.end(pixel);
+});
+
 // Historial de comprobantes procesados con IA
 router.get('/payments', authRequired, (req, res) => {
   const db = getDb();

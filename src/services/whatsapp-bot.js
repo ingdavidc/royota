@@ -33,6 +33,12 @@ const config = require('../config');
 const { getDb } = require('../database');
 const { generateBatch } = require('./voucher-generator');
 const { analyzeReceipt } = require('./gemini-vision');
+const {
+  restoreBaileysAuthFromFirestore,
+  saveFileToFirestore,
+  syncAllAuthFilesToFirestore,
+  clearAllBaileysAuth,
+} = require('./firestore-baileys-auth');
 
 // Directorio para almacenar credenciales de sesión de WhatsApp
 const AUTH_DIR = path.join(__dirname, '..', '..', 'data', 'baileys_auth');
@@ -52,11 +58,15 @@ let _state = {
 
 async function syncWhatsAppStateToFirestore() {
   try {
+    let rawPhone = '573174251419';
+    if (_state.user && _state.user.id) {
+      rawPhone = _state.user.id.split(':')[0].replace(/\D/g, '');
+    }
     const body = {
       fields: {
         status: { stringValue: _state.status || 'disconnected' },
         qrCodeDataUrl: { stringValue: _state.qrCodeDataUrl || '' },
-        botPhone: { stringValue: '573174251419' },
+        botPhone: { stringValue: rawPhone },
         user: { stringValue: _state.user ? JSON.stringify(_state.user) : '' },
         updatedAt: { stringValue: new Date().toISOString() }
       }
@@ -531,11 +541,15 @@ async function startWhatsAppBot(forceClean = false) {
     _sock = null;
   }
 
-  if (forceClean && fs.existsSync(AUTH_DIR)) {
-    try {
-      fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-      console.log('[WhatsApp Bot] Credenciales limpiadas para generar nuevo QR limpio.');
-    } catch (_) {}
+  if (forceClean) {
+    console.log('[WhatsApp Bot] Limpiando credenciales locales y en Firestore para generar nuevo QR limpio...');
+    await clearAllBaileysAuth(AUTH_DIR);
+  } else {
+    // Si la carpeta local no tiene creds.json, restaurar desde Firestore (resistencia a reinicios de Render)
+    if (!fs.existsSync(path.join(AUTH_DIR, 'creds.json'))) {
+      console.log('[WhatsApp Bot] Verificando respaldo de sesión en la nube (Firestore)...');
+      await restoreBaileysAuthFromFirestore(AUTH_DIR);
+    }
   }
 
   // Asegurar directorio de datos de autenticación
@@ -566,8 +580,25 @@ async function startWhatsAppBot(forceClean = false) {
 
     _sock = sock;
 
-    // Guardar credenciales al actualizarse
-    sock.ev.on('creds.update', saveCreds);
+    // Debounce para subir llaves adicionales a Firestore sin sobrecargar
+    let _keySyncTimer = null;
+    function triggerKeysSync() {
+      if (_keySyncTimer) clearTimeout(_keySyncTimer);
+      _keySyncTimer = setTimeout(() => {
+        syncAllAuthFilesToFirestore(AUTH_DIR).catch(() => {});
+      }, 3000);
+    }
+
+    // Guardar credenciales al actualizarse (en disco local y en Firestore para persistencia permanente)
+    sock.ev.on('creds.update', async () => {
+      try {
+        await saveCreds();
+        await saveFileToFirestore(AUTH_DIR, 'creds.json');
+        triggerKeysSync();
+      } catch (err) {
+        console.warn('[WhatsApp Bot] Error guardando creds:', err.message);
+      }
+    });
 
     // Eventos de estado de conexión
     sock.ev.on('connection.update', async (update) => {
@@ -596,22 +627,26 @@ async function startWhatsAppBot(forceClean = false) {
 
         console.log(`[WhatsApp Bot] Conexión cerrada (Código: ${statusCode}). Registrado: ${isRegistered}`);
 
-        _state.status = 'disconnected';
-        _state.qr = null;
-        _state.qrCodeDataUrl = null;
-        _state.user = null;
-        syncWhatsAppStateToFirestore();
-
         if (isLoggedOut) {
-          console.log('[WhatsApp Bot] Sesión cerrada permanentemente (Logged Out). Limpiando credenciales...');
-          try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (_) {}
+          console.log('[WhatsApp Bot] 🚪 Sesión cerrada permanentemente desde el celular (Logged Out). Limpiando...');
+          _state.status = 'disconnected';
+          _state.qr = null;
+          _state.qrCodeDataUrl = null;
+          _state.user = null;
+          syncWhatsAppStateToFirestore();
+          await clearAllBaileysAuth(AUTH_DIR);
           _reconnectTimer = setTimeout(() => startWhatsAppBot(true), 2500);
         } else {
-          // Si no es Logout, conservar credenciales para no interrumpir el emparejamiento
-          const delay = isRestartRequired ? 1000 : 3000;
-          console.log(`[WhatsApp Bot] Reconectando sesión de WhatsApp en ${delay}ms...`);
-          _state.status = 'connecting';
-          syncWhatsAppStateToFirestore();
+          // Si no es Logout (reinicio por 515, caída momentánea o reconexión):
+          // NO borrar credenciales. Mantener sesión viva en la nube.
+          const delay = isRestartRequired ? 1000 : 2500;
+          console.log(`[WhatsApp Bot] Reconectando sesión de WhatsApp automáticamente en ${delay}ms...`);
+          if (!isRegistered) {
+            _state.status = 'connecting';
+            syncWhatsAppStateToFirestore();
+          } else {
+            _state.status = 'connecting';
+          }
           _reconnectTimer = setTimeout(() => startWhatsAppBot(false), delay);
         }
       } else if (connection === 'open') {
@@ -620,6 +655,9 @@ async function startWhatsAppBot(forceClean = false) {
         _state.qrCodeDataUrl = null;
         _state.user = sock.user;
         syncWhatsAppStateToFirestore();
+
+        // Respaldar inmediatamente todas las llaves generadas en Firestore
+        syncAllAuthFilesToFirestore(AUTH_DIR).catch(() => {});
 
         let rawPhone = (sock.user?.id || '').split(':')[0].replace(/\D/g, '');
         if (rawPhone.length === 10 && rawPhone.startsWith('3')) {
@@ -892,18 +930,17 @@ async function logoutBot() {
   _state.user = null;
   _state.qr = null;
   _state.qrCodeDataUrl = null;
-  if (fs.existsSync(AUTH_DIR)) {
-    try { fs.rmSync(AUTH_DIR, { recursive: true, force: true }); } catch (_) {}
-  }
+  await clearAllBaileysAuth(AUTH_DIR);
+  await syncWhatsAppStateToFirestore();
   setTimeout(() => startWhatsAppBot(true), 2000);
-  return { success: true, message: 'Sesión cerrada. Escanea un nuevo QR.' };
+  return { success: true, message: 'Sesión de WhatsApp cerrada y credenciales eliminadas. Escanea un nuevo QR.' };
 }
 
 /**
- * Reiniciar bot y forzar nuevo QR limpio
+ * Reiniciar bot sin forzar borrado de credenciales (para reconexiones o refresco de socket)
  */
 async function restartBot() {
-  return await startWhatsAppBot(true);
+  return await startWhatsAppBot(false);
 }
 
 module.exports = {

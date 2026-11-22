@@ -922,8 +922,15 @@ function savePortalSettings(e) {
    WHATSAPP BOT & IA
 ══════════════════════════════════════════════════════════ */
 var _waPollInterval = null;
+var _lastWhatsAppStatus = null;
+try {
+  _lastWhatsAppStatus = JSON.parse(localStorage.getItem('wa_last_status') || 'null');
+} catch (_) {}
 
 function loadWhatsAppSection() {
+  if (_lastWhatsAppStatus) {
+    renderWhatsAppCard(_lastWhatsAppStatus);
+  }
   checkWhatsAppStatus();
   loadWhatsAppPayments();
   loadWhatsAppStrikes();
@@ -953,9 +960,19 @@ function renderWhatsAppCard(s) {
 
   if (!pill || !s) return;
 
+  var u = s.user;
+  if (typeof u === 'string' && u.startsWith('{')) {
+    try { u = JSON.parse(u); } catch(_) { u = null; }
+  }
+
+  var botPhoneStr = s.botPhone;
+  if (!botPhoneStr && u && u.id) {
+    botPhoneStr = u.id.split(':')[0].replace(/\D/g, '');
+  }
+
   if (botNumDisp) {
-    if (s.botPhone) {
-      botNumDisp.textContent = '+' + s.botPhone;
+    if (botPhoneStr) {
+      botNumDisp.textContent = '+' + botPhoneStr;
     } else {
       botNumDisp.textContent = 'Auto-detectado al escanear';
     }
@@ -968,11 +985,14 @@ function renderWhatsAppCard(s) {
     if (qrBox) qrBox.style.display = 'none';
     if (discBox) discBox.style.display = 'none';
     if (connBox) connBox.style.display = 'block';
-    var userDisplayName = s.user ? (s.user.name || (s.botPhone ? ('+' + s.botPhone) : s.user.id)) : (s.botPhone ? ('+' + s.botPhone) : 'Dispositivo WhatsApp');
-    if (userEl) userEl.textContent = 'Vinculado a: ' + userDisplayName;
 
-    if (s.botPhone) {
-      var cleanBot = String(s.botPhone).replace(/\D/g, '');
+    var userDisplayName = (u && u.name) ? u.name : (botPhoneStr ? ('+' + botPhoneStr) : 'Dispositivo WhatsApp');
+    if (userEl) {
+      userEl.textContent = 'Vinculado a: ' + userDisplayName + (botPhoneStr && (!u || !u.name || !u.name.includes(botPhoneStr)) ? (' (+' + botPhoneStr + ')') : '');
+    }
+
+    if (botPhoneStr) {
+      var cleanBot = String(botPhoneStr).replace(/\D/g, '');
       var setWaInput = document.getElementById('setWhatsappNumber');
       if (setWaInput && (!setWaInput.value || setWaInput.value === '573123456789' || setWaInput.value === '3174251419')) {
         setWaInput.value = cleanBot;
@@ -1021,10 +1041,20 @@ function renderWhatsAppCard(s) {
 function checkWhatsAppStatus() {
   if (window.firebaseDb && window.firebaseDb.onWhatsAppStatusChange) {
     if (!_waRealtimeUnsub) {
-      _waRealtimeUnsub = window.firebaseDb.onWhatsAppStatusChange(renderWhatsAppCard);
+      _waRealtimeUnsub = window.firebaseDb.onWhatsAppStatusChange(function(data) {
+        _lastWhatsAppStatus = data;
+        try { localStorage.setItem('wa_last_status', JSON.stringify(data)); } catch(_) {}
+        renderWhatsAppCard(data);
+      });
+    } else if (_lastWhatsAppStatus) {
+      renderWhatsAppCard(_lastWhatsAppStatus);
     }
   } else {
-    apiFetch('GET', '/api/whatsapp/status').then(renderWhatsAppCard).catch(function(){});
+    apiFetch('GET', '/api/whatsapp/status').then(function(data) {
+      _lastWhatsAppStatus = data;
+      try { localStorage.setItem('wa_last_status', JSON.stringify(data)); } catch(_) {}
+      renderWhatsAppCard(data);
+    }).catch(function(){});
   }
 }
 
@@ -1050,12 +1080,23 @@ function requestNewQr() {
 }
 
 function disconnectWhatsApp() {
-  if (!confirm('¿Estás seguro de que deseas desvincular el WhatsApp actual?')) return;
+  if (!confirm('¿Estás seguro de que deseas desvincular el WhatsApp actual? El bot dejará de atender hasta que vincules un nuevo número.')) return;
+  var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
+  try {
+    var bImg = new Image();
+    bImg.src = apiBase + '/api/whatsapp/logout-beacon?_t=' + Date.now();
+  } catch (_) {}
+
   apiFetch('POST', '/api/whatsapp/logout').then(function(res) {
-    toast(res.message || 'Sesión cerrada', 'ok');
-    checkWhatsAppStatus();
+    toast(res.message || 'Sesión de WhatsApp cerrada', 'ok');
+    localStorage.removeItem('wa_last_status');
+    _lastWhatsAppStatus = { status: 'connecting' };
+    renderWhatsAppCard(_lastWhatsAppStatus);
   }).catch(function(err) {
-    toast((err && err.error) || 'Error al cerrar sesión', 'error');
+    toast('Desvinculando WhatsApp en la nube...', 'ok');
+    localStorage.removeItem('wa_last_status');
+    _lastWhatsAppStatus = { status: 'connecting' };
+    renderWhatsAppCard(_lastWhatsAppStatus);
   });
 }
 
