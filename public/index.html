@@ -312,84 +312,96 @@
       </div>
     </section>
 
-    <!-- ══ TARJETA 2: Compra en Línea (Daviplata / Bre-B) ══ -->
-    <section class="wa-card" id="waSection">
-      <!-- Opciones y Datos de Pago Directo -->
-      <div class="payment-info-box">
-        <div class="payment-title">
-          <span>💳</span>
-          <span>Paga por Daviplata o Bre-B</span>
+    <!-- ══ TARJETA 2: Compra en Línea (Daviplata / Bre-B) — Acordeón Colapsable ══ -->
+    <details class="card portal-accordion" id="waSection">
+      <summary>
+        <div class="card-title-row" style="margin:0; width:100%; display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <span class="card-icon" aria-hidden="true">💳</span>
+            <h2 class="card-title" id="waSectionTitle" style="font-size:15px; margin:0;">Comprar Ficha en Línea (Daviplata / Bre-B)</h2>
+          </div>
+          <span class="accordion-arrow" aria-hidden="true">▼</span>
         </div>
-        <div class="payment-row">
-          <span class="payment-num-label">Número / Llave:</span>
-          <div class="payment-number-wrap">
-            <strong class="payment-number" id="payPhoneDisplay">317 425 1419</strong>
-            <button type="button" id="btnCopyPhone" class="btn-copy-num" title="Copiar número de pago">📋 Copiar</button>
+      </summary>
+
+      <div style="margin-top:14px;">
+        <!-- Opciones y Datos de Pago Directo -->
+        <div class="payment-info-box">
+          <div class="payment-title">
+            <span>💳</span>
+            <span>Paga por Daviplata o Bre-B</span>
+          </div>
+          <div class="payment-row">
+            <span class="payment-num-label">Número / Llave:</span>
+            <div class="payment-number-wrap">
+              <strong class="payment-number" id="payPhoneDisplay">317 425 1419</strong>
+              <button type="button" id="btnCopyPhone" class="btn-copy-num" title="Copiar número de pago">📋 Copiar</button>
+            </div>
+          </div>
+          <div class="payment-sub">Acepta transferencias Daviplata y llaves Bre-B de cualquier entidad</div>
+        </div>
+
+        <!-- Vista Activa (2 Botones ordenados y secuenciales) -->
+        <div id="waActiveWrap">
+          <div class="action-buttons-grid">
+            <!-- BOTÓN 1: Realizar Pago (Minimiza y da 2 min) -->
+            <button type="button" id="btnActivarCortesia" class="btn-action-pay" style="display:flex; align-items:center; gap:12px; width:100%; padding:12px 14px; background:linear-gradient(135deg, #0077b6 0%, #0096c7 100%); color:#ffffff; border:none; border-radius:12px; cursor:pointer; text-align:left; box-shadow:0 4px 14px rgba(0,150,199,0.35); box-sizing:border-box;">
+              <span class="btn-step-badge" style="background:rgba(0,0,0,0.3); color:#ffffff; font-size:11px; font-weight:800; text-transform:uppercase; padding:5px 8px; border-radius:6px; white-space:nowrap;">Paso 1</span>
+              <div class="btn-action-text" style="display:flex; flex-direction:column; flex:1; min-width:0;">
+                <strong style="font-size:14px; color:#ffffff; line-height:1.25;">1. Realizar Pago (2 min libres)</strong>
+                <small style="font-size:11px; color:rgba(255,255,255,0.88); line-height:1.2; margin-top:2px;">Minimiza el portal y te da 2 min de internet para transferir</small>
+              </div>
+            </button>
+
+            <!-- BOTÓN 2: Enviar Comprobante por WhatsApp -->
+            <a href="javascript:void(0)" id="btnEnviarSoporteWa" class="btn-action-wa" role="button" style="display:flex; align-items:center; gap:12px; width:100%; padding:12px 14px; background:linear-gradient(135deg, #25d366 0%, #128c7e 100%); color:#ffffff !important; text-decoration:none !important; border:none; border-radius:12px; cursor:pointer; text-align:left; box-shadow:0 4px 14px rgba(37,211,102,0.35); box-sizing:border-box;">
+              <span class="btn-step-badge wa" style="background:rgba(0,0,0,0.3); color:#ffffff; font-size:11px; font-weight:800; text-transform:uppercase; padding:5px 8px; border-radius:6px; white-space:nowrap;">Paso 2</span>
+              <div class="btn-action-text" style="display:flex; flex-direction:column; flex:1; min-width:0;">
+                <strong style="font-size:14px; color:#ffffff; line-height:1.25;">2. Enviar Comprobante WhatsApp</strong>
+                <small style="font-size:11px; color:rgba(255,255,255,0.88); line-height:1.2; margin-top:2px;">Envía el pantallazo al bot para recibir tu código</small>
+              </div>
+            </a>
+          </div>
+
+          <!-- Iframe oculto para autenticar en MikroTik en segundo plano -->
+          <iframe name="login_target" id="loginTarget" style="display:none; width:0; height:0; border:0;" aria-hidden="true"></iframe>
+
+          <!-- Banner de Navegación Activa (Aparece tras presionar el Paso 1) -->
+          <div id="waCountdownBox" class="wa-active-banner" hidden>
+            <div class="active-banner-top">
+              <span class="pulse-dot"></span>
+              <strong>⚡ ¡2 minutos de internet activos!</strong>
+              <span class="timer-badge" id="waCountdownTimer">02:00</span>
+            </div>
+            <p class="active-banner-hint" id="waCountdownMsg">
+              Abre tu <strong>Daviplata</strong> o app bancaria y transfiere. Luego toca el <strong>Paso 2</strong> para enviar el comprobante.
+            </p>
+            <button type="button" id="btnMinimizarPortal" class="btn-exit-portal">
+              📱 Salir a mi app de pago (Toca "Listo" en iPhone)
+            </button>
           </div>
         </div>
-        <div class="payment-sub">Acepta transferencias Daviplata y llaves Bre-B de cualquier entidad</div>
-      </div>
 
-      <!-- Vista Activa (2 Botones ordenados y secuenciales) -->
-      <div id="waActiveWrap">
-        <div class="action-buttons-grid">
-          <!-- BOTÓN 1: Realizar Pago (Minimiza y da 2 min) -->
-          <button type="button" id="btnActivarCortesia" class="btn-action-pay" style="display:flex; align-items:center; gap:12px; width:100%; padding:12px 14px; background:linear-gradient(135deg, #0077b6 0%, #0096c7 100%); color:#ffffff; border:none; border-radius:12px; cursor:pointer; text-align:left; box-shadow:0 4px 14px rgba(0,150,199,0.35); box-sizing:border-box;">
-            <span class="btn-step-badge" style="background:rgba(0,0,0,0.3); color:#ffffff; font-size:11px; font-weight:800; text-transform:uppercase; padding:5px 8px; border-radius:6px; white-space:nowrap;">Paso 1</span>
-            <div class="btn-action-text" style="display:flex; flex-direction:column;">
-              <strong style="font-size:14px; color:#ffffff; line-height:1.25;">1. Realizar Pago (2 min libres)</strong>
-              <small style="font-size:11px; color:rgba(255,255,255,0.88); line-height:1.2; margin-top:2px;">Minimiza el portal y te da 2 min de internet para transferir</small>
-            </div>
-          </button>
-
-          <!-- BOTÓN 2: Enviar Comprobante por WhatsApp -->
-          <a href="javascript:void(0)" id="btnEnviarSoporteWa" class="btn-action-wa" role="button" style="display:flex; align-items:center; gap:12px; width:100%; padding:12px 14px; background:linear-gradient(135deg, #25d366 0%, #128c7e 100%); color:#ffffff !important; text-decoration:none !important; border:none; border-radius:12px; cursor:pointer; text-align:left; box-shadow:0 4px 14px rgba(37,211,102,0.35); box-sizing:border-box;">
-            <span class="btn-step-badge wa" style="background:rgba(0,0,0,0.3); color:#ffffff; font-size:11px; font-weight:800; text-transform:uppercase; padding:5px 8px; border-radius:6px; white-space:nowrap;">Paso 2</span>
-            <div class="btn-action-text" style="display:flex; flex-direction:column;">
-              <strong style="font-size:14px; color:#ffffff; line-height:1.25;">2. Enviar Comprobante WhatsApp</strong>
-              <small style="font-size:11px; color:rgba(255,255,255,0.88); line-height:1.2; margin-top:2px;">Envía el pantallazo al bot para recibir tu código</small>
-            </div>
-          </a>
-        </div>
-
-        <!-- Iframe oculto para autenticar en MikroTik en segundo plano -->
-        <iframe name="login_target" id="loginTarget" style="display:none; width:0; height:0; border:0;" aria-hidden="true"></iframe>
-
-        <!-- Banner de Navegación Activa (Aparece tras presionar el Paso 1) -->
-        <div id="waCountdownBox" class="wa-active-banner" hidden>
-          <div class="active-banner-top">
-            <span class="pulse-dot"></span>
-            <strong>⚡ ¡2 minutos de internet activos!</strong>
-            <span class="timer-badge" id="waCountdownTimer">02:00</span>
+        <!-- Vista Bloqueada (2 intentos consumidos sin comprar ficha) -->
+        <div id="waBlockedWrap" hidden>
+          <div class="wa-blocked-title">
+            <span>🚫</span>
+            <span>Intentos de cortesía agotados (2 de 2)</span>
           </div>
-          <p class="active-banner-hint" id="waCountdownMsg">
-            Abre tu <strong>Daviplata</strong> o app bancaria y transfiere. Luego toca el <strong>Paso 2</strong> para enviar el comprobante.
+          <p class="wa-blocked-desc">
+            Has utilizado tus 2 turnos de cortesía de hoy. Si ya transferiste, envía tu comprobante por WhatsApp al bot para recibir tu ficha o adquiérela en efectivo en casetas.
           </p>
-          <button type="button" id="btnMinimizarPortal" class="btn-exit-portal">
-            📱 Salir a mi app de pago (Toca "Listo" en iPhone)
-          </button>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <a href="javascript:void(0)" id="btnWaBlocked" class="btn-wa-blocked" style="flex:1; display:inline-flex; align-items:center; justify-content:center; padding:10px 12px; background:#25d366; color:#ffffff !important; text-decoration:none !important; font-weight:700; font-size:12px; border-radius:8px; text-align:center;">
+              💬 Enviar Comprobante WhatsApp
+            </a>
+            <button type="button" id="btnIrCasetas" class="wa-btn-casetas" style="flex:1;">
+              🏪 Casetas Físicas
+            </button>
+          </div>
         </div>
       </div>
-
-      <!-- Vista Bloqueada (2 intentos consumidos sin comprar ficha) -->
-      <div id="waBlockedWrap" hidden>
-        <div class="wa-blocked-title">
-          <span>🚫</span>
-          <span>Intentos de cortesía agotados (2 de 2)</span>
-        </div>
-        <p class="wa-blocked-desc">
-          Has utilizado tus 2 turnos de cortesía de hoy. Si ya transferiste, envía tu comprobante por WhatsApp al bot para recibir tu ficha o adquiérela en efectivo en casetas.
-        </p>
-        <div style="display:flex; gap:8px; margin-top:8px;">
-          <a href="javascript:void(0)" id="btnWaBlocked" class="btn-wa-blocked" style="flex:1; display:inline-flex; align-items:center; justify-content:center; padding:10px 12px; background:#25d366; color:#ffffff !important; text-decoration:none !important; font-weight:700; font-size:12px; border-radius:8px; text-align:center;">
-            💬 Enviar Comprobante WhatsApp
-          </a>
-          <button type="button" id="btnIrCasetas" class="wa-btn-casetas" style="flex:1;">
-            🏪 Casetas Físicas
-          </button>
-        </div>
-      </div>
-    </section>
+    </details>
 
     <!-- ══ TARJETA 3: Planes & Precios Disponibles (Colapsable / Acordeón) ══ -->
     <details class="card portal-accordion" id="plansSection">
@@ -518,12 +530,13 @@
     var plansList   = document.getElementById('plansList');
 
     var DEFAULT_SETTINGS = {
-      business_name:    'R\u00edo Royota',
-      business_slogan:  'Un para\u00edso natural junto al r\u00edo \u2022 Conexi\u00f3n WiFi',
-      whatsapp_number:  '573174251419',
-      payment_phone:    '3174251419',
-      whatsapp_message: '\u00a1Hola! Estoy en R\u00edo Royota y deseo comprar una ficha de internet WiFi.',
-      info_active:      true,
+      business_name:          'R\u00edo Royota',
+      business_slogan:        'Un para\u00edso natural junto al r\u00edo \u2022 Conexi\u00f3n WiFi',
+      whatsapp_number:        '573174251419',
+      payment_phone:          '3174251419',
+      online_purchase_active: true,
+      whatsapp_message:       '\u00a1Hola! Estoy en R\u00edo Royota y deseo comprar una ficha de internet WiFi.',
+      info_active:            true,
       info_badge:       'Avisos & Servicios del Balneario',
       info_title:       '\u00a1Bienvenidos a R\u00edo Royota!',
       info_content:     '\ud83c\udf0a Piscinas naturales y zona de r\u00edo abiertas hasta las 6:00 PM.\n\ud83c\udf79 Restaurante y kioscos con bebidas fr\u00edas disponibles todo el d\u00eda.\n\ud83c\udfab Venta de fichas WiFi en Taquilla Principal y Restaurante.\n\ud83c\udf3f Cuidemos el r\u00edo: deposita los residuos en su lugar.',
@@ -590,6 +603,14 @@
 
     /* ── Función para pedir plan directamente ── */
     window.pedirPlan = function(planName, formattedPrice) {
+      var isOnlineActive = _settings.online_purchase_active !== '0' && _settings.online_purchase_active !== 0 && _settings.online_purchase_active !== false;
+      if (!isOnlineActive) {
+        if (kiosksSec) {
+          kiosksSec.open = true;
+          kiosksSec.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+      }
       var biz = _settings && _settings.business_name ? _settings.business_name : 'Río Royota';
       var planMsg = '¡Hola! Deseo comprar la ficha de internet de ' + planName + ' (' + formattedPrice + ') en ' + biz + '. Adjunto mi comprobante de pago:';
       openWhatsAppSupport(planMsg);
@@ -636,7 +657,15 @@
           payPhoneDisplay.textContent = '317 425 1419';
         }
       }
-      waSec.removeAttribute('hidden');
+
+      var isOnlineActive = _settings.online_purchase_active !== '0' && _settings.online_purchase_active !== 0 && _settings.online_purchase_active !== false;
+      if (isOnlineActive) {
+        waSec.removeAttribute('hidden');
+        waSec.style.display = '';
+      } else {
+        waSec.setAttribute('hidden', '');
+        waSec.style.display = 'none';
+      }
 
       var isInfoActive = _settings.info_active !== '0' && _settings.info_active !== false && _settings.info_active !== 0;
       if (isInfoActive && _settings.info_content && _settings.info_content.trim() !== '') {

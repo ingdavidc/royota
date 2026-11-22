@@ -20,16 +20,18 @@ const router = Router();
 router.get('/public', (req, res) => {
   const s = getSettings();
   res.json({
-    business_name:    s.business_name || config.business.name,
-    business_slogan:  s.business_slogan || 'El paraíso natural junto al río',
-    whatsapp_number:  s.whatsapp_number || '',
-    whatsapp_message: s.whatsapp_message || '',
-    info_active:      s.info_active === '1' || s.info_active === true,
-    info_badge:       s.info_badge || 'Avisos & Servicios',
-    info_title:       s.info_title || 'Información del Balneario',
-    info_content:     s.info_content || '',
-    currency:         config.business.currency,
-    currencySymbol:   config.business.currencySymbol,
+    business_name:          s.business_name || config.business.name,
+    business_slogan:        s.business_slogan || 'El paraíso natural junto al río',
+    whatsapp_number:        s.whatsapp_number || '',
+    payment_phone:          s.payment_phone || '3174251419',
+    online_purchase_active: s.online_purchase_active !== '0' && s.online_purchase_active !== 0 && s.online_purchase_active !== false,
+    whatsapp_message:       s.whatsapp_message || '',
+    info_active:            s.info_active === '1' || s.info_active === true,
+    info_badge:             s.info_badge || 'Avisos & Servicios',
+    info_title:             s.info_title || 'Información del Balneario',
+    info_content:           s.info_content || '',
+    currency:               config.business.currency,
+    currencySymbol:         config.business.currencySymbol,
   });
 });
 
@@ -47,14 +49,16 @@ router.get('/', authRequired, (req, res) => {
 async function syncSettingsToFirestore(settings) {
   try {
     const fields = {};
-    if (settings.business_name !== undefined)    fields.business_name    = { stringValue: String(settings.business_name) };
-    if (settings.business_slogan !== undefined)  fields.business_slogan  = { stringValue: String(settings.business_slogan) };
-    if (settings.whatsapp_number !== undefined)  fields.whatsapp_number  = { stringValue: String(settings.whatsapp_number) };
-    if (settings.whatsapp_message !== undefined) fields.whatsapp_message = { stringValue: String(settings.whatsapp_message) };
-    if (settings.info_active !== undefined)      fields.info_active      = { stringValue: String(settings.info_active) };
-    if (settings.info_badge !== undefined)       fields.info_badge       = { stringValue: String(settings.info_badge) };
-    if (settings.info_title !== undefined)       fields.info_title       = { stringValue: String(settings.info_title) };
-    if (settings.info_content !== undefined)     fields.info_content     = { stringValue: String(settings.info_content) };
+    if (settings.business_name !== undefined)          fields.business_name          = { stringValue: String(settings.business_name) };
+    if (settings.business_slogan !== undefined)        fields.business_slogan        = { stringValue: String(settings.business_slogan) };
+    if (settings.whatsapp_number !== undefined)        fields.whatsapp_number        = { stringValue: String(settings.whatsapp_number) };
+    if (settings.payment_phone !== undefined)          fields.payment_phone          = { stringValue: String(settings.payment_phone) };
+    if (settings.online_purchase_active !== undefined) fields.online_purchase_active = { stringValue: String(settings.online_purchase_active) };
+    if (settings.whatsapp_message !== undefined)       fields.whatsapp_message       = { stringValue: String(settings.whatsapp_message) };
+    if (settings.info_active !== undefined)            fields.info_active            = { stringValue: String(settings.info_active) };
+    if (settings.info_badge !== undefined)             fields.info_badge             = { stringValue: String(settings.info_badge) };
+    if (settings.info_title !== undefined)             fields.info_title             = { stringValue: String(settings.info_title) };
+    if (settings.info_content !== undefined)           fields.info_content           = { stringValue: String(settings.info_content) };
 
     const keys = Object.keys(fields);
     if (!keys.length) return;
@@ -78,6 +82,8 @@ router.put('/', authRequired, (req, res) => {
     business_name,
     business_slogan,
     whatsapp_number,
+    payment_phone,
+    online_purchase_active,
     whatsapp_message,
     info_active,
     info_badge,
@@ -86,14 +92,16 @@ router.put('/', authRequired, (req, res) => {
   } = req.body;
 
   const toUpdate = {};
-  if (business_name !== undefined)    toUpdate.business_name    = business_name.trim();
-  if (business_slogan !== undefined)  toUpdate.business_slogan  = business_slogan.trim();
-  if (whatsapp_number !== undefined)  toUpdate.whatsapp_number  = whatsapp_number.replace(/[^\d+]/g, '');
-  if (whatsapp_message !== undefined) toUpdate.whatsapp_message = whatsapp_message.trim();
-  if (info_active !== undefined)      toUpdate.info_active      = info_active ? '1' : '0';
-  if (info_badge !== undefined)       toUpdate.info_badge       = info_badge.trim();
-  if (info_title !== undefined)       toUpdate.info_title       = info_title.trim();
-  if (info_content !== undefined)     toUpdate.info_content     = info_content;
+  if (business_name !== undefined)          toUpdate.business_name          = business_name.trim();
+  if (business_slogan !== undefined)        toUpdate.business_slogan        = business_slogan.trim();
+  if (whatsapp_number !== undefined)        toUpdate.whatsapp_number        = whatsapp_number.replace(/[^\d+]/g, '');
+  if (payment_phone !== undefined)          toUpdate.payment_phone          = payment_phone.replace(/[^\d+]/g, '');
+  if (online_purchase_active !== undefined) toUpdate.online_purchase_active = online_purchase_active ? '1' : '0';
+  if (whatsapp_message !== undefined)       toUpdate.whatsapp_message       = whatsapp_message.trim();
+  if (info_active !== undefined)            toUpdate.info_active            = info_active ? '1' : '0';
+  if (info_badge !== undefined)             toUpdate.info_badge             = info_badge.trim();
+  if (info_title !== undefined)             toUpdate.info_title             = info_title.trim();
+  if (info_content !== undefined)           toUpdate.info_content           = info_content;
 
   const updated = setSettings(toUpdate);
 

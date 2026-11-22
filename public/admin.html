@@ -405,6 +405,19 @@
               <span class="panel-title">🌊 Identidad del Balneario & WhatsApp</span>
             </div>
             <div class="panel-body">
+              <!-- Switch para Activar / Desactivar Compra en Línea -->
+              <div class="fg" style="display:flex; align-items:flex-start; gap:12px; margin-bottom:18px; padding:12px 14px; background:rgba(0, 229, 255, 0.08); border:1px solid rgba(0, 229, 255, 0.3); border-radius:10px;">
+                <input type="checkbox" id="setOnlinePurchaseActive" style="width:20px; height:20px; cursor:pointer; margin-top:2px;" checked>
+                <div>
+                  <label for="setOnlinePurchaseActive" style="cursor:pointer; font-weight:700; color:#00e5ff; font-size:14px; display:block;">
+                    💳 Habilitar Módulo de Compra en Línea (Daviplata, Bre-B & WhatsApp)
+                  </label>
+                  <span class="fhint" style="margin:2px 0 0 0; font-size:12px; color:#a7d7c5; display:block; line-height:1.35;">
+                    Al desactivarlo, el portal cautivo ocultará por completo el módulo de pagos y WhatsApp, permitiendo únicamente el ingreso de fichas físicas en efectivo.
+                  </span>
+                </div>
+              </div>
+
               <div class="fg">
                 <label class="flabel">Nombre del Balneario / Negocio <span class="req">*</span></label>
                 <input type="text" id="setBusinessName" class="finput" placeholder="Ej: Balneario Río Royota" required>
@@ -417,9 +430,15 @@
               </div>
 
               <div class="fg">
+                <label class="flabel">💳 Número / Llave de Pago (Daviplata & Bre-B)</label>
+                <input type="text" id="setPaymentPhone" class="finput" placeholder="Ej: 3174251419">
+                <span class="fhint">Número donde los clientes transfieren el dinero por Daviplata o llaves Bre-B.</span>
+              </div>
+
+              <div class="fg">
                 <label class="flabel">🤖 Número de WhatsApp del BOT (Venta y entrega de fichas)</label>
-                <input type="text" id="setWhatsappNumber" class="finput" placeholder="Ej: 573001234567">
-                <span class="fhint">⚠️ Este es el número del celular o chip del BOT (se auto-detecta al escanear el QR). <strong>NO pongas aquí el número de Daviplata (3174251419) si es un celular diferente.</strong></span>
+                <input type="text" id="setWhatsappNumber" class="finput" placeholder="Ej: 573203778210">
+                <span class="fhint">⚠️ Número del celular o chip del BOT (se auto-detecta al escanear el QR). <strong>NO pongas aquí el número de Daviplata si es un celular diferente.</strong></span>
               </div>
 
               <div class="fg">
