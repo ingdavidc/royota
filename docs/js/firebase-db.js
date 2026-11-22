@@ -453,6 +453,24 @@
       });
     },
 
+    // ── Limpiar Todas las Fichas (Reset de pruebas) ──────────
+    clearAllVouchers: function() {
+      if (!db) return Promise.reject(new Error('Base de datos Firestore no inicializada'));
+      var pVouchers = db.collection('vouchers').get().then(function(snap) {
+        if (snap.empty) return;
+        var batch = db.batch();
+        snap.forEach(function(d) { batch.delete(d.ref); });
+        return batch.commit();
+      });
+      var pBatches = db.collection('voucher_batches').get().then(function(snap) {
+        if (snap.empty) return;
+        var batch = db.batch();
+        snap.forEach(function(d) { batch.delete(d.ref); });
+        return batch.commit();
+      });
+      return Promise.all([pVouchers, pBatches]);
+    },
+
     // ── Auto-seed si Firestore está vacío ─────────────────────
     seedInitialDataIfEmpty: function() {
       if (!db) return Promise.resolve();

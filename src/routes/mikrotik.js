@@ -236,6 +236,23 @@ router.post('/sync/push-batch', (req, res) => {
   res.json({ ok: true, queued: insertCount });
 });
 
+// GET /api/mikrotik/sync/clear-all — Vaciar cola de sincronización (Reset de pruebas)
+router.get('/sync/clear-all', (req, res) => {
+  const token = req.query.token || req.headers['x-sync-token'];
+  if (token !== SYNC_SECRET) {
+    return res.status(403).json({ error: 'No autorizado' });
+  }
+  const db = getDb();
+  try {
+    db.prepare('DELETE FROM vouchers').run();
+    db.prepare('DELETE FROM voucher_batches').run();
+    console.log('[MikroTik-Sync] 🗑️ Todas las fichas en cola de sincronización fueron eliminadas.');
+    res.json({ ok: true, cleared: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/mikrotik/sync/vouchers.rsc — Descargado autónomamente por el MikroTik (Autenticado por Token)
 router.get('/sync/vouchers.rsc', (req, res) => {
   const token = req.query.token || req.headers['x-sync-token'];

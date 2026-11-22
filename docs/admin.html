@@ -19,8 +19,8 @@
       measurementId: "G-WSXG9T6NRM"
     };
   </script>
-  <script src="./js/config.js?v=25"></script>
-  <script src="./js/firebase-db.js?v=25"></script>
+  <script src="./js/config.js?v=26"></script>
+  <script src="./js/firebase-db.js?v=26"></script>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📶</text></svg>">
 </head>
 <body>
@@ -213,8 +213,11 @@
     <section id="sec-vouchers" class="sec" hidden>
       <h2 class="sec-title">Fichas</h2>
       <div class="panel">
-        <div class="panel-hd">
+        <div class="panel-hd" style="display:flex; justify-content:space-between; align-items:center;">
           <span class="panel-title">Lista de fichas</span>
+          <button class="btn btn-danger btn-sm" id="btnBorrarFichas" onclick="borrarTodasLasFichas()" style="display:inline-flex; align-items:center; gap:6px;" title="Eliminar todas las fichas de prueba de la base de datos">
+            🗑️ Vaciar Fichas de Prueba
+          </button>
         </div>
         <div class="panel-body">
           <div class="filter-bar">
@@ -780,6 +783,6 @@
 <!-- ══ TOAST ════════════════════════════════════════════════= -->
 <div class="toast-wrap" id="toastWrap" aria-live="polite"></div>
 
-<script src="./js/admin.js?v=25"></script>
+<script src="./js/admin.js?v=26"></script>
 </body>
 </html>

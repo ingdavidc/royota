@@ -508,6 +508,45 @@ function revokeVoucher(id, code) {
   }).catch(function(e) { toast(e.error || 'Error', 'error'); });
 }
 
+function borrarTodasLasFichas() {
+  if (!confirm('⚠️ ¿Estás seguro de que deseas eliminar TODAS las fichas de la base de datos?\n\nEsta acción borrará todas las fichas de prueba en Firestore y en el servidor para que puedas comenzar desde cero.')) {
+    return;
+  }
+  var btn = document.getElementById('btnBorrarFichas');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Borrando…';
+  }
+
+  var pFirestore = (window.firebaseDb && window.firebaseDb.clearAllVouchers)
+    ? window.firebaseDb.clearAllVouchers()
+    : Promise.resolve();
+
+  var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
+  var pBackend = fetch(apiBase + '/api/vouchers/clear-all', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }
+  }).catch(function(){});
+
+  try {
+    var bImg = new Image();
+    bImg.src = apiBase + '/api/mikrotik/sync/clear-all?token=RoyotaCloud_SyncToken_2026_SecureKey&_t=' + Date.now();
+  } catch (_) {}
+
+  pFirestore.then(function() {
+    toast('¡Base de datos limpiada con éxito! Ya no hay fichas de prueba.', 'ok');
+    loadVouchers(1);
+    if (typeof loadDashboard === 'function') loadDashboard();
+  }).catch(function(err) {
+    toast('Error al borrar fichas: ' + (err.message || err), 'error');
+  }).finally(function() {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '🗑️ Vaciar Fichas de Prueba';
+    }
+  });
+}
+
 /* ══════════════════════════════════════════════════════════
    PLANES
 ══════════════════════════════════════════════════════════ */

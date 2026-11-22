@@ -101,6 +101,22 @@ router.post('/generate', authRequired, async (req, res) => {
 });
 
 // ════════════════════════════════════════════════════════════════
+//  ELIMINAR TODAS LAS FICHAS (Reset total de pruebas)
+// ════════════════════════════════════════════════════════════════
+router.post('/clear-all', (req, res) => {
+  const db = getDb();
+  try {
+    db.prepare('DELETE FROM vouchers').run();
+    db.prepare('DELETE FROM voucher_batches').run();
+    console.log('[Vouchers] 🗑️ Todas las fichas locales y en cola fueron eliminadas.');
+    res.json({ ok: true, message: 'Todas las fichas han sido eliminadas' });
+  } catch (err) {
+    console.error('[Vouchers] Error al limpiar fichas:', err);
+    res.status(500).json({ error: 'Error al limpiar fichas' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════════
 //  LISTAR FICHAS (con filtros y paginación)
 // ════════════════════════════════════════════════════════════════
 router.get('/', authRequired, (req, res) => {
