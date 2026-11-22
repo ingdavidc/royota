@@ -131,8 +131,7 @@ add name=perfil-trial-2m \
     rate-limit=5M/5M \
     keepalive-timeout=2m \
     status-autorefresh=30s \
-    shared-users=1 \
-    comment="Cortesia 2m pago Daviplata Bre-B"
+    shared-users=1
 
 # Programador a medianoche (00:00:00) para eliminar todas las fichas iniciadas y reiniciar cortesias
 /system scheduler
