@@ -233,6 +233,20 @@ function _initSchema(db) {
       value TEXT NOT NULL
     );
 
+    -- ── Intentos de Cortesía WhatsApp (1 min x 2 intentos diarios) ─
+    CREATE TABLE IF NOT EXISTS wa_trials (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      mac             TEXT NOT NULL,
+      date_str        TEXT NOT NULL,
+      attempts        INTEGER NOT NULL DEFAULT 0,
+      blocked         INTEGER NOT NULL DEFAULT 0,
+      unblocked       INTEGER NOT NULL DEFAULT 0,
+      last_attempt_at TEXT DEFAULT NULL,
+      created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(mac, date_str)
+    );
+
     -- ── Índices de rendimiento ────────────────────────────────
     CREATE INDEX IF NOT EXISTS idx_vouchers_code      ON vouchers(code);
     CREATE INDEX IF NOT EXISTS idx_vouchers_status    ON vouchers(status);
@@ -246,6 +260,7 @@ function _initSchema(db) {
     CREATE INDEX IF NOT EXISTS idx_kiosks_active      ON kiosks(is_active);
     CREATE INDEX IF NOT EXISTS idx_strikes_blocked    ON whatsapp_strikes(blocked_until);
     CREATE INDEX IF NOT EXISTS idx_complaints_status  ON complaints(status);
+    CREATE INDEX IF NOT EXISTS idx_wa_trials_mac_date ON wa_trials(mac, date_str);
   `);
 }
 

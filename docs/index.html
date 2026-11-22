@@ -120,16 +120,40 @@
       </div>
     </section>
 
-    <!-- ══ TARJETA 2: Compra Directa por WhatsApp ══════════════ -->
+    <!-- ══ TARJETA 2: Compra Directa por WhatsApp con Cortesía de 1 min ══ -->
     <section class="wa-card" id="waSection">
-      <p class="wa-hint">¿No tienes ficha o deseas recargar tu tiempo?</p>
-      <a href="https://wa.me/573174251419?text=%C2%A1Hola!%20Estoy%20en%20R%C3%ADo%20Royota%20y%20deseo%20comprar%20una%20ficha%20de%20internet%20WiFi." id="waButton" class="wa-btn" target="_blank" rel="noopener">
-        <!-- SVG Oficial de WhatsApp -->
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm.01 1.67c2.2 0 4.26.86 5.82 2.42a8.19 8.19 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.19 8.19 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24zm4.52 11.66c-.25-.13-1.47-.72-1.7-.8-.23-.09-.39-.13-.56.13-.17.25-.65.8-.8 1-.14.16-.29.18-.54.06-.25-.13-1.06-.39-2.02-1.25-.75-.67-1.25-1.49-1.4-1.74-.15-.25-.02-.39.11-.51.11-.11.25-.29.38-.44.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.44-.06-.13-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.43h-.48c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1s.9 2.44 1.03 2.61c.13.17 1.77 2.7 4.29 3.79.6.26 1.07.41 1.44.53.6.19 1.15.16 1.58.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.15-1.18-.06-.11-.23-.17-.48-.29z"/>
-        </svg>
-        <span>Pedir Ficha por WhatsApp</span>
-      </a>
+      <!-- Vista Activa (Disponible para solicitar 1 min) -->
+      <div id="waActiveWrap">
+        <p class="wa-hint">¿No tienes ficha o deseas recargar tu tiempo?</p>
+        <div id="waTrialBadge" class="wa-trial-badge">⚡ 1 min de internet gratis para pagar y enviar comprobante (Intento 1 de 2)</div>
+        <a href="https://wa.me/573174251419?text=%C2%A1Hola!%20Estoy%20en%20R%C3%ADo%20Royota%20y%20deseo%20comprar%20una%20ficha%20de%20internet%20WiFi." id="waButton" class="wa-btn" target="_blank" rel="noopener">
+          <!-- SVG Oficial de WhatsApp -->
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38c1.45.79 3.08 1.21 4.74 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2zm.01 1.67c2.2 0 4.26.86 5.82 2.42a8.19 8.19 0 0 1 2.41 5.83c0 4.54-3.7 8.24-8.24 8.24-1.48 0-2.93-.4-4.2-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.19 8.19 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.24-8.24zm4.52 11.66c-.25-.13-1.47-.72-1.7-.8-.23-.09-.39-.13-.56.13-.17.25-.65.8-.8 1-.14.16-.29.18-.54.06-.25-.13-1.06-.39-2.02-1.25-.75-.67-1.25-1.49-1.4-1.74-.15-.25-.02-.39.11-.51.11-.11.25-.29.38-.44.12-.14.17-.25.25-.41.08-.17.04-.31-.02-.44-.06-.13-.56-1.34-.76-1.84-.2-.48-.4-.42-.56-.43h-.48c-.17 0-.44.06-.67.31-.23.25-.88.86-.88 2.1s.9 2.44 1.03 2.61c.13.17 1.77 2.7 4.29 3.79.6.26 1.07.41 1.44.53.6.19 1.15.16 1.58.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.15-1.18-.06-.11-.23-.17-.48-.29z"/>
+          </svg>
+          <span>Pedir Ficha por WhatsApp</span>
+        </a>
+
+        <!-- Contador regresivo en vivo durante el minuto de cortesía -->
+        <div id="waCountdownBox" class="wa-countdown-box" hidden>
+          <div class="wa-countdown-timer" id="waCountdownTimer">01:00</div>
+          <div id="waCountdownMsg">⚡ Navegación activa. Realiza tu pago en Nequi/Bancolombia y envía el comprobante al WhatsApp.</div>
+        </div>
+      </div>
+
+      <!-- Vista Bloqueada (2 intentos consumidos sin comprar ficha) -->
+      <div id="waBlockedWrap" hidden>
+        <div class="wa-blocked-title">
+          <span>🚫</span>
+          <span>Minutos de cortesía agotados (2 de 2)</span>
+        </div>
+        <p class="wa-blocked-desc">
+          Has utilizado tus 2 minutos de cortesía de hoy. Solo te queda la opción de comprar tu ficha de manera física. Esta restricción durará hasta las 12:00 de la noche.
+        </p>
+        <button type="button" id="btnIrCasetas" class="wa-btn-casetas">
+          🏪 Ver Puntos de Venta (Casetas en Efectivo)
+        </button>
+      </div>
     </section>
 
     <!-- ══ TARJETA 3: Planes & Precios Disponibles (Colapsable / Acordeón) ══ -->
@@ -236,8 +260,16 @@
     var sloganEl    = document.getElementById('businessSlogan');
     var footerEl    = document.getElementById('footerBusinessName');
 
-    var waSec       = document.getElementById('waSection');
-    var waBtn       = document.getElementById('waButton');
+    var waSec            = document.getElementById('waSection');
+    var waBtn            = document.getElementById('waButton');
+    var waActiveWrap     = document.getElementById('waActiveWrap');
+    var waBlockedWrap    = document.getElementById('waBlockedWrap');
+    var waTrialBadge     = document.getElementById('waTrialBadge');
+    var waCountdownBox   = document.getElementById('waCountdownBox');
+    var waCountdownTimer = document.getElementById('waCountdownTimer');
+    var waCountdownMsg   = document.getElementById('waCountdownMsg');
+    var btnIrCasetas     = document.getElementById('btnIrCasetas');
+    var kiosksSec        = document.getElementById('kiosksSection');
 
     var infoSec     = document.getElementById('infoSection');
     var infoBadge   = document.getElementById('infoBadge');
@@ -299,10 +331,21 @@
 
     /* ── Función para pedir plan directamente ── */
     window.pedirPlan = function(planName, formattedPrice) {
+      if (typeof loadLocalTrialState === 'function') loadLocalTrialState();
+      var isBlocked = (_waTrialState.blocked === true || _waTrialState.attempts >= 2) && !_waTrialState.unblocked;
+      if (isBlocked) {
+        showStatus('Has agotado tus 2 intentos gratuitos del día de hoy. Por favor adquiere tu ficha en las casetas autorizadas.', 'warn');
+        if (kiosksSec) {
+          kiosksSec.open = true;
+          kiosksSec.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+      }
       var num = _settings && _settings.whatsapp_number ? _settings.whatsapp_number : '573174251419';
       var biz = _settings && _settings.business_name ? _settings.business_name : 'Río Royota';
       var msg = '¡Hola! Deseo pedir la ficha de internet de ' + planName + ' (' + formattedPrice + ') en ' + biz + '.';
-      window.open(formatWhatsAppLink(num, msg), '_blank');
+      waBtn.href = formatWhatsAppLink(num, msg);
+      waBtn.click();
     };
 
     /* ── Helper AJAX con XMLHttpRequest para WebView cautivo ── */
@@ -458,6 +501,16 @@
       });
     }
 
+    /* ── Helper de Fecha Colombia (América/Bogotá GMT-5) ── */
+    function getTodayColombia() {
+      try {
+        return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+      } catch (_) {
+        var d = new Date();
+        return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+      }
+    }
+
     /* ── 3. Parámetros de redirección MikroTik Hotspot ── */
     function getQueryParam(name) {
       try {
@@ -472,14 +525,228 @@
     var qsLinkOrig  = getQueryParam('link-orig')  || 'https://www.google.com';
     var qsError     = getQueryParam('error');
 
-    /* ── 4. Auto-mayúsculas y formateo del código al teclear ── */
+    // Identificador de cliente (MAC del router o UUID local persistente)
+    var clientMac = (qsMac || '').toUpperCase().trim();
+    if (!clientMac) {
+      try {
+        clientMac = localStorage.getItem('royota_client_mac') || '';
+        if (!clientMac) {
+          clientMac = 'DEV-' + Math.random().toString(36).substring(2, 10).toUpperCase();
+          localStorage.setItem('royota_client_mac', clientMac);
+        }
+      } catch (_) { clientMac = 'DEVICE-ROYOTA'; }
+    }
+
+    /* ── 4. Estado y Restricción Diaria de Cortesía WhatsApp (1 min x 2 intentos) ── */
+    var _waTrialState = {
+      date: getTodayColombia(),
+      attempts: 0,
+      blocked: false,
+      unblocked: false
+    };
+
+    function loadLocalTrialState() {
+      var today = getTodayColombia();
+      try {
+        var raw = localStorage.getItem('royota_wa_trial_' + clientMac);
+        if (raw) {
+          var parsed = JSON.parse(raw);
+          if (parsed && parsed.date === today) {
+            _waTrialState = parsed;
+          } else {
+            // Reinicio automático a las 12 de la noche de cada día
+            _waTrialState = { date: today, attempts: 0, blocked: false, unblocked: false };
+            saveLocalTrialState();
+          }
+        }
+      } catch (_) {}
+    }
+
+    function saveLocalTrialState() {
+      try {
+        localStorage.setItem('royota_wa_trial_' + clientMac, JSON.stringify(_waTrialState));
+      } catch (_) {}
+    }
+
+    function renderWaTrialUI() {
+      var today = getTodayColombia();
+      if (_waTrialState.date !== today) {
+        _waTrialState = { date: today, attempts: 0, blocked: false, unblocked: false };
+        saveLocalTrialState();
+      }
+
+      var isBlocked = (_waTrialState.blocked === true || _waTrialState.attempts >= 2) && !_waTrialState.unblocked;
+
+      if (isBlocked) {
+        waSec.classList.add('wa-blocked');
+        if (waActiveWrap) waActiveWrap.setAttribute('hidden', '');
+        if (waBlockedWrap) waBlockedWrap.removeAttribute('hidden');
+      } else {
+        waSec.classList.remove('wa-blocked');
+        if (waBlockedWrap) waBlockedWrap.setAttribute('hidden', '');
+        if (waActiveWrap) waActiveWrap.removeAttribute('hidden');
+
+        if (waTrialBadge) {
+          if (_waTrialState.attempts === 0) {
+            waTrialBadge.className = 'wa-trial-badge';
+            waTrialBadge.textContent = '⚡ 1 min de internet gratis para pagar y enviar comprobante (Intento 1 de 2)';
+          } else if (_waTrialState.attempts === 1) {
+            waTrialBadge.className = 'wa-trial-badge warn';
+            waTrialBadge.textContent = '⚠️ Última oportunidad: 1 min restante para completar pago (Intento 2 de 2)';
+          }
+        }
+      }
+    }
+
+    function syncWaTrialState() {
+      loadLocalTrialState();
+      renderWaTrialUI();
+
+      if (window.firebaseDb && window.firebaseDb.getWaTrialStatus) {
+        window.firebaseDb.getWaTrialStatus(clientMac).then(function(res) {
+          if (res) {
+            _waTrialState.attempts  = res.attempts;
+            _waTrialState.blocked   = res.blocked;
+            _waTrialState.unblocked = res.unblocked;
+            _waTrialState.date      = getTodayColombia();
+            saveLocalTrialState();
+            renderWaTrialUI();
+          }
+        }).catch(function() {});
+      } else {
+        ajaxGet('/api/vouchers/trial/status?mac=' + encodeURIComponent(clientMac), function(status, data) {
+          if (status === 200 && data) {
+            _waTrialState.attempts  = data.attempts;
+            _waTrialState.blocked   = data.blocked;
+            _waTrialState.unblocked = data.unblocked;
+            _waTrialState.date      = getTodayColombia();
+            saveLocalTrialState();
+            renderWaTrialUI();
+          }
+        });
+      }
+    }
+
+    syncWaTrialState();
+
+    // Desbloquear dispositivo si compra e ingresa una ficha física
+    function unblockClientFromTrial() {
+      _waTrialState.blocked   = false;
+      _waTrialState.unblocked = true;
+      _waTrialState.attempts  = 0;
+      saveLocalTrialState();
+      renderWaTrialUI();
+
+      if (window.firebaseDb && window.firebaseDb.unblockWaTrial) {
+        window.firebaseDb.unblockWaTrial(clientMac).catch(function(){});
+      }
+    }
+
+    // Botón para desplegar casetas físicas si está bloqueado
+    if (btnIrCasetas) {
+      btnIrCasetas.addEventListener('click', function(e) {
+        e.preventDefault();
+        if (kiosksSec) {
+          kiosksSec.open = true;
+          kiosksSec.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      });
+    }
+
+    // Manejar click en 'Pedir Ficha por WhatsApp'
+    var _countdownTimerId = null;
+
+    waBtn.addEventListener('click', function(e) {
+      loadLocalTrialState();
+      var today = getTodayColombia();
+      if (_waTrialState.date !== today) {
+        _waTrialState = { date: today, attempts: 0, blocked: false, unblocked: false };
+        saveLocalTrialState();
+      }
+
+      var isBlocked = (_waTrialState.blocked === true || _waTrialState.attempts >= 2) && !_waTrialState.unblocked;
+      if (isBlocked) {
+        e.preventDefault();
+        renderWaTrialUI();
+        showStatus('Has agotado tus 2 intentos gratuitos del día de hoy. Por favor adquiere una ficha física en las casetas autorizadas.', 'error');
+        if (kiosksSec) {
+          kiosksSec.open = true;
+          kiosksSec.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+      }
+
+      // Si aún tiene intentos disponibles (Intento 1 o Intento 2)
+      var currentAttempts = _waTrialState.attempts || 0;
+      var newAttempts = currentAttempts + 1;
+      _waTrialState.attempts = newAttempts;
+      _waTrialState.date = today;
+      if (newAttempts >= 2) {
+        _waTrialState.blocked = true;
+      }
+      saveLocalTrialState();
+      renderWaTrialUI();
+
+      // Notificar al backend / Firestore
+      if (window.firebaseDb && window.firebaseDb.recordWaTrial) {
+        window.firebaseDb.recordWaTrial(clientMac).catch(function(){});
+      } else {
+        var xhrT = new XMLHttpRequest();
+        xhrT.open('POST', (window.API_BASE || '') + '/api/vouchers/trial/request', true);
+        xhrT.setRequestHeader('Content-Type', 'application/json');
+        xhrT.send(JSON.stringify({ mac: clientMac, ip: qsIp }));
+      }
+
+      // Generar usuario de 1 minuto para el router
+      var macSuffix = clientMac.replace(/[^A-F0-9]/gi, '').slice(-6) || 'ROYOTA';
+      var trialUser = 'WA-' + macSuffix + '-' + newAttempts;
+
+      // Iniciar sesión Hotspot para otorgar 1 minuto de navegación
+      submitMikrotikLogin(trialUser, '¡1 minuto de navegación otorgado! Conectando para pago móvil…');
+
+      // Contador en vivo de 60 segundos
+      if (waCountdownBox) {
+        waCountdownBox.removeAttribute('hidden');
+        var secondsLeft = 60;
+        if (_countdownTimerId) clearInterval(_countdownTimerId);
+
+        waCountdownTimer.textContent = '01:00';
+        waCountdownMsg.textContent = newAttempts === 1
+          ? '⚡ Navegación activa por 1 minuto. Realiza tu transferencia y envía el comprobante por WhatsApp.'
+          : '⚠️ Última oportunidad (1 minuto activo). Completa tu pago y envía el comprobante.';
+
+        _countdownTimerId = setInterval(function() {
+          secondsLeft--;
+          if (secondsLeft <= 0) {
+            clearInterval(_countdownTimerId);
+            waCountdownTimer.textContent = '00:00';
+            waCountdownBox.setAttribute('hidden', '');
+            if (newAttempts >= 2) {
+              _waTrialState.blocked = true;
+              saveLocalTrialState();
+              renderWaTrialUI();
+              showStatus('Tu tiempo de cortesía ha finalizado. Por favor adquiere una ficha física en las casetas autorizadas.', 'warn');
+              if (kiosksSec) kiosksSec.open = true;
+            } else {
+              showStatus('Tu primer minuto de cortesía ha finalizado. Te queda 1 última oportunidad.', 'warn');
+            }
+          } else {
+            var m = Math.floor(secondsLeft / 60);
+            var s = secondsLeft % 60;
+            waCountdownTimer.textContent = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+          }
+        }, 1000);
+      }
+    });
+
+    /* ── 5. Auto-mayúsculas y formateo del código al teclear ── */
     input.addEventListener('input', function () {
       var pos = this.selectionStart;
       this.value = this.value.toUpperCase();
       this.setSelectionRange(pos, pos);
     });
 
-    /* ── 5. Mostrar y ocultar alertas de estado ── */
+    /* ── 6. Mostrar y ocultar alertas de estado ── */
     function showStatus(msg, type) {
       box.className   = 'status-box status-' + type;
       box.textContent = msg;
@@ -497,8 +764,8 @@
     }
 
     /* ── Autologin a MikroTik RouterOS tras validar ficha ── */
-    function submitMikrotikLogin(voucherCode) {
-      showStatus('¡Ficha activada! Conectando tu dispositivo a la red WiFi…', 'ok');
+    function submitMikrotikLogin(voucherCode, customMsg) {
+      showStatus(customMsg || '¡Ficha activada! Conectando tu dispositivo a la red WiFi…', 'ok');
       setTimeout(function() {
         var postForm = document.createElement('form');
         postForm.method = 'POST';
@@ -519,10 +786,10 @@
 
         document.body.appendChild(postForm);
         postForm.submit();
-      }, 1200);
+      }, 1000);
     }
 
-    /* ── 6. Activación de Ficha (Backend API con Fallback directo a Firestore) ── */
+    /* ── 7. Activación de Ficha Física (Desbloquea restricciones previas) ── */
     form.addEventListener('submit', function (e) {
       e.preventDefault();
 
@@ -546,7 +813,8 @@
 
       function fallbackFirestore() {
         if (window.firebaseDb && window.firebaseDb.activateVoucher) {
-          window.firebaseDb.activateVoucher(code).then(function(res) {
+          window.firebaseDb.activateVoucher(code, clientMac).then(function(res) {
+            unblockClientFromTrial();
             btn.disabled    = false;
             btn.textContent = '⚡ Conectar al Internet';
             input.value     = '';
@@ -584,6 +852,7 @@
         try { data = JSON.parse(xhr.responseText); } catch (_) { data = {}; }
 
         if (xhr.status === 200) {
+          unblockClientFromTrial();
           btn.disabled    = false;
           btn.textContent = '⚡ Conectar al Internet';
           input.value     = '';
@@ -605,7 +874,7 @@
         }
       };
 
-      xhr.send(JSON.stringify({ code: code, mac: qsMac, ip: qsIp }));
+      xhr.send(JSON.stringify({ code: code, mac: clientMac, ip: qsIp }));
     });
 
     function setText(id, val) {

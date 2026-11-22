@@ -123,6 +123,22 @@ set [find default=yes] \
     status-autorefresh=1m \
     transparent-proxy=no
 
+# Perfil exclusivo para 1 minuto de navegación de cortesía para pagos por WhatsApp
+add name=perfil-trial-1m \
+    rate-limit=5M/5M \
+    keepalive-timeout=1m \
+    status-autorefresh=30s \
+    shared-users=1 \
+    comment="Cortesía 1 minuto para pago móvil y WhatsApp"
+
+# Programador a medianoche (00:00:00) para reiniciar los intentos diarios de cortesía
+/system scheduler
+add name=reset-trials-midnight \
+    start-time=00:00:00 \
+    interval=1d \
+    on-event="/ip hotspot user remove [find comment~\"Cortes\\eda WhatsApp\"]; :log info \"[ROYOTA] Intentos diarios de cortesía reiniciados a medianoche.\"" \
+    comment="Reinicio diario de intentos de cortesía a medianoche"
+
 # ------------------------------------------------------------------------------
 # 8. WALLED GARDEN (ACCESO PREVIO SIN INTERNET)
 # ------------------------------------------------------------------------------

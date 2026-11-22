@@ -358,6 +358,19 @@ router.post('/activate', async (req, res) => {
       WHERE id = ?
     `).run(expiresAt, voucher.id);
 
+    // Si se envió la MAC del cliente, desbloquear cualquier restricción de prueba previa
+    if (req.body.mac) {
+      try {
+        const cleanMac = String(req.body.mac).trim().toUpperCase();
+        db.prepare(`
+          UPDATE wa_trials
+          SET blocked = 0, unblocked = 1, attempts = 0, updated_at = datetime('now')
+          WHERE mac = ?
+        `).run(cleanMac);
+        console.log(`[Vouchers] 🔓 MAC ${cleanMac} desbloqueada tras activar ficha física.`);
+      } catch (_) {}
+    }
+
     db.prepare(`
       INSERT INTO sync_log (action, voucher_code, status, http_status, response, duration_ms)
       VALUES ('create', ?, 'success', 201, 'Usuario creado en MikroTik', ?)
@@ -440,6 +453,114 @@ router.post('/revoke/:id', authRequired, async (req, res) => {
     console.error('[Revoke] Error:', err.message);
     res.status(500).json({ error: `Error al revocar: ${err.message}` });
   }
+});
+
+// ════════════════════════════════════════════════════════════════
+//  CORTESÍA WHATSAPP (1 minuto x 2 intentos diarios)
+// ════════════════════════════════════════════════════════════════
+function getBogotaDate() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+}
+
+router.get('/trial/status', (req, res) => {
+  const mac = (req.query.mac || '').trim().toUpperCase();
+  const dateStr = getBogotaDate();
+  if (!mac) return res.json({ date: dateStr, attempts: 0, blocked: false, remaining: 2, unblocked: false });
+
+  const db = getDb();
+  const row = db.prepare('SELECT * FROM wa_trials WHERE mac = ? AND date_str = ?').get(mac, dateStr);
+
+  if (!row) {
+    return res.json({ mac, date: dateStr, attempts: 0, remaining: 2, blocked: false, unblocked: false });
+  }
+
+  const isBlocked = row.blocked === 1 && row.unblocked === 0;
+  res.json({
+    mac,
+    date: dateStr,
+    attempts: row.attempts,
+    remaining: Math.max(0, 2 - row.attempts),
+    blocked: isBlocked,
+    unblocked: row.unblocked === 1,
+  });
+});
+
+router.post('/trial/request', async (req, res) => {
+  const { mac } = req.body;
+  if (!mac) {
+    return res.status(400).json({ error: 'La dirección MAC del dispositivo es requerida para la cortesía' });
+  }
+
+  const cleanMac = String(mac).trim().toUpperCase();
+  const dateStr = getBogotaDate();
+  const db = getDb();
+
+  const existing = db.prepare('SELECT * FROM wa_trials WHERE mac = ? AND date_str = ?').get(cleanMac, dateStr);
+
+  if (existing && existing.blocked === 1 && existing.unblocked === 0) {
+    return res.status(403).json({
+      error: 'Has agotado tus 2 intentos gratuitos del día de hoy. Por favor adquiere una ficha física en las casetas autorizadas.',
+      blocked: true,
+      attempts: existing.attempts,
+      remaining: 0,
+    });
+  }
+
+  const currentAttempts = existing ? existing.attempts : 0;
+  if (currentAttempts >= 2 && (!existing || existing.unblocked === 0)) {
+    db.prepare("UPDATE wa_trials SET blocked = 1, updated_at = datetime('now') WHERE id = ?").run(existing.id);
+    return res.status(403).json({
+      error: 'Has agotado tus 2 intentos gratuitos del día de hoy. Por favor adquiere una ficha física en las casetas autorizadas.',
+      blocked: true,
+      attempts: 2,
+      remaining: 0,
+    });
+  }
+
+  const newAttempts = currentAttempts + 1;
+  const isBlocked = newAttempts >= 2 ? 1 : 0;
+
+  if (existing) {
+    db.prepare(`
+      UPDATE wa_trials
+      SET attempts = ?, blocked = ?, unblocked = 0, last_attempt_at = datetime('now'), updated_at = datetime('now')
+      WHERE id = ?
+    `).run(newAttempts, isBlocked, existing.id);
+  } else {
+    db.prepare(`
+      INSERT INTO wa_trials (mac, date_str, attempts, blocked, unblocked, last_attempt_at)
+      VALUES (?, ?, ?, ?, 0, datetime('now'))
+    `).run(cleanMac, dateStr, newAttempts, isBlocked);
+  }
+
+  // Generar código de usuario Hotspot de 1 minuto
+  const macSuffix = cleanMac.replace(/[^A-F0-9]/gi, '').slice(-6);
+  const trialUser = `WA-${macSuffix}-${newAttempts}`;
+
+  try {
+    await mikrotik.createHotspotUser(trialUser, trialUser, {
+      profile:     'default',
+      limitUptime: '1m',
+      rateLimit:   '5M/5M',
+      comment:     `Cortesía WhatsApp 1m (Intento ${newAttempts}/2 - ${cleanMac})`,
+    });
+  } catch (err) {
+    console.warn('[Trial] Aviso creando usuario en MikroTik:', err.message);
+  }
+
+  const msg = newAttempts === 1
+    ? '¡1 minuto de navegación otorgado! Realiza tu transferencia y envía el comprobante por WhatsApp.'
+    : '¡Última oportunidad! Te queda 1 minuto para completar tu pago y enviar el comprobante.';
+
+  res.json({
+    ok: true,
+    code: trialUser,
+    attempt: newAttempts,
+    remaining: Math.max(0, 2 - newAttempts),
+    blocked: isBlocked === 1,
+    duration: '1m',
+    message: msg,
+  });
 });
 
 module.exports = router;

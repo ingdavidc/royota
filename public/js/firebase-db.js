@@ -383,7 +383,7 @@
     },
 
     // ── Activación de Ficha Atómica (Anti-Carrera / TOCTOU) ───
-    activateVoucher: function(code) {
+    activateVoucher: function(code, mac) {
       var cleanCode = String(code).toUpperCase().trim();
       var vRef = db.collection('vouchers').doc(cleanCode);
 
@@ -415,7 +415,94 @@
             expires_at: expiresAt,
           };
         });
+      }).then(function(res) {
+        if (mac) {
+          try {
+            var cleanMac = String(mac).trim().toUpperCase();
+            db.collection('wa_trials').doc(cleanMac).set({
+              blocked: false,
+              unblocked: true,
+              attempts: 0,
+              unblocked_at: new Date().toISOString()
+            }, { merge: true }).catch(function(){});
+          } catch (_) {}
+        }
+        return res;
       });
+    },
+
+    // ── Cortesía WhatsApp (1 min x 2 intentos diarios) ────────
+    getWaTrialStatus: function(mac) {
+      if (!db || !mac) return Promise.resolve({ attempts: 0, blocked: false, remaining: 2 });
+      var cleanMac = String(mac).trim().toUpperCase();
+      var todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+
+      return db.collection('wa_trials').doc(cleanMac).get().then(function(doc) {
+        if (!doc.exists) return { attempts: 0, blocked: false, remaining: 2, unblocked: false };
+        var data = doc.data() || {};
+        if (data.date !== todayStr) {
+          return { attempts: 0, blocked: false, remaining: 2, unblocked: false };
+        }
+        var isBlocked = (data.blocked === true || data.attempts >= 2) && data.unblocked !== true;
+        return {
+          attempts: data.attempts || 0,
+          blocked: isBlocked,
+          remaining: Math.max(0, 2 - (data.attempts || 0)),
+          unblocked: data.unblocked === true
+        };
+      }).catch(function() {
+        return { attempts: 0, blocked: false, remaining: 2, unblocked: false };
+      });
+    },
+
+    recordWaTrial: function(mac) {
+      if (!db || !mac) return Promise.resolve({ ok: true, attempt: 1, remaining: 1, blocked: false });
+      var cleanMac = String(mac).trim().toUpperCase();
+      var todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+      var docRef = db.collection('wa_trials').doc(cleanMac);
+
+      return db.runTransaction(function(transaction) {
+        return transaction.get(docRef).then(function(doc) {
+          var data = doc.exists ? doc.data() : {};
+          var currentAttempts = (data.date === todayStr) ? (data.attempts || 0) : 0;
+          if (currentAttempts >= 2 && data.unblocked !== true) {
+            throw new Error('Has agotado tus 2 intentos gratuitos del día de hoy. Por favor adquiere una ficha física en las casetas autorizadas.');
+          }
+          var newAttempts = currentAttempts + 1;
+          var isBlocked = newAttempts >= 2;
+          transaction.set(docRef, {
+            mac: cleanMac,
+            date: todayStr,
+            attempts: newAttempts,
+            blocked: isBlocked,
+            unblocked: false,
+            updated_at: new Date().toISOString()
+          }, { merge: true });
+
+          var macSuffix = cleanMac.replace(/[^A-F0-9]/gi, '').slice(-6);
+          var trialCode = 'WA-' + macSuffix + '-' + newAttempts;
+
+          return {
+            ok: true,
+            code: trialCode,
+            attempt: newAttempts,
+            remaining: Math.max(0, 2 - newAttempts),
+            blocked: isBlocked,
+            duration: '1m'
+          };
+        });
+      });
+    },
+
+    unblockWaTrial: function(mac) {
+      if (!db || !mac) return Promise.resolve();
+      var cleanMac = String(mac).trim().toUpperCase();
+      return db.collection('wa_trials').doc(cleanMac).set({
+        blocked: false,
+        unblocked: true,
+        attempts: 0,
+        unblocked_at: new Date().toISOString()
+      }, { merge: true }).catch(function(){});
     },
 
     // ── Generación de Fichas (Admin) ──────────────────────────

@@ -61,6 +61,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Control de intentos de navegación de cortesía para compras por WhatsApp (1 min x 2 intentos diarios)
+    match /wa_trials/{doc} {
+      allow read, write: if true;
+    }
+
     match /sales/{doc} {
       allow read, write: if request.auth != null;
     }
