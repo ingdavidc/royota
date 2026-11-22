@@ -776,6 +776,9 @@ async function startWhatsAppBot(forceClean = false) {
 
         console.log(`[WhatsApp Bot] ✅ Conectado exitosamente como: ${sock.user?.name || rawPhone}`);
 
+        // Iniciar escucha y despacho de la bandeja de salida (Outbox en Firestore)
+        startOutboxPolling();
+
         // AUTO-DETECCIÓN DEL NÚMERO DEL BOT:
         // Se actualiza en la tabla settings para que el portal cautivo envíe
         // a los turistas directamente al WhatsApp de este bot.
@@ -917,10 +920,29 @@ async function startWhatsAppBot(forceClean = false) {
           if (isComplaint) {
             _offTopicTracker.delete(senderPhone);
             const db = getDb();
-            const senderName = msg.pushName || 'Turista';
+            const senderName = msg.pushName || 'Cliente';
             let cleanPhone = senderPhone.replace('@s.whatsapp.net', '').replace('@lid', '').trim();
             if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) {
               cleanPhone = '57' + cleanPhone;
+            }
+
+            // Intentar resolver número telefónico real si Baileys recibió el mensaje mediante un @lid privado
+            let realPhone = null;
+            if (remoteJid.endsWith('@lid')) {
+              try {
+                const resolvedPn = await sock.signalRepository?.lidMapping?.getPNForLID?.(remoteJid);
+                if (resolvedPn) {
+                  const pnStr = typeof resolvedPn === 'string' ? resolvedPn : (resolvedPn.pn || '');
+                  const parsed = pnStr.split('@')[0].split(':')[0].replace(/\D/g, '');
+                  if (parsed) realPhone = parsed;
+                }
+              } catch (lidErr) {
+                console.warn('[WhatsApp Bot] Error resolviendo LID a número telefónico:', lidErr.message);
+              }
+            }
+
+            if (realPhone) {
+              cleanPhone = realPhone.length === 10 && realPhone.startsWith('3') ? ('57' + realPhone) : realPhone;
             }
 
             // Radicado consecutivo basado en Firestore (persistente)
@@ -956,6 +978,7 @@ async function startWhatsAppBot(forceClean = false) {
                   fields: {
                     radicado: { stringValue: radicado },
                     phone: { stringValue: cleanPhone },
+                    jid: { stringValue: remoteJid },
                     client_name: { stringValue: senderName },
                     message: { stringValue: text },
                     status: { stringValue: 'pending' },
@@ -969,12 +992,19 @@ async function startWhatsAppBot(forceClean = false) {
               console.error('[WhatsApp Bot] Error guardando queja en Firestore:', fErr.message);
             }
 
+            let lineDisplay = cleanPhone;
+            if (remoteJid.endsWith('@lid') && (!realPhone || cleanPhone.length > 12)) {
+              lineDisplay = senderName !== 'Cliente' && senderName !== 'Turista' ? senderName : 'WhatsApp Directo';
+            } else {
+              lineDisplay = cleanPhone.startsWith('+') ? cleanPhone : ('+' + cleanPhone);
+            }
+
             const complaintMsg =
               `📋 *SOLICITUD DE SOPORTE / QUEJA REGISTRADA*\n` +
               `━━━━━━━━━━━━━━━━━━━━\n` +
               `Radicado: *#${radicado}*\n` +
               `Cliente: *${senderName}*\n` +
-              `Línea: *${cleanPhone}*\n` +
+              `Línea: *${lineDisplay}*\n` +
               `Estado: *Pendiente de revisión administrativa*\n\n` +
               `Lamentamos los inconvenientes con el servicio. Tu reporte ha quedado registrado formalmente en nuestro panel y el administrador revisará tu caso a la brevedad para darte solución o gestionar la reposición de tu servicio directamente por este chat.\n\n` +
               `_Por favor conserva tu número de radicado #${radicado}._\n` +
@@ -1092,31 +1122,120 @@ async function restartBot() {
   return await startWhatsAppBot(false);
 }
 
+let _outboxPollingInterval = null;
+
+/**
+ * Consulta la bandeja de salida (whatsapp_outbox) en Cloud Firestore cada 3 segundos
+ * para despachar de inmediato cualquier respuesta enviada por el administrador desde el panel.
+ * Esto garantiza entrega instantánea 100% inmune a restricciones CSP o bloqueos de navegador.
+ */
+async function checkWhatsAppOutbox() {
+  if (!_sock || _state.status !== 'connected') return;
+
+  try {
+    const url = 'https://firestore.googleapis.com/v1/projects/fichas-royota/databases/(default)/documents/whatsapp_outbox?pageSize=15';
+    const res = await fetch(url);
+    if (!res.ok) return;
+
+    const data = await res.json();
+    if (!data.documents || !data.documents.length) return;
+
+    for (const doc of data.documents) {
+      const f = doc.fields || {};
+      const sent = f.sent ? f.sent.booleanValue : false;
+      if (sent) continue;
+
+      const docId = doc.name.split('/').pop();
+      const phone = f.phone ? f.phone.stringValue : '';
+      const target = f.target ? f.target.stringValue : (f.jid ? f.jid.stringValue : phone);
+      const message = f.message ? f.message.stringValue : '';
+      const complaintId = f.complaint_id ? f.complaint_id.stringValue : null;
+      const statusVal = f.status ? f.status.stringValue : 'resolved';
+
+      if (!target || !message) continue;
+
+      console.log(`[WhatsApp Outbox] 📤 Despachando mensaje pendiente para ${target}...`);
+      try {
+        await sendDirectWhatsAppMessage(target, message);
+
+        // Marcar como enviado en Firestore
+        await fetch(`https://firestore.googleapis.com/v1/projects/fichas-royota/databases/(default)/documents/whatsapp_outbox/${docId}?updateMask.fieldPaths=sent&updateMask.fieldPaths=sent_at`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fields: {
+              sent: { booleanValue: true },
+              sent_at: { stringValue: new Date().toISOString() }
+            }
+          })
+        });
+
+        // Si viene de una queja, actualizar la queja en Firestore
+        if (complaintId) {
+          const noteEntry = `[WhatsApp ${new Date().toLocaleTimeString('es-CO')}]: ${message}`;
+          await fetch(`https://firestore.googleapis.com/v1/projects/fichas-royota/databases/(default)/documents/complaints/${complaintId}?updateMask.fieldPaths=status&updateMask.fieldPaths=admin_notes&updateMask.fieldPaths=updated_at`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fields: {
+                status: { stringValue: statusVal },
+                admin_notes: { stringValue: noteEntry },
+                updated_at: { stringValue: new Date().toISOString() }
+              }
+            })
+          }).catch(() => {});
+        }
+
+        console.log(`[WhatsApp Outbox] ✅ Mensaje entregado con éxito a ${target}`);
+      } catch (sendErr) {
+        console.error(`[WhatsApp Outbox] ❌ Error enviando a ${target}:`, sendErr.message);
+      }
+    }
+  } catch (err) {
+    // Silencioso
+  }
+}
+
+function startOutboxPolling() {
+  if (_outboxPollingInterval) clearInterval(_outboxPollingInterval);
+  checkWhatsAppOutbox();
+  _outboxPollingInterval = setInterval(checkWhatsAppOutbox, 3500);
+}
+
 /**
  * Enviar mensaje directo a un cliente de WhatsApp desde el panel de administración
+ * Soporta tanto números telefónicos (+57...) como identidades privadas (@lid)
  */
-async function sendDirectWhatsAppMessage(phone, messageText) {
+async function sendDirectWhatsAppMessage(phoneOrJid, messageText) {
   if (!_sock || _state.status !== 'connected') {
     throw new Error('El bot de WhatsApp no está conectado actualmente. Por favor verifica que el bot esté en verde en el panel administrativo.');
   }
 
-  let clean = String(phone || '').replace(/\D/g, '').trim();
-  if (clean.length === 10 && clean.startsWith('3')) {
-    clean = '57' + clean;
-  }
-  if (!clean || clean.length < 8) {
-    throw new Error('Número de teléfono inválido: ' + phone);
+  const raw = String(phoneOrJid || '').trim();
+  let jid = '';
+  if (raw.endsWith('@lid') || raw.endsWith('@s.whatsapp.net')) {
+    jid = raw;
+  } else if (raw.length > 12 && !raw.startsWith('57')) {
+    jid = raw + '@lid';
+  } else {
+    let clean = raw.replace(/\D/g, '');
+    if (clean.length === 10 && clean.startsWith('3')) {
+      clean = '57' + clean;
+    }
+    if (!clean || clean.length < 8) {
+      throw new Error('Número de teléfono o destinatario inválido: ' + phoneOrJid);
+    }
+    jid = clean + '@s.whatsapp.net';
   }
 
-  const jid = clean + '@s.whatsapp.net';
   const text = String(messageText || '').trim();
   if (!text) {
     throw new Error('El mensaje no puede estar vacío');
   }
 
   await _sock.sendMessage(jid, { text });
-  console.log(`[WhatsApp Bot] 💬 Mensaje directo enviado desde el panel a +${clean}`);
-  return { success: true, message: `Mensaje enviado exitosamente al WhatsApp +${clean}` };
+  console.log(`[WhatsApp Bot] 💬 Mensaje directo enviado desde el panel a ${jid}`);
+  return { success: true, message: `Mensaje enviado exitosamente a ${jid}` };
 }
 
 module.exports = {

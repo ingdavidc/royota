@@ -51,6 +51,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Mensajes pendientes de salida para el Bot de WhatsApp (Bandeja de Salida Outbox)
+    match /whatsapp_outbox/{doc} {
+      allow read, write: if true;
+    }
+
     // Lotes de fichas (metadatos sin códigos): lectura y creación para impresión y panel
     match /voucher_batches/{doc} {
       allow read, write: if true;

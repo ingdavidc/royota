@@ -346,6 +346,41 @@
       return db.collection('complaints').doc(String(id)).delete();
     },
 
+    sendWhatsAppReply: function(phoneOrJid, message, complaintId, status) {
+      if (!db) return Promise.reject(new Error('No db'));
+      var noteEntry = '[Respuesta WhatsApp ' + new Date().toLocaleTimeString('es-CO') + ']: ' + message;
+      var raw = String(phoneOrJid || '').trim();
+      var cleanPhone = raw;
+      if (!raw.includes('@')) {
+        cleanPhone = raw.replace(/\D/g, '');
+        if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) cleanPhone = '57' + cleanPhone;
+      }
+
+      var pOutbox = db.collection('whatsapp_outbox').add({
+        phone:        cleanPhone,
+        target:       raw,
+        message:      message,
+        complaint_id: complaintId || null,
+        status:       status || 'resolved',
+        created_at:   new Date().toISOString(),
+        sent:         false
+      });
+
+      var pComplaint = complaintId ? db.collection('complaints').doc(String(complaintId)).get().then(function(doc) {
+        if (doc.exists) {
+          var curNotes = doc.data().admin_notes || '';
+          var combined = curNotes ? (curNotes + '\n' + noteEntry) : noteEntry;
+          return db.collection('complaints').doc(String(complaintId)).update({
+            status: status || 'resolved',
+            admin_notes: combined,
+            updated_at: new Date().toISOString()
+          });
+        }
+      }) : Promise.resolve();
+
+      return Promise.all([pOutbox, pComplaint]);
+    },
+
     // ── Activación de Ficha Atómica (Anti-Carrera / TOCTOU) ───
     activateVoucher: function(code) {
       var cleanCode = String(code).toUpperCase().trim();

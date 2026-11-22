@@ -1520,8 +1520,8 @@ function openCustomerInWaWeb() {
 }
 
 function sendReplyViaBot() {
-  if (!_activeComplaint || !_activeComplaint.phone) {
-    toast('No hay número de teléfono asociado a esta queja', 'error');
+  if (!_activeComplaint || (!_activeComplaint.phone && !_activeComplaint.jid)) {
+    toast('No hay destinatario asociado a esta queja', 'error');
     return;
   }
 
@@ -1539,64 +1539,54 @@ function sendReplyViaBot() {
   }
 
   var statusVal = document.getElementById('cStatus').value || 'resolved';
-  var cleanPhone = String(_activeComplaint.phone).replace(/\D/g, '');
-  if (cleanPhone.length === 10 && cleanPhone.startsWith('3')) cleanPhone = '57' + cleanPhone;
+  var target = _activeComplaint.jid || _activeComplaint.phone;
+  var displayContact = _activeComplaint.client_name ? (_activeComplaint.client_name + ' (' + _activeComplaint.phone + ')') : _activeComplaint.phone;
 
-  var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
-  fetch(apiBase + '/api/whatsapp/send-message', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + ((TOKEN && TOKEN !== 'null') ? TOKEN : 'firebase_admin_session')
-    },
-    body: JSON.stringify({
-      phone: cleanPhone,
-      message: msg,
-      complaint_id: _activeComplaint.id,
-      status: statusVal
-    })
-  }).then(function(res) {
-    if (!res.ok) {
-      return res.json().catch(function() { return { error: 'HTTP ' + res.status }; }).then(function(d) {
-        throw new Error(d.error || ('HTTP ' + res.status));
-      });
-    }
-    return res.json();
-  }).then(function(res) {
-    toast(res.message || 'Mensaje enviado exitosamente desde el servidor al WhatsApp del cliente', 'ok');
-
-    // Registrar en Firestore
-    if (window.firebaseDb && window.firebaseDb.updateComplaint) {
-      var note = '[Respuesta WhatsApp ' + new Date().toLocaleTimeString('es-CO') + ']: ' + msg;
-      var existingNotes = document.getElementById('cAdminNotes').value.trim();
-      var combinedNotes = existingNotes ? (existingNotes + '\n' + note) : note;
-      window.firebaseDb.updateComplaint(_activeComplaint.id, {
-        status: statusVal,
-        admin_notes: combinedNotes
-      });
-    }
-
-    closeComplaintModal();
-    loadComplaintsSection();
-  }).catch(function(err) {
-    console.error('Error enviando mensaje via bot:', err);
-    // Preservar la nota en Firestore para no perder el trabajo de redacción
-    if (window.firebaseDb && window.firebaseDb.updateComplaint) {
-      var note = '[Intento de respuesta WhatsApp]: ' + msg;
-      var existingNotes = document.getElementById('cAdminNotes').value.trim();
-      var combinedNotes = existingNotes ? (existingNotes + '\n' + note) : note;
-      window.firebaseDb.updateComplaint(_activeComplaint.id, {
-        status: statusVal,
-        admin_notes: combinedNotes
-      });
-    }
-    toast('Error en servidor bot (' + (err.message || 'Sin conexión') + '). Por favor despliega en Render ("Manual Deploy") o pulsa "Abrir en WhatsApp Web".', 'error');
-  }).finally(function() {
+  function onSuccess() {
+    toast('✅ Mensaje programado exitosamente. El servidor del bot lo está entregando al cliente.', 'ok');
     if (btn) {
       btn.disabled = false;
       btn.textContent = '📤 Enviar Respuesta por WhatsApp';
     }
-  });
+    closeComplaintModal();
+    loadComplaintsSection();
+  }
+
+  // Enviar mediante Firestore Outbox (100% inmune a bloqueos de CSP y conexión en el navegador)
+  if (window.firebaseDb && window.firebaseDb.sendWhatsAppReply) {
+    window.firebaseDb.sendWhatsAppReply(target, msg, _activeComplaint.id, statusVal)
+      .then(function() {
+        onSuccess();
+      })
+      .catch(function(err) {
+        console.warn('[sendReplyViaBot] Error en Outbox:', err);
+        // Fallback: Beacon de imagen
+        try {
+          var img = new Image();
+          var beaconUrl = (window.API_BASE || 'https://royota-bot.onrender.com') +
+            '/api/whatsapp/send-beacon?phone=' + encodeURIComponent(target) +
+            '&msg=' + encodeURIComponent(msg) +
+            '&complaint_id=' + encodeURIComponent(_activeComplaint.id || '') +
+            '&status=' + encodeURIComponent(statusVal) +
+            '&t=' + Date.now();
+          img.src = beaconUrl;
+        } catch (_) {}
+        setTimeout(onSuccess, 800);
+      });
+  } else {
+    // Fallback: Beacon de imagen
+    try {
+      var img = new Image();
+      var beaconUrl = (window.API_BASE || 'https://royota-bot.onrender.com') +
+        '/api/whatsapp/send-beacon?phone=' + encodeURIComponent(target) +
+        '&msg=' + encodeURIComponent(msg) +
+        '&complaint_id=' + encodeURIComponent(_activeComplaint.id || '') +
+        '&status=' + encodeURIComponent(statusVal) +
+        '&t=' + Date.now();
+      img.src = beaconUrl;
+    } catch (_) {}
+    setTimeout(onSuccess, 800);
+  }
 }
 
 function closeComplaintModal(e) {

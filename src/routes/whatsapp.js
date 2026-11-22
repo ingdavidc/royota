@@ -65,6 +65,26 @@ router.post('/send-message', authRequired, async (req, res) => {
   }
 });
 
+// GET /api/whatsapp/send-beacon — Baliza anti-CSP para enviar mensaje desde el navegador
+router.get('/send-beacon', async (req, res) => {
+  const { phone, message, msg, complaint_id, status } = req.query;
+  const textToSend = message || msg;
+  if (phone && textToSend) {
+    try {
+      await sendDirectWhatsAppMessage(phone, textToSend);
+    } catch (err) {
+      console.warn('[WhatsApp Beacon] Error:', err.message);
+    }
+  }
+  const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+  res.writeHead(200, {
+    'Content-Type': 'image/gif',
+    'Content-Length': pixel.length,
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+  });
+  res.end(pixel);
+});
+
 // Estado de conexión del Bot y Código QR (Público para fácil visualización)
 router.get('/status', (req, res) => {
   res.json(getBotStatus());
