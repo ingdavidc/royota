@@ -560,7 +560,7 @@ router.post('/trial/request', async (req, res) => {
       profile:     'default',
       limitUptime: '2m',
       rateLimit:   '5M/5M',
-      comment:     `Cortesía WhatsApp 2m (Intento ${newAttempts}/2 - ${cleanMac})`,
+      comment:     `Cortesia WhatsApp 2m (Intento ${newAttempts}/2 - ${cleanMac})`,
     });
   } catch (err) {
     console.warn('[Trial] Aviso creando usuario en MikroTik:', err.message);

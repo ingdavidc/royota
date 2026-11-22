@@ -43,7 +43,7 @@ add name=LAN_HOTSPOT
 
 /interface list member
 add interface=ether1 list=WAN comment="Entrada de Internet"
-add interface=ether2 list=LAN_ADMIN comment="PC / Servidor ROYOTA"
+add interface=ether2 list=LAN_ADMIN comment="PC y Servidor ROYOTA"
 add interface=bridge-hotspot list=LAN_HOTSPOT comment="Clientes Hotspot"
 
 # ------------------------------------------------------------------------------
@@ -126,21 +126,21 @@ set [find default=yes] \
     status-autorefresh=1m \
     transparent-proxy=no
 
-# Perfil exclusivo para 2 minutos de navegación de cortesía para pagos móviles (Daviplata / Bre-B)
+# Perfil exclusivo para 2 minutos de navegacion de cortesia para pagos moviles (Daviplata o Bre-B)
 add name=perfil-trial-2m \
     rate-limit=5M/5M \
     keepalive-timeout=2m \
     status-autorefresh=30s \
     shared-users=1 \
-    comment="Cortesía 2 minutos para pago móvil Daviplata/Bre-B"
+    comment="Cortesia 2m pago Daviplata Bre-B"
 
-# Programador a medianoche (00:00:00) para eliminar todas las fichas iniciadas y reiniciar cortesías
+# Programador a medianoche (00:00:00) para eliminar todas las fichas iniciadas y reiniciar cortesias
 /system scheduler
 add name=reset-midnight-royota \
     start-time=00:00:00 \
     interval=1d \
-    on-event="/ip hotspot active remove [find]; /ip hotspot user remove [find comment~\"Ficha\"]; /ip hotspot user remove [find comment~\"Cortes\\eda\"]; /ip hotspot user remove [find comment~\"WA-\"]; /ip hotspot user remove [find uptime>0s]; :log info \"[ROYOTA] Medianoche: Fichas iniciadas eliminadas y cortesías reiniciadas.\"" \
-    comment="Eliminación estricta de fichas iniciadas a medianoche y reinicio de cortesías"
+    on-event="/ip hotspot active remove [find]; /ip hotspot user remove [find uptime>0s]; /ip hotspot user remove [find comment~\"Cortesia\"]; /ip hotspot user remove [find comment~\"WA-\"]; :log info \"ROYOTA: Fichas iniciadas eliminadas a medianoche.\"" \
+    comment="Eliminacion de fichas iniciadas a medianoche"
 
 # ------------------------------------------------------------------------------
 # 8. WALLED GARDEN (ACCESO EXCLUSIVO AL PORTAL CAUTIVO PREVIO AL PAGO)
