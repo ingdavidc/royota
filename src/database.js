@@ -206,6 +206,20 @@ function _initSchema(db) {
       created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
     );
 
+    -- ── Dispositivos Exentos por MAC (IP Binding: Smart TVs, Cámaras) ─
+    CREATE TABLE IF NOT EXISTS ip_bindings (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      mac_address     TEXT    NOT NULL UNIQUE COLLATE NOCASE,
+      comment         TEXT    NOT NULL,
+      type            TEXT    NOT NULL DEFAULT 'bypassed'
+                              CHECK (type IN ('bypassed', 'blocked', 'regular')),
+      address         TEXT    DEFAULT '',
+      server          TEXT    NOT NULL DEFAULT 'all',
+      is_active       INTEGER NOT NULL DEFAULT 1,
+      mikrotik_synced INTEGER NOT NULL DEFAULT 0,
+      created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+    );
+
     -- ── Control de Seguridad y Strikes de WhatsApp ───────────
     CREATE TABLE IF NOT EXISTS whatsapp_strikes (
       phone          TEXT PRIMARY KEY,

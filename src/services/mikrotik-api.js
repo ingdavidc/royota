@@ -345,6 +345,59 @@ async function profileExists(profileName) {
   }
 }
 
+// ── IP BINDINGS (Dispositivos Exentos: Smart TVs, Cámaras, etc.) ────
+async function listIpBindings() {
+  if (config.mikrotik.mock) {
+    return [
+      { '.id': '*1', 'mac-address': '74:08:AA:0A:68:5A', type: 'bypassed', comment: 'AP Ruijie Zona 1', server: 'all' },
+      { '.id': '*2', 'mac-address': '50:F4:EB:69:61:86', type: 'bypassed', comment: 'Ing. David Carreño', server: 'all' }
+    ];
+  }
+  return apiRequest('GET', '/ip/hotspot/ip-binding');
+}
+
+async function createIpBinding(mac, comment, type = 'bypassed', address = '') {
+  if (!mac) throw new Error('createIpBinding: MAC address es requerida');
+  const cleanMac = String(mac).trim().toUpperCase();
+
+  if (config.mikrotik.mock) {
+    console.log(`[SIMULADOR MIKROTIK] 📺 IP Binding registrado: MAC ${cleanMac} (${comment || 'Sin comentario'}) - Modo: ${type}`);
+    return { ok: true, mac: cleanMac, type };
+  }
+
+  const body = {
+    'mac-address': cleanMac,
+    type: type || 'bypassed',
+    server: 'all'
+  };
+  if (comment) body.comment = comment;
+  if (address) body.address = address;
+
+  return apiRequest('PUT', '/ip/hotspot/ip-binding', body);
+}
+
+async function removeIpBinding(mac) {
+  if (!mac) throw new Error('removeIpBinding: MAC address es requerida');
+  const cleanMac = String(mac).trim().toUpperCase();
+
+  if (config.mikrotik.mock) {
+    console.log(`[SIMULADOR MIKROTIK] 🗑️ IP Binding eliminado: MAC ${cleanMac}`);
+    return { ok: true, removed: cleanMac };
+  }
+
+  // Buscar binding por MAC para obtener su .id
+  const bindings = await apiRequest('GET', `/ip/hotspot/ip-binding?mac-address=${encodeURIComponent(cleanMac)}`);
+  if (Array.isArray(bindings) && bindings.length > 0) {
+    for (const b of bindings) {
+      if (b['.id']) {
+        const id = b['.id'].startsWith('*') ? b['.id'] : `*${b['.id']}`;
+        await apiRequest('DELETE', `/ip/hotspot/ip-binding/${id}`);
+      }
+    }
+  }
+  return { ok: true };
+}
+
 module.exports = {
   MikrotikError,
   createHotspotUser,
@@ -356,4 +409,7 @@ module.exports = {
   listProfiles,
   testConnection,
   profileExists,
+  listIpBindings,
+  createIpBinding,
+  removeIpBinding,
 };

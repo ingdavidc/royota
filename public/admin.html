@@ -20,7 +20,7 @@
     };
   </script>
   <script src="./js/config.js?v=40"></script>
-  <script src="./js/firebase-db.js?v=40"></script>
+  <script src="./js/firebase-db.js?v=43"></script>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📶</text></svg>">
 </head>
 <body>
@@ -201,6 +201,14 @@
               <button type="submit" class="btn btn-primary btn-block" id="btnGenerar">
                 🎫 Generar Fichas
               </button>
+
+              <!-- Enlace directo a IP Binding para dispositivos especiales -->
+              <div style="margin-top:14px; padding:10px 14px; background:rgba(0,212,255,0.06); border:1px dashed rgba(0,212,255,0.3); border-radius:8px; font-size:12.5px; color:#cbd5e1; display:flex; align-items:center; justify-content:space-between; gap:10px;">
+                <span>📺 ¿Conectar <strong>Smart TV, Cámara o DVR</strong> sin ficha?</span>
+                <button type="button" onclick="focusIpBindingMac(event)" class="btn btn-xs btn-outline" style="white-space:nowrap; font-weight:700; color:#00d4ff; border-color:rgba(0,212,255,0.5);">
+                  IP Binding ↓
+                </button>
+              </div>
             </form>
           </div>
         </div>
@@ -220,6 +228,148 @@
         </div>
 
       </div><!-- .two-col -->
+
+      <!-- ═══ MÓDULO IP BINDING (DISPOSITIVOS EXENTOS: SMART TV, CÁMARAS, DVRs) ═══ -->
+      <div class="panel" id="panelIpBinding" style="margin-top:24px; border: 1.5px solid rgba(0, 212, 255, 0.35); background: rgba(19, 30, 46, 0.85); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3); border-radius: 12px; overflow: hidden;">
+        <div class="panel-hd" style="background: rgba(0, 212, 255, 0.1); border-bottom: 1px solid rgba(0, 212, 255, 0.2); padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="font-size: 22px;">📺</span>
+            <div>
+              <span class="panel-title" style="color: #00d4ff; font-weight: 800; font-size: 15.5px; display: block;">
+                Dispositivos Exentos por MAC (IP Binding)
+              </span>
+              <span style="font-size: 12px; color: #8899aa;">
+                Permite que Smart TVs, cámaras de seguridad, DVRs o equipos administrativos naveguen libremente sin pedir ficha ni portal cautivo.
+              </span>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="badge badge-success" id="badgeIpBindingCount" style="font-size: 11.5px; padding: 4px 10px; font-weight: 700;">
+              0 Dispositivos
+            </span>
+            <button type="button" class="btn btn-sm btn-ghost" onclick="loadIpBindings()" title="Recargar lista">
+              ↻ Actualizar
+            </button>
+          </div>
+        </div>
+
+        <div class="panel-body" style="padding: 20px 18px;">
+          <!-- Formulario para agregar dispositivo por MAC -->
+          <form id="ipBindingForm" onsubmit="handleSaveIpBinding(event)" autocomplete="off">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 14px;">
+              
+              <!-- Dirección MAC -->
+              <div class="fg" style="margin-bottom:0;">
+                <label class="flabel" for="bindMac">
+                  Dirección MAC del Dispositivo <span class="req">*</span>
+                </label>
+                <input type="text" id="bindMac" class="finput" required
+                       placeholder="Ej: 66:6F:87:FF:D1:94"
+                       maxlength="17"
+                       style="font-family: monospace; font-size: 14px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;"
+                       oninput="formatMacInput(this)">
+                <span class="fhint">12 caracteres hexadecimales (AA:BB:CC:DD:EE:FF)</span>
+              </div>
+
+              <!-- Nombre / Comentario -->
+              <div class="fg" style="margin-bottom:0;">
+                <label class="flabel" for="bindComment">
+                  Nombre del Dispositivo / Ubicación <span class="req">*</span>
+                </label>
+                <input type="text" id="bindComment" class="finput" required
+                       placeholder="Ej: Smart TV Restaurante, Cámara Kiosko 1"
+                       maxlength="60"
+                       oninput="updateRouterosBindingPreview()">
+                <!-- Presets rápidos -->
+                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:6px;">
+                  <button type="button" class="btn btn-xs btn-ghost" onclick="setPresetComment('Smart TV ')" style="font-size:11px; padding:2px 8px; border-radius:10px;">📺 TV</button>
+                  <button type="button" class="btn btn-xs btn-ghost" onclick="setPresetComment('Cámara ')" style="font-size:11px; padding:2px 8px; border-radius:10px;">📹 Cámara</button>
+                  <button type="button" class="btn btn-xs btn-ghost" onclick="setPresetComment('DVR Seguridad')" style="font-size:11px; padding:2px 8px; border-radius:10px;">📼 DVR</button>
+                  <button type="button" class="btn btn-xs btn-ghost" onclick="setPresetComment('Impresora POS')" style="font-size:11px; padding:2px 8px; border-radius:10px;">🖨️ Impresora</button>
+                  <button type="button" class="btn btn-xs btn-ghost" onclick="setPresetComment('Equipo Admin')" style="font-size:11px; padding:2px 8px; border-radius:10px;">💻 Admin</button>
+                </div>
+              </div>
+
+              <!-- Modo IP Binding -->
+              <div class="fg" style="margin-bottom:0;">
+                <label class="flabel" for="bindType">
+                  Modo de Acceso Hotspot <span class="req">*</span>
+                </label>
+                <select id="bindType" class="finput" required style="font-weight: 600;" onchange="updateRouterosBindingPreview()">
+                  <option value="bypassed" selected>🟢 Bypassed (Internet Libre sin Ficha)</option>
+                  <option value="blocked">🔴 Blocked (Bloquear completamente)</option>
+                  <option value="regular">🔵 Regular (Requiere Ficha / Login)</option>
+                </select>
+                <span class="fhint">Para TVs y cámaras selecciona "Bypassed"</span>
+              </div>
+
+              <!-- IP Fija Opcional -->
+              <div class="fg" style="margin-bottom:0;">
+                <label class="flabel" for="bindIp">
+                  IP Fija Asignada <span style="color:#8ba3b8; font-weight:normal;">(Opcional)</span>
+                </label>
+                <input type="text" id="bindIp" class="finput"
+                       placeholder="Ej: 192.168.20.248 (o vacío)"
+                       maxlength="15"
+                       style="font-family: monospace;"
+                       oninput="updateRouterosBindingPreview()">
+                <span class="fhint">Dejar vacío para IP dinámica automática por DHCP</span>
+              </div>
+            </div>
+
+            <!-- Botón Guardar -->
+            <div style="display:flex; justify-content:flex-end; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:16px;">
+              <button type="submit" class="btn btn-primary" id="btnSaveBinding" style="font-weight:700; padding:10px 22px; font-size:14px; display:inline-flex; align-items:center; gap:8px;">
+                <span>➕ Guardar & Bypasear Dispositivo</span>
+              </button>
+            </div>
+          </form>
+
+          <!-- Previsualización de comando RouterOS para WinBox Terminal -->
+          <div id="routerosCmdBox" style="display:none; margin-bottom: 18px; background: rgba(0,0,0,0.5); border: 1px solid rgba(0, 212, 255, 0.35); border-radius: 8px; padding: 12px 14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
+              <span style="font-size: 12px; font-weight: 700; color: #00d4ff; display:flex; align-items:center; gap:6px;">
+                <span>📋</span> Comando RouterOS para Terminal MikroTik:
+              </span>
+              <button type="button" class="btn btn-xs btn-ghost" onclick="copyRouterosBindingCmd()" style="color:#00e676; border-color:rgba(0,230,118,0.4); font-weight:bold;">
+                📋 Copiar Comando
+              </button>
+            </div>
+            <pre id="routerosCmdText" style="margin:0; font-family:monospace; font-size:12px; color:#e0e9f0; white-space:pre-wrap; word-break:break-all; user-select:all;"></pre>
+          </div>
+
+          <!-- Tabla de dispositivos vinculados -->
+          <div style="margin-top:14px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <span style="font-size:13px; font-weight:700; color:#cbd5e1; text-transform:uppercase; letter-spacing:0.5px;">
+                Dispositivos Registrados en IP Binding
+              </span>
+            </div>
+            <div class="tbl-wrap" style="border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;">
+              <table class="tbl">
+                <thead>
+                  <tr>
+                    <th>Dispositivo</th>
+                    <th>Dirección MAC</th>
+                    <th>IP Asignada</th>
+                    <th>Modo</th>
+                    <th>Fecha</th>
+                    <th style="text-align:right;">Acciones</th>
+                  </tr>
+                </thead>
+                <tbody id="ipBindingsTableBody">
+                  <tr>
+                    <td colspan="6" style="text-align:center; padding:20px; color:#8ba3b8;">
+                      Cargando dispositivos exentos...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+      </div>
 
       <!-- Historial de lotes -->
       <div class="panel" style="margin-top:20px">
@@ -924,6 +1074,6 @@
 <!-- ══ TOAST ════════════════════════════════════════════════= -->
 <div class="toast-wrap" id="toastWrap" aria-live="polite"></div>
 
-<script src="./js/admin.js?v=42"></script>
+<script src="./js/admin.js?v=43"></script>
 </body>
 </html>

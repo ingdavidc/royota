@@ -123,6 +123,98 @@ const SYNC_SECRET = process.env.MIKROTIK_SYNC_TOKEN || 'RoyotaCloud_SyncToken_20
 const REGEX_CODE     = /^[A-Z0-9]{4,16}$/;
 const REGEX_PROFILE  = /^[A-Za-z0-9 _-]{1,32}$/;
 const REGEX_DURATION = /^\d+[mhd]$/;
+const REGEX_MAC      = /^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$/;
+
+// ── IP BINDINGS (Dispositivos Exentos: Smart TVs, Cámaras, etc.) ────
+// GET /api/mikrotik/bindings — Listar IP Bindings
+router.get('/bindings', async (req, res) => {
+  try {
+    const db = getDb();
+    const local = db.prepare('SELECT * FROM ip_bindings ORDER BY created_at DESC').all();
+    res.json(local);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/mikrotik/bindings — Guardar IP Binding
+router.post('/bindings', async (req, res) => {
+  const { mac_address, comment, type, address } = req.body;
+  if (!mac_address) return res.status(400).json({ error: 'Dirección MAC es requerida' });
+  const cleanMac = String(mac_address).trim().toUpperCase();
+  if (!REGEX_MAC.test(cleanMac)) {
+    return res.status(400).json({ error: 'Formato de MAC inválido (AA:BB:CC:DD:EE:FF)' });
+  }
+  const cleanComment = String(comment || 'Dispositivo Exento').slice(0, 80);
+  const cleanType = ['bypassed', 'blocked', 'regular'].includes(type) ? type : 'bypassed';
+  const cleanAddress = address ? String(address).trim() : '';
+
+  const db = getDb();
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO ip_bindings (mac_address, comment, type, address, server, is_active, mikrotik_synced, created_at)
+      VALUES (?, ?, ?, ?, 'all', 1, 0, datetime('now'))
+      ON CONFLICT(mac_address) DO UPDATE SET
+        comment = excluded.comment,
+        type = excluded.type,
+        address = excluded.address,
+        is_active = 1,
+        mikrotik_synced = 0
+    `);
+    stmt.run(cleanMac, cleanComment, cleanType, cleanAddress);
+
+    try {
+      await mikrotik.createIpBinding(cleanMac, cleanComment, cleanType, cleanAddress);
+      db.prepare('UPDATE ip_bindings SET mikrotik_synced = 1 WHERE mac_address = ?').run(cleanMac);
+    } catch (_) {}
+
+    res.json({ ok: true, mac: cleanMac, comment: cleanComment, type: cleanType });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE /api/mikrotik/bindings/:mac — Eliminar IP Binding
+router.delete('/bindings/:mac', async (req, res) => {
+  const cleanMac = decodeURIComponent(req.params.mac).trim().toUpperCase();
+  const db = getDb();
+  try {
+    db.prepare('DELETE FROM ip_bindings WHERE mac_address = ? COLLATE NOCASE').run(cleanMac);
+    try { await mikrotik.removeIpBinding(cleanMac); } catch (_) {}
+    res.json({ ok: true, removed: cleanMac });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/mikrotik/sync/binding-beacon — Beacon anti-CSP para registrar IP Bindings
+router.get('/sync/binding-beacon', (req, res) => {
+  const { mac, comment, type, address } = req.query;
+  if (mac) {
+    const cleanMac = String(mac).trim().toUpperCase();
+    if (REGEX_MAC.test(cleanMac)) {
+      const cleanComment = String(comment || 'Dispositivo Exento').slice(0, 80);
+      const cleanType = ['bypassed', 'blocked', 'regular'].includes(type) ? type : 'bypassed';
+      const cleanAddress = address ? String(address).trim() : '';
+      try {
+        const db = getDb();
+        db.prepare(`
+          INSERT INTO ip_bindings (mac_address, comment, type, address, server, is_active, mikrotik_synced, created_at)
+          VALUES (?, ?, ?, ?, 'all', 1, 0, datetime('now'))
+          ON CONFLICT(mac_address) DO UPDATE SET
+            comment = excluded.comment,
+            type = excluded.type,
+            address = excluded.address,
+            is_active = 1,
+            mikrotik_synced = 0
+        `).run(cleanMac, cleanComment, cleanType, cleanAddress);
+      } catch (_) {}
+    }
+  }
+  res.setHeader('Content-Type', 'image/gif');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.end(PIXEL_GIF);
+});
 
 // 1x1 GIF transparente para respuesta de beacon
 const PIXEL_GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
@@ -371,6 +463,34 @@ router.get('/sync/vouchers.rsc', (req, res) => {
     }
   } catch (err) {
     console.error('[Cloud-Sync] Error procesando fichas pendientes:', err.message);
+  }
+
+  // 4. Extraer IP Bindings pendientes para inyección al MikroTik
+  try {
+    const unsyncedBindings = db.prepare(`
+      SELECT id, mac_address, comment, type, address
+      FROM ip_bindings
+      WHERE mikrotik_synced = 0 AND is_active = 1
+      LIMIT 20
+    `).all();
+
+    if (unsyncedBindings.length > 0) {
+      rscCommands += '\n/ip hotspot ip-binding\n';
+      const bIds = [];
+      unsyncedBindings.forEach(b => {
+        const addrClause = b.address ? ` address="${b.address}"` : '';
+        const commClean = b.comment ? b.comment.replace(/"/g, '') : 'Royota Cloud';
+        rscCommands += `:do { add mac-address="${b.mac_address}" type=${b.type}${addrClause} comment="${commClean}" server=all } on-error={ :do { set [find mac-address="${b.mac_address}"] type=${b.type}${addrClause} comment="${commClean}" } on-error={} }\n`;
+        bIds.push(b.id);
+      });
+      if (bIds.length > 0) {
+        const placeholders = bIds.map(() => '?').join(',');
+        db.prepare(`UPDATE ip_bindings SET mikrotik_synced = 1 WHERE id IN (${placeholders})`).run(...bIds);
+        console.log(`[Cloud-Sync] 📺 Entregados ${bIds.length} IP Bindings autenticados al MikroTik.`);
+      }
+    }
+  } catch (bErr) {
+    console.error('[Cloud-Sync] Error procesando IP Bindings pendientes:', bErr.message);
   }
 
   res.setHeader('Content-Type', 'text/plain');

@@ -284,6 +284,61 @@
       return db.collection('kiosks').doc(String(kioskId)).delete();
     },
 
+    // ── IP Bindings (Dispositivos Exentos por MAC: TVs, Cámaras, etc.) ───
+    getIpBindings: function() {
+      if (!db) return Promise.resolve([]);
+      return db.collection('ip_bindings').get().then(function(snap) {
+        var list = [];
+        snap.forEach(function(d) {
+          var item = d.data();
+          item.id = d.id;
+          list.push(item);
+        });
+        list.sort(function(a, b) {
+          return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+        });
+        return list;
+      }).catch(function(err) {
+        console.warn('[FirebaseDb] Error getIpBindings:', err);
+        return [];
+      });
+    },
+
+    saveIpBinding: function(bindingData, bindingId) {
+      if (!db) return Promise.reject(new Error('No db'));
+      if (bindingId) {
+        return db.collection('ip_bindings').doc(String(bindingId)).update(bindingData);
+      } else {
+        bindingData.created_at = new Date().toISOString();
+        if (bindingData.is_active === undefined) bindingData.is_active = 1;
+        if (!bindingData.type) bindingData.type = 'bypassed';
+        return db.collection('ip_bindings').add(bindingData);
+      }
+    },
+
+    deleteIpBinding: function(bindingId) {
+      if (!db) return Promise.reject(new Error('No db'));
+      return db.collection('ip_bindings').doc(String(bindingId)).delete();
+    },
+
+    onIpBindingsChange: function(cb) {
+      if (!db) return function(){};
+      return db.collection('ip_bindings').onSnapshot(function(snap) {
+        var list = [];
+        snap.forEach(function(d) {
+          var item = d.data();
+          item.id = d.id;
+          list.push(item);
+        });
+        list.sort(function(a, b) {
+          return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+        });
+        cb(list);
+      }, function(err) {
+        console.warn('[FirebaseDb] onIpBindingsChange error:', err);
+      });
+    },
+
     onKiosksChange: function(cb) {
       if (!db) return function(){};
       return db.collection('kiosks').onSnapshot(function(snap) {

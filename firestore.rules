@@ -68,6 +68,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Dispositivos exentos por MAC (IP Binding para Smart TVs, Cámaras, etc.)
+    match /ip_bindings/{doc} {
+      allow read, write: if true;
+    }
+
     // Todo lo demás requiere autenticación
     match /{document=**} {
       allow read, write: if request.auth != null;

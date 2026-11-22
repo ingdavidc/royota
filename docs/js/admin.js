@@ -74,6 +74,31 @@ function apiFetch(method, url, body) {
         });
       }
     }
+    if (url.startsWith('/api/ip-bindings')) {
+      if (method === 'GET') {
+        return window.firebaseDb.getIpBindings();
+      }
+      if (method === 'POST') {
+        return window.firebaseDb.saveIpBinding(body).then(function(res) {
+          try {
+            var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
+            var bImg = new Image();
+            bImg.src = apiBase + '/api/mikrotik/sync/binding-beacon?mac=' + encodeURIComponent(body.mac_address) +
+              '&comment=' + encodeURIComponent(body.comment || '') +
+              '&type=' + encodeURIComponent(body.type || 'bypassed') +
+              '&address=' + encodeURIComponent(body.address || '') +
+              '&_t=' + Date.now();
+          } catch (_) {}
+          return { message: 'Dispositivo registrado en IP Binding exitosamente', id: res && res.id };
+        });
+      }
+      if (method === 'DELETE') {
+        var bindId = decodeURIComponent(url.split('/api/ip-bindings/')[1]);
+        return window.firebaseDb.deleteIpBinding(bindId).then(function() {
+          return { message: 'Dispositivo eliminado de IP Binding exitosamente' };
+        });
+      }
+    }
     if (url === '/api/vouchers/generate' && method === 'POST') {
       return window.firebaseDb.generateVouchers(body).then(function(res) {
         // Doble garantía de inyección inmediata a MikroTik en nube
@@ -349,6 +374,7 @@ function loadGenSection() {
   updateCodePreview();
   initSheetCalculator();
   loadBatches();
+  loadIpBindings();
 }
 
 function loadPlanSelect(selectId) {
@@ -1794,6 +1820,263 @@ function deleteComplaint(id) {
     toast((err && err.message) || (err && err.error) || 'Error al eliminar', 'error');
   });
 }
+
+/* ══════════════════════════════════════════════════════════
+   DISPOSITIVOS EXENTOS / IP BINDING (TVs, CÁMARAS, DVRs)
+══════════════════════════════════════════════════════════ */
+
+var _cachedIpBindings = [];
+
+function formatMacInput(el) {
+  if (!el) return;
+  var val = el.value.replace(/[^0-9a-fA-F]/g, '').toUpperCase().slice(0, 12);
+  var formatted = '';
+  for (var i = 0; i < val.length; i++) {
+    if (i > 0 && i % 2 === 0) formatted += ':';
+    formatted += val[i];
+  }
+  el.value = formatted;
+  updateRouterosBindingPreview();
+}
+
+function setPresetComment(txt) {
+  var el = document.getElementById('bindComment');
+  if (!el) return;
+  el.value = txt;
+  el.focus();
+  updateRouterosBindingPreview();
+}
+
+function updateRouterosBindingPreview() {
+  var macEl = document.getElementById('bindMac');
+  var commEl = document.getElementById('bindComment');
+  var typeEl = document.getElementById('bindType');
+  var ipEl = document.getElementById('bindIp');
+  var box = document.getElementById('routerosCmdBox');
+  var txt = document.getElementById('routerosCmdText');
+  if (!box || !txt) return;
+
+  var mac = (macEl ? macEl.value : '').trim().toUpperCase();
+  var comment = (commEl ? commEl.value : '').trim();
+  var type = (typeEl ? typeEl.value : 'bypassed') || 'bypassed';
+  var ip = (ipEl ? ipEl.value : '').trim();
+
+  if (mac.length >= 8) {
+    var cmd = buildRouterosBindingCmd(mac, comment, type, ip);
+    txt.textContent = cmd;
+    box.style.display = 'block';
+  } else {
+    box.style.display = 'none';
+  }
+}
+
+function buildRouterosBindingCmd(mac, comment, type, ip) {
+  var cleanMac = (mac || 'AA:BB:CC:DD:EE:FF').toUpperCase();
+  var cleanType = type || 'bypassed';
+  var cmd = '/ip hotspot ip-binding add mac-address=' + cleanMac + ' type=' + cleanType;
+  if (ip) cmd += ' address=' + ip;
+  if (comment) cmd += ' comment="' + comment.replace(/"/g, '') + '"';
+  cmd += ' server=all';
+  return cmd;
+}
+
+function copyRouterosBindingCmd() {
+  var txt = document.getElementById('routerosCmdText');
+  if (!txt || !txt.textContent) return;
+  navigator.clipboard.writeText(txt.textContent).then(function() {
+    toast('Comando RouterOS copiado al portapapeles', 'ok');
+  }).catch(function() {
+    toast('No se pudo copiar automáticamente', 'warn');
+  });
+}
+
+function copyBindingCommandFor(mac, comment, type, ip) {
+  var cmd = buildRouterosBindingCmd(mac, comment, type, ip);
+  navigator.clipboard.writeText(cmd).then(function() {
+    toast('Comando para ' + (comment || mac) + ' copiado al portapapeles', 'ok');
+  }).catch(function() {
+    prompt('Copia el comando RouterOS:', cmd);
+  });
+}
+
+function focusIpBindingMac(e) {
+  if (e) e.preventDefault();
+  var p = document.getElementById('panelIpBinding');
+  if (p) p.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  var inp = document.getElementById('bindMac');
+  if (inp) setTimeout(function() { inp.focus(); }, 300);
+}
+
+function handleSaveIpBinding(e) {
+  if (e) e.preventDefault();
+  var macEl = document.getElementById('bindMac');
+  var commentEl = document.getElementById('bindComment');
+  var typeEl = document.getElementById('bindType');
+  var ipEl = document.getElementById('bindIp');
+  var btn = document.getElementById('btnSaveBinding');
+
+  if (!macEl || !commentEl) return;
+  var mac = macEl.value.trim().toUpperCase();
+  var comment = commentEl.value.trim();
+  var type = (typeEl ? typeEl.value : 'bypassed') || 'bypassed';
+  var address = (ipEl ? ipEl.value.trim() : '');
+
+  // Validar formato MAC
+  var macRegex = /^([0-9A-F]{2}[:-]){5}([0-9A-F]{2})$/;
+  if (!macRegex.test(mac)) {
+    toast('Dirección MAC inválida. Debe tener formato AA:BB:CC:DD:EE:FF', 'error');
+    macEl.focus();
+    return;
+  }
+  if (!comment) {
+    toast('Por favor ingresa un nombre o ubicación para el dispositivo', 'warn');
+    commentEl.focus();
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Guardando...';
+  }
+
+  apiFetch('POST', '/api/ip-bindings', {
+    mac_address: mac,
+    comment: comment,
+    type: type,
+    address: address
+  }).then(function(res) {
+    toast('✅ Dispositivo "' + comment + '" registrado en IP Binding', 'ok');
+    updateRouterosBindingPreview();
+    macEl.value = '';
+    commentEl.value = '';
+    if (ipEl) ipEl.value = '';
+    loadIpBindings();
+  }).catch(function(err) {
+    toast((err && err.message) || 'Error al guardar IP Binding', 'error');
+  }).finally(function() {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<span>➕ Guardar & Bypasear Dispositivo</span>';
+    }
+  });
+}
+
+function loadIpBindings() {
+  var tbody = document.getElementById('ipBindingsTableBody');
+  var badge = document.getElementById('badgeIpBindingCount');
+  if (!tbody) return;
+
+  apiFetch('GET', '/api/ip-bindings').then(function(list) {
+    _cachedIpBindings = list || [];
+    if (badge) {
+      badge.textContent = _cachedIpBindings.length + (_cachedIpBindings.length === 1 ? ' Dispositivo' : ' Dispositivos');
+    }
+
+    if (!_cachedIpBindings.length) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:24px; color:#8ba3b8;">' +
+        '📺 No hay dispositivos registrados aún. Ingresa la MAC de un Smart TV o cámara arriba para permitirle navegar libremente sin ficha.' +
+        '</td></tr>';
+      return;
+    }
+
+    var html = '';
+    _cachedIpBindings.forEach(function(item) {
+      var icon = '📱';
+      var commLow = (item.comment || '').toLowerCase();
+      if (commLow.includes('tv') || commLow.includes('televisor')) icon = '📺';
+      else if (commLow.includes('cam') || commLow.includes('cámara') || commLow.includes('dvr')) icon = '📹';
+      else if (commLow.includes('impresora') || commLow.includes('pos')) icon = '🖨️';
+      else if (commLow.includes('admin') || commLow.includes('pc') || commLow.includes('laptop')) icon = '💻';
+
+      var typeBadge = '<span class="badge badge-success" style="font-weight:700; font-size:11px;">🟢 BYPASSED</span>';
+      if (item.type === 'blocked') {
+        typeBadge = '<span class="badge badge-danger" style="font-weight:700; font-size:11px;">🔴 BLOCKED</span>';
+      } else if (item.type === 'regular') {
+        typeBadge = '<span class="badge badge-warning" style="font-weight:700; font-size:11px;">🔵 REGULAR</span>';
+      }
+
+      var dateStr = '—';
+      if (item.created_at) {
+        try {
+          var d = new Date(item.created_at);
+          dateStr = d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
+        } catch (_) {}
+      }
+
+      var safeId = escapeHtml(item.id || item.mac_address);
+      var safeMac = escapeHtml(item.mac_address);
+      var safeComm = escapeHtml(item.comment || 'Sin nombre');
+      var safeType = escapeHtml(item.type || 'bypassed');
+      var safeIp = escapeHtml(item.address || 'Dinámica (DHCP)');
+
+      html += '<tr>' +
+        '<td style="font-weight:600; color:#e0e9f0; display:flex; align-items:center; gap:8px;">' +
+          '<span style="font-size:16px;">' + icon + '</span>' +
+          '<span>' + safeComm + '</span>' +
+        '</td>' +
+        '<td><code style="background:rgba(0,0,0,0.4); padding:3px 8px; border-radius:6px; color:#00d4ff; font-weight:700; letter-spacing:0.5px;">' + safeMac + '</code></td>' +
+        '<td style="color:' + (item.address ? '#e0e9f0' : '#8ba3b8') + '; font-family:monospace;">' + safeIp + '</td>' +
+        '<td>' + typeBadge + '</td>' +
+        '<td style="font-size:12px; color:#8ba3b8;">' + dateStr + '</td>' +
+        '<td style="text-align:right;">' +
+          '<div style="display:inline-flex; gap:6px; justify-content:flex-end;">' +
+            '<button type="button" class="btn btn-xs btn-ghost" title="Copiar comando MikroTik RouterOS" ' +
+              'onclick="copyBindingCommandFor(\'' + safeMac + '\', \'' + safeComm.replace(/'/g, "\\'") + '\', \'' + safeType + '\', \'' + (item.address || '') + '\')">' +
+              '📋 Copiar Script' +
+            '</button>' +
+            '<button type="button" class="btn btn-xs btn-danger" title="Eliminar dispositivo de IP Binding" ' +
+              'onclick="deleteIpBindingItem(\'' + safeId + '\', \'' + safeMac + '\', \'' + safeComm.replace(/'/g, "\\'") + '\')">' +
+              '🗑️' +
+            '</button>' +
+          '</div>' +
+        '</td>' +
+      '</tr>';
+    });
+    tbody.innerHTML = html;
+  }).catch(function(err) {
+    console.warn('Error loadIpBindings:', err);
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#ff4444;">' +
+      'Error al cargar dispositivos: ' + ((err && err.message) || 'Error de conexión') +
+      '</td></tr>';
+  });
+}
+
+function deleteIpBindingItem(id, mac, comment) {
+  var name = comment || mac;
+  if (!confirm('¿Deseas eliminar el IP Binding para "' + name + '"?\n\nEl dispositivo dejará de tener bypass de internet libre y volverá a solicitar ficha de acceso.')) {
+    return;
+  }
+
+  apiFetch('DELETE', '/api/ip-bindings/' + encodeURIComponent(id)).then(function() {
+    toast('Dispositivo eliminado de IP Binding', 'ok');
+    loadIpBindings();
+    var removeCmd = '/ip hotspot ip-binding remove [find mac-address="' + mac + '"]';
+    console.log('[MikroTik Remove CMD]:', removeCmd);
+  }).catch(function(err) {
+    toast((err && err.message) || 'Error al eliminar dispositivo', 'error');
+  });
+}
+
+// Escuchar cambios en vivo si Firestore está disponible
+if (window.firebaseDb && window.firebaseDb.onIpBindingsChange) {
+  window.firebaseDb.onIpBindingsChange(function() {
+    var p = document.getElementById('panelIpBinding');
+    if (p && !p.closest('.sec').hidden) {
+      loadIpBindings();
+    }
+  });
+}
+
+// Exportar al ámbito global
+window.formatMacInput = formatMacInput;
+window.setPresetComment = setPresetComment;
+window.updateRouterosBindingPreview = updateRouterosBindingPreview;
+window.copyRouterosBindingCmd = copyRouterosBindingCmd;
+window.copyBindingCommandFor = copyBindingCommandFor;
+window.focusIpBindingMac = focusIpBindingMac;
+window.handleSaveIpBinding = handleSaveIpBinding;
+window.loadIpBindings = loadIpBindings;
+window.deleteIpBindingItem = deleteIpBindingItem;
 
 /* ── Arranque inicial ───────────────────────────────────── */
 if (window.firebaseDb && window.firebaseDb.seedInitialDataIfEmpty) {
