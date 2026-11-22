@@ -150,6 +150,11 @@ add chain=forward action=drop in-interface=vlan20-hotspot out-interface=vlan10-m
 # Bloqueo de tuneles DNS/ICMP pre-autenticacion (Evita bypass con iodine/dnscat)
 add chain=forward action=drop in-interface=vlan20-hotspot dst-port=53 protocol=udp hotspot=!from-client comment="BLOQUEO: Consultas DNS externas sin logueo"
 
+# 🔒 REGLA DE ORO DE SEGURIDAD CONTRA FUGAS (HTTPS / 'Usar sin internet' de iOS):
+# BLOQUEAR TODO TRÁFICO HACIA INTERNET DE CLIENTES QUE NO ESTÉN AUTENTICADOS EN EL HOTSPOT
+add chain=forward action=drop in-interface=vlan20-hotspot hotspot=!auth out-interface-list=WAN comment="BLOQUEO HERMETICO: Hotspot no autenticado NO navega en WAN"
+add chain=forward action=drop in-interface=vlan20-hotspot hotspot=!auth comment="BLOQUEO HERMETICO: Rechazar todo trafico no autenticado"
+
 # ------------------------------------------------------------------------------
 # 7. NAT MASQUERADE
 # ------------------------------------------------------------------------------

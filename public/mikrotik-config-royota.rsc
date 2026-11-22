@@ -143,7 +143,7 @@ add name=reset-trials-midnight \
     comment="Reinicio diario de intentos de cortesía a medianoche"
 
 # ------------------------------------------------------------------------------
-# 8. WALLED GARDEN (ACCESO PREVIO SIN INTERNET)
+# 8. WALLED GARDEN (ACCESO EXCLUSIVO AL PORTAL CAUTIVO PREVIO AL PAGO)
 # ------------------------------------------------------------------------------
 /ip hotspot walled-garden ip
 # Acceso libre al Servidor Web ROYOTA si corre en ether2 (192.168.10.0/24 port 3000)
@@ -152,19 +152,14 @@ add dst-address=192.168.10.0/24 dst-port=3000 action=accept comment="Servidor Lo
 add dst-address=192.168.20.1 dst-port=53 protocol=udp action=accept comment="DNS Hotspot UDP"
 add dst-address=192.168.20.1 dst-port=53 protocol=tcp action=accept comment="DNS Hotspot TCP"
 
-# Dominios permitidos sin ficha (Portal oficial, WhatsApp, Firebase, pagos móviles y Render)
+# Dominios estrictamente necesarios para cargar el portal cautivo antes de autenticarse
+# NOTA: NO incluir *whatsapp* ni *googleapis.com* generales aquí para evitar fugas de internet sin ficha
 /ip hotspot walled-garden
 add dst-host=*dctelematica.com* action=allow comment="Portal Oficial royota.dctelematica.com"
-add dst-host=*whatsapp* action=allow comment="WhatsApp Web/App"
-add dst-host=*wa.me* action=allow comment="Enlaces WhatsApp"
-add dst-host=*onrender.com* action=allow comment="Servidor en la Nube Render"
-add dst-host=*firestore.googleapis.com* action=allow comment="Firebase Firestore"
-add dst-host=*googleapis.com* action=allow comment="Google APIs"
+add dst-host=*firestore.googleapis.com* action=allow comment="Firebase Firestore DB"
+add dst-host=*identitytoolkit.googleapis.com* action=allow comment="Firebase Auth"
 add dst-host=*firebaseio.com* action=allow comment="Firebase Realtime"
-add dst-host=*nequi.com.co action=allow comment="App Nequi"
-add dst-host=*bancolombia.com action=allow comment="App Bancolombia"
-add dst-host=*daviplata.com action=allow comment="App Daviplata"
-add dst-host=*davivienda.com action=allow comment="App Davivienda"
+add dst-host=*onrender.com* action=allow comment="Servidor en la Nube Render"
 
 # ------------------------------------------------------------------------------
 # 9. SERVICIO REST API DE ROUTEROS v7 PARA EL SERVIDOR WEB
@@ -220,7 +215,10 @@ add chain=input action=accept in-interface=bridge-hotspot protocol=udp dst-port=
 add chain=input action=drop in-interface=bridge-hotspot comment="BLOQUEO AUDITORIA: Clientes no tocan el Router"
 
 # --- FIREWALL FILTER: CADENA FORWARD (Trafico entre Redes) ---
-add chain=forward action=accept connection-state=established,related,untracked comment="Aceptar forward establecido"
+# Desactivar FastTrack (Incompatible con Hotspot: evita que conexiones HTTPS evadan el portal)
+# /ip firewall filter disable [find action=fasttrack-connection]
+
+add chain=forward action=accept connection-state=established,related comment="Aceptar forward establecido"
 add chain=forward action=drop connection-state=invalid comment="Descartar forward invalido"
 
 # BLOQUEO CRÍTICO: Los clientes del Hotspot NO pueden alcanzar la red ether2 (Admin/Servidor)
@@ -228,6 +226,12 @@ add chain=forward action=drop in-interface=bridge-hotspot out-interface=ether2 c
 
 # BLOQUEO DE TÚNELES DNS (Evita bypass pre-autenticación tipo iodine o dnscat)
 add chain=forward action=drop in-interface=bridge-hotspot protocol=udp dst-port=53 hotspot=!from-client comment="BLOQUEO AUDITORIA: Tunel DNS no autorizado"
+
+# 🔒 REGLA DE ORO DE SEGURIDAD CONTRA FUGAS (HTTPS / 'Usar sin internet' de iOS):
+# BLOQUEAR TODO TRÁFICO HACIA INTERNET DE CLIENTES QUE NO ESTÉN AUTENTICADOS EN EL HOTSPOT
+# Sin esta regla, el tráfico HTTPS (puerto 443) navega libremente sin ficha.
+add chain=forward action=drop in-interface=bridge-hotspot hotspot=!auth out-interface-list=WAN comment="BLOQUEO HERMETICO: Hotspot no autenticado NO navega en WAN"
+add chain=forward action=drop in-interface=bridge-hotspot hotspot=!auth comment="BLOQUEO HERMETICO: Rechazar todo trafico no autenticado"
 
 # ==============================================================================
 # FIN DEL SCRIPT DE CONFIGURACIÓN

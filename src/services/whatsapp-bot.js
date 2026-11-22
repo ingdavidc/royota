@@ -329,7 +329,8 @@ async function buildMenuMessage() {
 
   msg += `\n💳 *MEDIOS DE PAGO VIRTUALES:*\n`;
   msg += `• *Daviplata:* \`${paymentPhone}\`\n`;
-  msg += `• *Llave Bre-B (Transfiya):* \`${paymentPhone}\`\n\n`;
+  msg += `• *Llave Bre-B:* \`${paymentPhone}\`\n`;
+  msg += `⚠️ _Solo recibimos Daviplata o Llave Bre-B (NO se acepta Transfiya)._\n\n`;
   msg += `📸 *¿CÓMO COMPRAR EN LÍNEA?*\n`;
   msg += `1. Realiza la transferencia del valor exacto a nuestro número.\n`;
   msg += `2. *Envía la captura de pantalla del comprobante aquí mismo.* 📸\n`;
@@ -440,6 +441,20 @@ async function processPaymentReceipt(sock, msg, senderJid) {
       } else {
         await sock.sendMessage(senderJid, {
           text: `❌ *No se pudo validar el pago*\n\nMotivo: ${reason}\n\nPor favor envía una captura de pantalla original y nítida donde se observe claramente el valor, el número de aprobación y la cuenta de destino.${formatStrikeWarning(strike)}`,
+        }, { quoted: msg });
+      }
+      return;
+    }
+
+    // ── VALIDADOR 1.5: Rechazo estricto de Transfiya (Anti-Fraude) ──
+    const platformUpper = (analysis.platform || '').toUpperCase();
+    if (platformUpper.includes('TRANSFIYA') || (analysis.notes && String(analysis.notes).toUpperCase().includes('TRANSFIYA'))) {
+      const strike = recordStrike(senderPhone, 'Intento de pago con Transfiya (no aceptado)');
+      if (strike.isBlocked) {
+        await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
+      } else {
+        await sock.sendMessage(senderJid, {
+          text: `❌ *Medio de pago no aceptado*\n\nPor políticas estrictas de seguridad contra fraude, *NO recibimos transferencias por Transfiya*.\n\nÚnicamente aceptamos pagos directos por:\n• *Daviplata* al número: \`${targetPhone}\`\n• *Llave Bre-B* al número: \`${targetPhone}\`\n\nSi deseas pagar en efectivo, escribe *CASETAS*.${formatStrikeWarning(strike)}`,
         }, { quoted: msg });
       }
       return;
