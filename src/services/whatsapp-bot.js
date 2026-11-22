@@ -216,27 +216,104 @@ function isRateLimited(phone) {
   return false;
 }
 
+let _cachedLivePlans = null;
+let _lastPlansFetch = 0;
+
+/**
+ * Consulta en tiempo real los planes configurados en Cloud Firestore (fuente de la verdad del panel)
+ * y los sincroniza automáticamente en SQLite local.
+ */
+async function getLivePlans() {
+  const now = Date.now();
+  if (_cachedLivePlans && (now - _lastPlansFetch < 10000)) {
+    return _cachedLivePlans;
+  }
+
+  try {
+    const res = await fetch('https://firestore.googleapis.com/v1/projects/fichas-royota/databases/(default)/documents/plans?pageSize=50');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.documents && data.documents.length) {
+        const firestorePlans = [];
+        data.documents.forEach(doc => {
+          const f = doc.fields || {};
+          const isActive = f.is_active ? Number(f.is_active.integerValue ?? f.is_active.booleanValue ?? 1) : 1;
+          if (isActive === 1) {
+            firestorePlans.push({
+              id: doc.name.split('/').pop(),
+              name: f.name ? f.name.stringValue : 'Plan WiFi',
+              duration: f.duration ? f.duration.stringValue : '1h',
+              speed_limit: f.speed_limit ? f.speed_limit.stringValue : '2M/3M',
+              price: f.price ? Number(f.price.integerValue || f.price.doubleValue || 0) : 0,
+              sort_order: f.sort_order ? Number(f.sort_order.integerValue || 0) : 0,
+              profile_name: f.profile_name ? f.profile_name.stringValue : 'default'
+            });
+          }
+        });
+
+        if (firestorePlans.length) {
+          firestorePlans.sort((a, b) => (a.sort_order - b.sort_order) || (a.price - b.price));
+          _cachedLivePlans = firestorePlans;
+          _lastPlansFetch = now;
+
+          // Sincronizar en SQLite local para consistencia con tablas de vouchers/sales
+          try {
+            const db = getDb();
+            const syncTrans = db.transaction(() => {
+              for (const p of firestorePlans) {
+                const existing = db.prepare('SELECT id FROM plans WHERE name = ?').get(p.name);
+                if (existing) {
+                  db.prepare(`
+                    UPDATE plans
+                    SET duration = ?, speed_limit = ?, price = ?, profile_name = ?, is_active = 1, sort_order = ?
+                    WHERE id = ?
+                  `).run(p.duration, p.speed_limit, p.price, p.profile_name || 'default', p.sort_order, existing.id);
+                  p.sqlite_id = existing.id;
+                } else {
+                  const ins = db.prepare(`
+                    INSERT INTO plans (name, duration, speed_limit, price, profile_name, is_active, sort_order)
+                    VALUES (?, ?, ?, ?, ?, 1, ?)
+                  `).run(p.name, p.duration, p.speed_limit, p.price, p.profile_name || 'default', p.sort_order);
+                  p.sqlite_id = ins.lastInsertRowid;
+                }
+              }
+            });
+            syncTrans();
+          } catch (_) {}
+
+          return _cachedLivePlans;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[WhatsApp Bot] Error consultando planes en Firestore:', err.message);
+  }
+
+  // Fallback a SQLite local
+  try {
+    const db = getDb();
+    const localPlans = db.prepare('SELECT * FROM plans WHERE is_active = 1 ORDER BY sort_order ASC, price ASC').all();
+    if (localPlans && localPlans.length) {
+      _cachedLivePlans = localPlans;
+      return localPlans;
+    }
+  } catch (_) {}
+
+  return [
+    { name: '1 Hora Basico', duration: '1h', speed_limit: '2M/3M', price: 2000 },
+    { name: '1 Hora Premium', duration: '1h', speed_limit: '5M/10M', price: 3000 },
+    { name: '5 Horas Basico', duration: '5h', speed_limit: '2M/3M', price: 5000 },
+    { name: '5 Horas Premium', duration: '5h', speed_limit: '5M/10M', price: 8000 },
+    { name: '1 Dia Basico', duration: '1d', speed_limit: '2M/3M', price: 8000 },
+    { name: '1 Dia Premium', duration: '1d', speed_limit: '5M/10M', price: 10000 },
+  ];
+}
+
 /**
  * Genera el mensaje del catálogo de planes, medios de pago y casetas físicas
  */
-function buildMenuMessage() {
-  const db = getDb();
-  let plans = [];
-  try {
-    plans = db.prepare(
-      'SELECT name, duration, speed_limit, price FROM plans WHERE is_active = 1 ORDER BY sort_order ASC, price ASC'
-    ).all();
-  } catch (_) {}
-
-  if (!plans || !plans.length) {
-    plans = [
-      { name: '1 Hora Basico', duration: '1h', speed_limit: '2M/5M', price: 2000 },
-      { name: '1 Hora Premium', duration: '1h', speed_limit: '5M/10M', price: 3000 },
-      { name: '5 Horas Basico', duration: '5h', speed_limit: '2M/5M', price: 5000 },
-      { name: '5 Horas Premium', duration: '5h', speed_limit: '5M/10M', price: 8000 },
-    ];
-  }
-
+async function buildMenuMessage() {
+  const plans = await getLivePlans();
   const businessName = config.business.name || 'Balneario Río Royota';
   const paymentPhone = config.whatsapp.paymentPhone || '3174251419';
   const kiosksList = getKiosksFormatted(false);
@@ -412,9 +489,9 @@ async function processPaymentReceipt(sock, msg, senderJid) {
       return;
     }
 
-    // ── VALIDADOR 4: Coincidencia de monto con planes ─────────────
+    // ── VALIDADOR 4: Coincidencia de monto con planes (Desde Firestore en vivo) ─
     const paidAmount = Number(analysis.amount);
-    const activePlans = db.prepare('SELECT * FROM plans WHERE is_active = 1 ORDER BY price ASC').all();
+    const activePlans = await getLivePlans();
     const matchedPlan = activePlans.find(p => Math.abs(p.price - paidAmount) < 50);
 
     if (!matchedPlan) {
@@ -436,14 +513,15 @@ async function processPaymentReceipt(sock, msg, senderJid) {
 
     // 🔒 AISLAMIENTO TOTAL: El bot SOLO toma o genera fichas con prefijo WSP-
     // NUNCA toma fichas impresas ni lotes de las casetas físicas.
+    const planIdForVoucher = matchedPlan.sqlite_id || matchedPlan.id;
     let voucher = db.prepare(
       'SELECT * FROM vouchers WHERE plan_id = ? AND status = "available" AND code LIKE "WSP-%" LIMIT 1'
-    ).get(matchedPlan.id);
+    ).get(planIdForVoucher);
 
     if (!voucher) {
       console.log(`[WhatsApp Bot] Generando ficha digital exclusiva (WSP-) para el plan ${matchedPlan.name}...`);
       const batchResult = await generateBatch({
-        planId: matchedPlan.id,
+        planId: planIdForVoucher,
         quantity: 1,
         codeLength: 8,
         charset: 'full',
@@ -914,7 +992,7 @@ async function startWhatsAppBot(forceClean = false) {
             await sock.sendMessage(remoteJid, { text: kioskMsg });
           } else if (isGreetingOrQuery) {
             _offTopicTracker.delete(senderPhone);
-            const menu = buildMenuMessage();
+            const menu = await buildMenuMessage();
             await sock.sendMessage(remoteJid, { text: menu });
           } else {
             // Conversación fuera de tema (Off-topic)

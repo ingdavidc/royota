@@ -512,9 +512,16 @@
         snap.forEach(function(d) {
           var b = d.data();
           b.id = d.id;
+          b.vouchers_total = b.vouchers_total !== undefined ? b.vouchers_total : (b.quantity || 0);
+          b.vouchers_available = b.vouchers_available !== undefined ? b.vouchers_available : b.vouchers_total;
+          b.vouchers_sold = b.vouchers_sold || 0;
+          b.vouchers_active = b.vouchers_active || 0;
           list.push(b);
         });
         return list;
+      }).catch(function(err) {
+        console.warn('[FirebaseDb] Error getBatches:', err);
+        return [];
       });
     },
 

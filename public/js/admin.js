@@ -99,7 +99,7 @@ function apiFetch(method, url, body) {
       var batchId = url.split('/api/vouchers/batch/')[1];
       return window.firebaseDb.getVoucherBatch(batchId);
     }
-    if (url === '/api/vouchers/batches') {
+    if (url.startsWith('/api/vouchers/batches')) {
       return window.firebaseDb.getBatches();
     }
     if (url.startsWith('/api/vouchers/stats')) {
@@ -514,7 +514,7 @@ function loadBatches() {
   apiFetch('GET', '/api/vouchers/batches?limit=20').then(function(batches) {
     var tbody = document.getElementById('batchesBody');
     tbody.innerHTML = '';
-    if (!batches.length) {
+    if (!batches || !batches.length) {
       tbody.innerHTML = '<tr><td colspan="8" style="color:var(--muted);text-align:center">Sin lotes generados</td></tr>';
       return;
     }
@@ -522,22 +522,25 @@ function loadBatches() {
       var tr = tbody.insertRow();
       td(tr, fmtDate(b.created_at));
       td(tr, b.plan_name);
-      var totalText = String(b.vouchers_total);
-      if (b.vouchers_total >= 36 && b.vouchers_total % 36 === 0) {
-        var sh = b.vouchers_total / 36;
+      var totalNum = b.vouchers_total !== undefined ? b.vouchers_total : (b.quantity || 0);
+      var totalText = String(totalNum);
+      if (totalNum >= 36 && totalNum % 36 === 0) {
+        var sh = totalNum / 36;
         totalText += ' (' + sh + (sh === 1 ? ' hoja)' : ' hojas)');
       }
       td(tr, totalText);
-      td(tr, b.vouchers_available);
-      td(tr, b.vouchers_sold);
-      td(tr, b.vouchers_active);
+      td(tr, b.vouchers_available !== undefined ? b.vouchers_available : totalNum);
+      td(tr, b.vouchers_sold || 0);
+      td(tr, b.vouchers_active || 0);
       td(tr, b.note || '—');
       var acts = tr.insertCell();
       var btnP = el('button', { className:'btn btn-sm btn-ghost' }, '🖨️');
       btnP.addEventListener('click', function() { window.open('./print.html?batch=' + b.id, '_blank'); });
       acts.appendChild(btnP);
     });
-  }).catch(function(){});
+  }).catch(function(err){
+    console.warn('Error loadBatches:', err);
+  });
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -1553,12 +1556,14 @@ function sendReplyViaBot() {
       status: statusVal
     })
   }).then(function(res) {
-    return res.json().then(function(d) {
-      if (!res.ok) throw new Error(d.error || 'Error enviando mensaje');
-      return d;
-    });
+    if (!res.ok) {
+      return res.json().catch(function() { return { error: 'HTTP ' + res.status }; }).then(function(d) {
+        throw new Error(d.error || ('HTTP ' + res.status));
+      });
+    }
+    return res.json();
   }).then(function(res) {
-    toast(res.message || 'Mensaje enviado exitosamente al WhatsApp del cliente', 'ok');
+    toast(res.message || 'Mensaje enviado exitosamente desde el servidor al WhatsApp del cliente', 'ok');
 
     // Registrar en Firestore
     if (window.firebaseDb && window.firebaseDb.updateComplaint) {
@@ -1574,7 +1579,18 @@ function sendReplyViaBot() {
     closeComplaintModal();
     loadComplaintsSection();
   }).catch(function(err) {
-    toast('Error enviando mensaje: ' + (err.message || 'Error de red'), 'error');
+    console.error('Error enviando mensaje via bot:', err);
+    // Preservar la nota en Firestore para no perder el trabajo de redacción
+    if (window.firebaseDb && window.firebaseDb.updateComplaint) {
+      var note = '[Intento de respuesta WhatsApp]: ' + msg;
+      var existingNotes = document.getElementById('cAdminNotes').value.trim();
+      var combinedNotes = existingNotes ? (existingNotes + '\n' + note) : note;
+      window.firebaseDb.updateComplaint(_activeComplaint.id, {
+        status: statusVal,
+        admin_notes: combinedNotes
+      });
+    }
+    toast('Error en servidor bot (' + (err.message || 'Sin conexión') + '). Por favor despliega en Render ("Manual Deploy") o pulsa "Abrir en WhatsApp Web".', 'error');
   }).finally(function() {
     if (btn) {
       btn.disabled = false;
