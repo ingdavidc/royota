@@ -97,7 +97,7 @@ body {
 /* ── Branding / Header ────────────────────────────────────────── */
 .portal-header {
   text-align: center;
-  margin-bottom: 22px;
+  margin-bottom: 14px;
 }
 
 .logo-badge {
@@ -110,49 +110,49 @@ body {
   -webkit-box-pack: center;
       -ms-flex-pack: center;
           justify-content: center;
-  width: 76px;
-  height: 76px;
+  width: 58px;
+  height: 58px;
   border-radius: 50%;
   background: -webkit-linear-gradient(135deg, #00c49f 0%, #00a896 50%, #028090 100%);
   background:         linear-gradient(135deg, #00c49f 0%, #00a896 50%, #028090 100%);
-  box-shadow: 0 10px 25px rgba(0, 196, 159, 0.35);
-  margin-bottom: 14px;
-  border: 3px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 8px 20px rgba(0, 196, 159, 0.35);
+  margin-bottom: 6px;
+  border: 2px solid rgba(255, 255, 255, 0.2);
 }
 
 .logo-badge svg {
-  width: 42px;
-  height: 42px;
+  width: 32px;
+  height: 32px;
   fill: #ffffff;
 }
 
 .tag-resort {
   display: inline-block;
-  padding: 4px 12px;
+  padding: 3px 10px;
   background: rgba(0, 229, 255, 0.12);
   border: 1px solid rgba(0, 229, 255, 0.3);
   border-radius: 20px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 1px;
+  letter-spacing: 0.8px;
   text-transform: uppercase;
   color: #00e5ff;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
 }
 
 .portal-title {
-  font-size: 26px;
+  font-size: 22px;
   font-weight: 800;
   color: #ffffff;
   letter-spacing: -0.5px;
-  margin-bottom: 6px;
+  margin-bottom: 2px;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
 }
 
 .portal-slogan {
-  font-size: 13.5px;
+  font-size: 12px;
   color: #a7d7c5;
-  line-height: 1.4;
+  line-height: 1.35;
   max-width: 360px;
   margin: 0 auto;
 }
@@ -161,24 +161,25 @@ body {
 .card {
   background: rgba(10, 41, 51, 0.82);
   border: 1px solid rgba(0, 229, 255, 0.18);
-  border-radius: 18px;
-  padding: 24px 20px;
-  margin-bottom: 20px;
-  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.4);
+  border-radius: 16px;
+  padding: 16px 18px;
+  margin-bottom: 12px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
 }
 
 /* ── Acordeones Colapsables (Planes y Puntos de Venta) ────────── */
 details.portal-accordion {
-  padding: 16px 20px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
   cursor: pointer;
   -webkit-transition: all 0.25s ease;
   transition: all 0.25s ease;
 }
 
 details.portal-accordion[open] {
-  padding: 20px;
+  padding: 16px 18px;
   border-color: rgba(0, 229, 255, 0.38);
 }
 
@@ -219,17 +220,17 @@ details.portal-accordion[open] .accordion-arrow {
   -webkit-box-align: center;
       -ms-flex-align: center;
           align-items: center;
-  gap: 10px;
-  margin-bottom: 14px;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
 .card-icon {
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1;
 }
 
 .card-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: #ffffff;
 }
@@ -237,22 +238,22 @@ details.portal-accordion[open] .accordion-arrow {
 /* ── Formulario de Activación de Ficha ────────────────────────── */
 .input-group {
   position: relative;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .voucher-input {
   display: block;
   width: 100%;
-  padding: 16px 18px;
-  font-size: 22px;
+  padding: 12px 14px;
+  font-size: 20px;
   font-family: 'Courier New', Courier, monospace;
   font-weight: 800;
-  letter-spacing: 4px;
+  letter-spacing: 3px;
   text-align: center;
   text-transform: uppercase;
   background: rgba(4, 25, 33, 0.85);
   border: 2px solid rgba(0, 229, 255, 0.3);
-  border-radius: 14px;
+  border-radius: 12px;
   color: #ffffff;
   outline: none;
   -webkit-transition: all 0.25s ease;
@@ -266,7 +267,7 @@ details.portal-accordion[open] .accordion-arrow {
 }
 
 .voucher-input::-webkit-input-placeholder {
-  font-size: 13px;
+  font-size: 12px;
   letter-spacing: 1px;
   color: rgba(167, 215, 197, 0.4);
   font-weight: 500;
@@ -276,16 +277,16 @@ details.portal-accordion[open] .accordion-arrow {
 .btn-river {
   display: block;
   width: 100%;
-  padding: 15px;
-  font-size: 16px;
+  padding: 12px 14px;
+  font-size: 15px;
   font-weight: 700;
   color: #042027;
   background: -webkit-linear-gradient(135deg, #00e5ff 0%, #00c49f 100%);
   background:         linear-gradient(135deg, #00e5ff 0%, #00c49f 100%);
   border: none;
-  border-radius: 12px;
+  border-radius: 11px;
   cursor: pointer;
-  box-shadow: 0 6px 20px rgba(0, 229, 255, 0.35);
+  box-shadow: 0 5px 16px rgba(0, 229, 255, 0.35);
   -webkit-transition: -webkit-transform 0.15s, box-shadow 0.15s;
           transition: transform 0.15s, box-shadow 0.15s;
   letter-spacing: 0.3px;
@@ -314,16 +315,16 @@ details.portal-accordion[open] .accordion-arrow {
 
 /* ── Mensajes de Estado ───────────────────────────────────────── */
 .status-box {
-  margin-top: 14px;
-  padding: 12px 16px;
+  margin-top: 10px;
+  padding: 10px 14px;
   border-radius: 10px;
-  font-size: 13.5px;
+  font-size: 13px;
   line-height: 1.4;
   text-align: left;
   display: none;
 }
 
-.status-box:not([hidden]) {
+.status-box:not([hidden]):not(:empty) {
   display: block;
 }
 
@@ -347,11 +348,11 @@ details.portal-accordion[open] .accordion-arrow {
 
 /* ── Info de Conexión Exitosa ─────────────────────────────────── */
 .conn-info {
-  margin-top: 18px;
+  margin-top: 14px;
   background: rgba(0, 196, 159, 0.12);
   border: 1px solid rgba(0, 196, 159, 0.35);
   border-radius: 12px;
-  padding: 16px;
+  padding: 14px;
 }
 
 .conn-info[hidden] {
@@ -359,11 +360,11 @@ details.portal-accordion[open] .accordion-arrow {
 }
 
 .conn-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   color: #69f0ae;
   text-align: center;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .conn-row {
@@ -373,9 +374,9 @@ details.portal-accordion[open] .accordion-arrow {
   -webkit-box-pack: justify;
       -ms-flex-pack: justify;
           justify-content: space-between;
-  padding: 6px 0;
+  padding: 5px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 13.5px;
+  font-size: 13px;
 }
 
 .conn-row:last-child {
@@ -392,8 +393,8 @@ details.portal-accordion[open] .accordion-arrow {
 }
 
 .conn-note {
-  margin-top: 10px;
-  font-size: 12.5px;
+  margin-top: 8px;
+  font-size: 12px;
   color: #a7d7c5;
   text-align: center;
 }
@@ -403,9 +404,9 @@ details.portal-accordion[open] .accordion-arrow {
   background: -webkit-linear-gradient(135deg, rgba(37, 211, 102, 0.15) 0%, rgba(18, 140, 126, 0.25) 100%);
   background:         linear-gradient(135deg, rgba(37, 211, 102, 0.15) 0%, rgba(18, 140, 126, 0.25) 100%);
   border: 1px solid rgba(37, 211, 102, 0.35);
-  border-radius: 18px;
-  padding: 20px;
-  margin-bottom: 20px;
+  border-radius: 16px;
+  padding: 13px 16px;
+  margin-bottom: 12px;
   text-align: center;
 }
 
@@ -420,16 +421,16 @@ details.portal-accordion[open] .accordion-arrow {
       -ms-flex-pack: center;
           justify-content: center;
   width: 100%;
-  padding: 14px 18px;
+  padding: 11px 16px;
   background: #25d366;
   color: #ffffff;
   border: none;
-  border-radius: 12px;
-  font-size: 15px;
+  border-radius: 10px;
+  font-size: 14.5px;
   font-weight: 700;
   cursor: pointer;
   text-decoration: none;
-  box-shadow: 0 6px 20px rgba(37, 211, 102, 0.35);
+  box-shadow: 0 4px 14px rgba(37, 211, 102, 0.35);
   -webkit-transition: -webkit-transform 0.15s, box-shadow 0.15s;
           transition: transform 0.15s, box-shadow 0.15s;
 }
@@ -570,10 +571,10 @@ details.portal-accordion[open] .accordion-arrow {
 .info-card {
   background: rgba(14, 52, 63, 0.85);
   border: 1px solid rgba(255, 209, 102, 0.35);
-  border-radius: 18px;
-  padding: 22px 20px;
-  margin-bottom: 20px;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  border-radius: 16px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
   position: relative;
   overflow: hidden;
 }
