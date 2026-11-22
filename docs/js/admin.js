@@ -34,6 +34,7 @@ function apiFetch(method, url, body) {
   if (window.firebaseDb) {
     if (url === '/api/config' || url === '/api/settings') {
       if (method === 'GET') return window.firebaseDb.getSettings();
+      if (method === 'PUT' || method === 'POST') return window.firebaseDb.saveSettings(body);
     }
     if (url === '/api/plans' || url === '/api/plans/all') {
       if (method === 'GET') return window.firebaseDb.getAllPlans();
@@ -949,7 +950,7 @@ function loadPlanFilterDropdown() {
 /* ══════════════════════════════════════════════════════════
    PORTAL & INFO BALNEARIO
 ══════════════════════════════════════════════════════════ */
-window.handleOnlinePurchaseSwitchChange = function(isActive) {
+window.handleOnlinePurchaseSwitchChange = function(isActive, isUserAction) {
   var badge = document.getElementById('onlinePurchaseBadge');
   var notice = document.getElementById('onlinePurchaseDisabledNotice');
   var fields = document.getElementById('onlinePurchaseFieldsWrap');
@@ -967,6 +968,53 @@ window.handleOnlinePurchaseSwitchChange = function(isActive) {
     fields.style.opacity = isActive ? '1' : '0.45';
     fields.style.pointerEvents = isActive ? 'auto' : 'none';
   }
+
+  // Si fue accionado por el usuario (click en el switch), auto-guardar DE INMEDIATO
+  if (isUserAction) {
+    window.saveOnlinePurchaseCardNow();
+  }
+};
+
+window.saveOnlinePurchaseCardNow = function() {
+  var chk = document.getElementById('setOnlinePurchaseActive');
+  var isActive = chk ? chk.checked : true;
+  var payPhone = document.getElementById('setPaymentPhone') ? document.getElementById('setPaymentPhone').value.trim() : '3174251419';
+  var waNum = document.getElementById('setWhatsappNumber') ? document.getElementById('setWhatsappNumber').value.trim() : '';
+  var waMsg = document.getElementById('setWhatsappMessage') ? document.getElementById('setWhatsappMessage').value : '';
+
+  var data = {
+    online_purchase_active: isActive ? '1' : '0',
+    payment_phone: payPhone,
+    whatsapp_number: waNum,
+    whatsapp_message: waMsg
+  };
+
+  var badge = document.getElementById('onlinePurchaseBadge');
+  if (badge) badge.textContent = '⏳ Guardando...';
+
+  var pFirestore = (window.firebaseDb && window.firebaseDb.saveSettings)
+    ? window.firebaseDb.saveSettings(data).catch(function(e) { console.warn('[Admin] Firestore auto-save:', e); return null; })
+    : Promise.resolve(null);
+
+  var pBackend = apiFetch('PUT', '/api/settings', data).catch(function(e) {
+    console.warn('[Admin] Backend auto-save:', e);
+    return null;
+  });
+
+  Promise.all([pFirestore, pBackend]).then(function() {
+    if (badge) {
+      if (isActive) {
+        badge.textContent = '● ACTIVO EN EL PORTAL';
+        badge.className = 'badge badge-success';
+      } else {
+        badge.textContent = '○ DESACTIVADO (Solo Casetas Físicas)';
+        badge.className = 'badge badge-warning';
+      }
+    }
+    toast(isActive ? '✅ Acordeón de compra en línea ACTIVADO en el portal' : '⚠️ Acordeón de compra en línea DESACTIVADO en el portal', 'ok');
+  }).catch(function(err) {
+    toast('Error al guardar cambio: ' + ((err && err.message) || 'Error de conexión'), 'error');
+  });
 };
 
 function loadPortalSettings() {
@@ -989,7 +1037,7 @@ function loadPortalSettings() {
     if (onlinePayEl) {
       var isOnline = (s.online_purchase_active !== '0' && s.online_purchase_active !== 0 && s.online_purchase_active !== false && s.online_purchase_active !== 'false');
       onlinePayEl.checked = isOnline;
-      if (window.handleOnlinePurchaseSwitchChange) window.handleOnlinePurchaseSwitchChange(isOnline);
+      if (window.handleOnlinePurchaseSwitchChange) window.handleOnlinePurchaseSwitchChange(isOnline, false);
     }
     if (waMsgEl)     waMsgEl.value     = s.whatsapp_message || '';
     if (actEl)       actEl.checked     = (s.info_active === '1' || s.info_active === 1 || s.info_active === true);

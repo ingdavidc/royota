@@ -408,8 +408,13 @@
                 <span style="font-size: 12px; color: #8899aa;">Activa o desactiva la compra virtual de fichas y los botones de pedido por WhatsApp en el portal</span>
               </div>
             </div>
-            <div id="onlinePurchaseBadge" class="badge badge-success" style="font-size: 12px; padding: 5px 12px; font-weight: 700; letter-spacing: 0.5px;">
-              ● ACTIVO EN EL PORTAL
+            <div style="display:flex; align-items:center; gap:10px;">
+              <div id="onlinePurchaseBadge" class="badge badge-success" style="font-size: 12px; padding: 5px 12px; font-weight: 700; letter-spacing: 0.5px;">
+                ● ACTIVO EN EL PORTAL
+              </div>
+              <button type="button" class="btn btn-sm btn-primary" onclick="saveOnlinePurchaseCardNow()" style="padding:6px 14px; font-size:12.5px; font-weight:700;" title="Guardar estado de compra en línea ahora">
+                💾 Guardar
+              </button>
             </div>
           </div>
 
@@ -426,7 +431,7 @@
               </div>
               <div style="display: flex; align-items: center; gap: 12px;">
                 <label class="switch-box">
-                  <input type="checkbox" id="setOnlinePurchaseActive" checked onchange="handleOnlinePurchaseSwitchChange(this.checked)">
+                  <input type="checkbox" id="setOnlinePurchaseActive" checked onchange="handleOnlinePurchaseSwitchChange(this.checked, true)">
                   <span class="switch-slider"></span>
                 </label>
               </div>
