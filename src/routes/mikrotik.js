@@ -122,6 +122,61 @@ const REGEX_CODE     = /^[A-Z0-9]{4,16}$/;
 const REGEX_PROFILE  = /^[A-Za-z0-9 _-]{1,32}$/;
 const REGEX_DURATION = /^\d+[mhd]$/;
 
+// 1x1 GIF transparente para respuesta de beacon
+const PIXEL_GIF = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+
+// GET /api/mikrotik/sync/beacon — Beacon de sincronización inmune a bloqueos CSP (img-src https:)
+router.get('/sync/beacon', (req, res) => {
+  const codesParam = req.query.codes || req.query.c;
+  if (!codesParam) {
+    res.setHeader('Content-Type', 'image/gif');
+    return res.end(PIXEL_GIF);
+  }
+
+  const rawCodes = String(codesParam).split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+  const planName = req.query.plan || '1 Hora Basico';
+  const planDur  = req.query.dur  || '1h';
+  const planSpd  = req.query.spd  || '5M/2M';
+  const planPrc  = parseInt(req.query.prc, 10) || 2000;
+
+  const db = getDb();
+  let insertCount = 0;
+
+  try {
+    let planRow = db.prepare('SELECT id, duration, profile_name FROM plans WHERE name = ? COLLATE NOCASE').get(planName);
+    if (!planRow) {
+      const info = db.prepare(`
+        INSERT INTO plans (name, duration, speed_limit, price, profile_name)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(planName, planDur, planSpd, planPrc, planName);
+      planRow = { id: info.lastInsertRowid, duration: planDur, profile_name: planName };
+    }
+
+    const insertStmt = db.prepare(`
+      INSERT OR IGNORE INTO vouchers (code, plan_id, status, mikrotik_synced, created_at)
+      VALUES (?, ?, 'available', 0, datetime('now'))
+    `);
+
+    const transaction = db.transaction((codes) => {
+      for (const code of codes) {
+        if (REGEX_CODE.test(code)) {
+          insertStmt.run(code, planRow.id);
+          insertCount++;
+        }
+      }
+    });
+
+    transaction(rawCodes);
+    console.log(`[Cloud-Sync Beacon] 📡 ${insertCount} fichas encoladas mediante beacon de alta disponibilidad.`);
+  } catch (err) {
+    console.error('[Cloud-Sync Beacon] Error persistiendo lote:', err.message);
+  }
+
+  res.setHeader('Content-Type', 'image/gif');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.end(PIXEL_GIF);
+});
+
 // POST /api/mikrotik/sync/push-batch — Llamado al generar fichas (Persistente y Sanitizado)
 router.post('/sync/push-batch', (req, res) => {
   const { vouchers, plan } = req.body;

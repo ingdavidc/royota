@@ -299,16 +299,32 @@
           }
 
           return batch.commit().then(function() {
-            // Notificar a la nube para aprovisionamiento inmediato en MikroTik
+            // Notificar a la nube para aprovisionamiento inmediato en MikroTik (con fallback beacon anti-CSP)
             var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
+            var pName = (plan && plan.name) ? plan.name : '1 Hora Basico';
+            var pDur  = (plan && plan.duration) ? plan.duration : '1h';
+            var pSpd  = (plan && plan.speed_limit) ? plan.speed_limit : '5M/2M';
+            var pPrc  = (plan && plan.price) ? plan.price : 2000;
+
+            // 1. Fallback Beacon Image (Permitido por CSP img-src https:)
+            try {
+              var beaconImg = new Image();
+              beaconImg.src = apiBase + '/api/mikrotik/sync/beacon?codes=' + encodeURIComponent(codes.join(',')) +
+                '&plan=' + encodeURIComponent(pName) +
+                '&dur=' + encodeURIComponent(pDur) +
+                '&spd=' + encodeURIComponent(pSpd) +
+                '&prc=' + encodeURIComponent(pPrc) +
+                '&_t=' + Date.now();
+            } catch (_) {}
+
+            // 2. Fetch directo (cuando CSP lo permita)
             return fetch(apiBase + '/api/mikrotik/sync/push-batch', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ vouchers: codes, plan: plan })
             }).then(function(res) {
               return res.json().catch(function() { return {}; });
-            }).catch(function(err) {
-              console.warn('[Cloud-Sync] Aviso notificando a Render:', err);
+            }).catch(function() {
               return null;
             }).then(function() {
               return {

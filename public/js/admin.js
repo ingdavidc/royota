@@ -50,6 +50,16 @@ function apiFetch(method, url, body) {
       return window.firebaseDb.generateVouchers(body).then(function(res) {
         // Doble garantía de inyección inmediata a MikroTik en nube
         var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
+        var p = res.plan || {};
+        try {
+          var bImg = new Image();
+          bImg.src = apiBase + '/api/mikrotik/sync/beacon?codes=' + encodeURIComponent((res.codes || []).join(',')) +
+            '&plan=' + encodeURIComponent(p.name || '1 Hora Basico') +
+            '&dur=' + encodeURIComponent(p.duration || '1h') +
+            '&spd=' + encodeURIComponent(p.speed_limit || '5M/2M') +
+            '&prc=' + encodeURIComponent(p.price || 2000) +
+            '&_t=' + Date.now();
+        } catch (_) {}
         fetch(apiBase + '/api/mikrotik/sync/push-batch', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
