@@ -411,14 +411,16 @@
           note:        note,
           created_at:  new Date().toISOString(),
         }).then(function(batchRef) {
-          var batch = db.batch();
           var codes = [];
+          var batchPromises = [];
+          var currentBatch = db.batch();
+          var opsInBatch = 0;
 
           for (var i = 0; i < quantity; i++) {
             var code = generateCode(code_length, charset, prefix);
             codes.push(code);
             var vRef = db.collection('vouchers').doc(code);
-            batch.set(vRef, {
+            currentBatch.set(vRef, {
               code:         code,
               plan_id:      planId,
               plan_name:    plan.name,
@@ -429,9 +431,18 @@
               status:       'available',
               created_at:   new Date().toISOString(),
             });
+            opsInBatch++;
+            if (opsInBatch >= 450) {
+              batchPromises.push(currentBatch.commit());
+              currentBatch = db.batch();
+              opsInBatch = 0;
+            }
+          }
+          if (opsInBatch > 0) {
+            batchPromises.push(currentBatch.commit());
           }
 
-          return batch.commit().then(function() {
+          return Promise.all(batchPromises).then(function() {
             // Notificar a la nube para aprovisionamiento inmediato en MikroTik (con fallback beacon anti-CSP)
             var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
             var pName = (plan && plan.name) ? plan.name : '1 Hora Basico';

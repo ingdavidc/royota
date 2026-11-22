@@ -111,12 +111,46 @@
                 </div>
               </div>
 
-              <div class="fg-row">
-                <div class="fg">
-                  <label class="flabel">Cantidad</label>
-                  <input type="number" id="gQty" class="finput" value="10" min="1" max="1000">
-                  <span class="fhint">Máx. 1000 por lote</span>
+              <!-- Configuración por Hojas Tamaño Carta -->
+              <div class="fg" style="background: rgba(0, 212, 255, 0.05); border: 1px solid rgba(0, 212, 255, 0.2); border-radius: 10px; padding: 14px; margin-bottom: 16px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                  <label class="flabel" style="margin-bottom:0; font-size:13.5px; font-weight:700; color:#e0e9f0; display:flex; align-items:center; gap:6px;">
+                    <span>📄 Hojas Carta a Generar para Impresión</span>
+                  </label>
+                  <span style="font-size:11px; background:rgba(0, 200, 83, 0.15); color:#00e676; padding:3px 9px; border-radius:12px; font-weight:700; border:1px solid rgba(0, 200, 83, 0.3);">
+                    36 fichas / hoja carta (6 cols × 6 filas)
+                  </span>
                 </div>
+
+                <div style="display:flex; gap:10px; align-items:center;">
+                  <button type="button" class="btn btn-ghost" id="btnDecSheets" style="font-size:18px; font-weight:bold; width:42px; height:42px; padding:0; flex-shrink:0; border:1px solid rgba(255,255,255,0.15); display:flex; align-items:center; justify-content:center;" title="Disminuir 1 hoja">➖</button>
+                  <div style="position:relative; flex:1;">
+                    <input type="number" id="gSheets" class="finput" value="1" min="1" max="25" style="text-align:center; font-size:18px; font-weight:700; color:#00d4ff; padding-right:75px;">
+                    <span style="position:absolute; right:14px; top:50%; transform:translateY(-50%); font-size:13px; color:#8ba3b8; pointer-events:none;">hoja(s)</span>
+                  </div>
+                  <button type="button" class="btn btn-ghost" id="btnIncSheets" style="font-size:18px; font-weight:bold; width:42px; height:42px; padding:0; flex-shrink:0; border:1px solid rgba(255,255,255,0.15); display:flex; align-items:center; justify-content:center;" title="Aumentar 1 hoja">➕</button>
+                </div>
+
+                <!-- Campo oculto para cantidad exacta enviada a la API/MikroTik -->
+                <input type="hidden" id="gQty" value="36">
+
+                <!-- Botones de selección rápida -->
+                <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:12px;">
+                  <button type="button" class="btn btn-xs btn-ghost sheet-pill" data-sheets="1" style="border-radius:14px; font-size:11.5px; padding:4px 10px; border:1px solid rgba(0,212,255,0.5); background:rgba(0,212,255,0.15); color:#00d4ff; font-weight:700;">1 Hoja (36)</button>
+                  <button type="button" class="btn btn-xs btn-ghost sheet-pill" data-sheets="2" style="border-radius:14px; font-size:11.5px; padding:4px 10px; border:1px solid rgba(255,255,255,0.12); color:#8ba3b8;">2 Hojas (72)</button>
+                  <button type="button" class="btn btn-xs btn-ghost sheet-pill" data-sheets="3" style="border-radius:14px; font-size:11.5px; padding:4px 10px; border:1px solid rgba(255,255,255,0.12); color:#8ba3b8;">3 Hojas (108)</button>
+                  <button type="button" class="btn btn-xs btn-ghost sheet-pill" data-sheets="5" style="border-radius:14px; font-size:11.5px; padding:4px 10px; border:1px solid rgba(255,255,255,0.12); color:#8ba3b8;">5 Hojas (180)</button>
+                  <button type="button" class="btn btn-xs btn-ghost sheet-pill" data-sheets="10" style="border-radius:14px; font-size:11.5px; padding:4px 10px; border:1px solid rgba(255,255,255,0.12); color:#8ba3b8;">10 Hojas (360)</button>
+                </div>
+
+                <!-- Resumen de aprovechamiento de papel -->
+                <div id="sheetsSummaryBox" style="margin-top:10px; padding:8px 12px; background:rgba(0,0,0,0.25); border-radius:8px; font-size:12px; color:#8ba3b8; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:4px;">
+                  <span>✨ Total fichas: <strong id="lblTotalVouchers" style="color:#00d4ff; font-size:14px;">36</strong> exactas</span>
+                  <span style="color:#00e676; font-weight:600;">🌿 Hoja 100% aprovechada (0 desperdicio)</span>
+                </div>
+              </div>
+
+              <div class="fg-row">
                 <div class="fg">
                   <label class="flabel">Longitud del código</label>
                   <select id="gCodeLen" class="finput">
@@ -126,9 +160,6 @@
                     <option value="12">12 caracteres</option>
                   </select>
                 </div>
-              </div>
-
-              <div class="fg-row">
                 <div class="fg">
                   <label class="flabel">Tipo de código</label>
                   <select id="gCharset" class="finput">
@@ -137,6 +168,9 @@
                     <option value="alpha">Solo letras (A-Z)</option>
                   </select>
                 </div>
+              </div>
+
+              <div class="fg-row">
                 <div class="fg">
                   <label class="flabel">Separador de grupos</label>
                   <select id="gGroupSize" class="finput">
@@ -144,6 +178,12 @@
                     <option value="4">Grupos de 4 (ABCD-EFGH)</option>
                     <option value="3">Grupos de 3 (ABC-DEF-GHI)</option>
                   </select>
+                </div>
+                <div class="fg">
+                  <label class="flabel">Prefijo (opcional)</label>
+                  <input type="text" id="gPrefix" class="finput" maxlength="4"
+                         placeholder="Ej: VIP (se agrega al inicio)"
+                         autocapitalize="characters" autocorrect="off">
                 </div>
               </div>
 
@@ -810,6 +850,6 @@
 <!-- ══ TOAST ════════════════════════════════════════════════= -->
 <div class="toast-wrap" id="toastWrap" aria-live="polite"></div>
 
-<script src="./js/admin.js?v=36"></script>
+<script src="./js/admin.js?v=37"></script>
 </body>
 </html>

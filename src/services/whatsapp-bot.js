@@ -499,6 +499,26 @@ async function processPaymentReceipt(sock, msg, senderJid) {
     transaction();
     console.log(`[WhatsApp Bot] ✅ Venta completada con éxito. Ficha: ${voucher.code} para ${senderPhone}`);
 
+    // Sincronizar ficha vendida en Cloud Firestore para registro inmediato en panel
+    fetch(`https://firestore.googleapis.com/v1/projects/fichas-royota/databases/(default)/documents/vouchers/${encodeURIComponent(voucher.code)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fields: {
+          code: { stringValue: voucher.code },
+          plan_name: { stringValue: matchedPlan.name },
+          duration: { stringValue: matchedPlan.duration || '1h' },
+          speed_limit: { stringValue: matchedPlan.speed_limit || '5M/2M' },
+          price: { integerValue: String(matchedPlan.price || 2000) },
+          status: { stringValue: 'sold' },
+          payment_method: { stringValue: paymentPlatform.toLowerCase() },
+          buyer_note: { stringValue: `WhatsApp: ${senderPhone} | Ref: ${cleanRef}` },
+          sold_at: { stringValue: new Date().toISOString() },
+          created_at: { stringValue: new Date().toISOString() }
+        }
+      })
+    }).catch(fErr => console.warn('[WhatsApp Bot] Aviso sincronizando ficha vendida a Firestore:', fErr.message));
+
     // Enviar la ficha al cliente
     const successMsg = `🎉 *¡PAGO VERIFICADO EXITOSAMENTE!*\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +

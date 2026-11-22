@@ -257,15 +257,96 @@ function loadDashboard() {
 function setText(id, v) { var e = document.getElementById(id); if(e) e.textContent = v !== undefined ? v : '—'; }
 
 /* ══════════════════════════════════════════════════════════
-   GENERAR FICHAS
+   GENERAR FICHAS (POR CAPACIDAD DE HOJA CARTA: 36 FICHAS/HOJA)
 ══════════════════════════════════════════════════════════ */
+var TICKETS_PER_LETTER_PAGE = 36;
 var _lastBatchId   = null;
 var _lastBatchData = null;
 var _plansCache    = [];
 
+function updateSheetsCalculation() {
+  var sheetsInput = document.getElementById('gSheets');
+  if (!sheetsInput) return;
+  var sheets = parseInt(sheetsInput.value, 10);
+  if (isNaN(sheets) || sheets < 1) sheets = 1;
+  if (sheets > 25) sheets = 25; // Hasta 25 hojas (900 fichas)
+  sheetsInput.value = sheets;
+
+  var totalVouchers = sheets * TICKETS_PER_LETTER_PAGE;
+  var gQty = document.getElementById('gQty');
+  if (gQty) gQty.value = totalVouchers;
+
+  var lblTotal = document.getElementById('lblTotalVouchers');
+  if (lblTotal) lblTotal.textContent = totalVouchers;
+
+  var btn = document.getElementById('btnGenerar');
+  if (btn && !btn.disabled) {
+    btn.innerHTML = '🎫 Generar ' + totalVouchers + ' Fichas (' + sheets + (sheets === 1 ? ' Hoja Carta' : ' Hojas Carta') + ')';
+  }
+
+  // Actualizar estilo visual de los botones píldora
+  document.querySelectorAll('.sheet-pill').forEach(function(pill) {
+    var s = parseInt(pill.getAttribute('data-sheets'), 10);
+    if (s === sheets) {
+      pill.style.borderColor = 'rgba(0,212,255,0.5)';
+      pill.style.background = 'rgba(0,212,255,0.18)';
+      pill.style.color = '#00d4ff';
+      pill.style.fontWeight = '700';
+    } else {
+      pill.style.borderColor = 'rgba(255,255,255,0.12)';
+      pill.style.background = 'transparent';
+      pill.style.color = '#8ba3b8';
+      pill.style.fontWeight = 'normal';
+    }
+  });
+}
+
+function initSheetCalculator() {
+  var btnDec = document.getElementById('btnDecSheets');
+  if (btnDec && !btnDec._wired) {
+    btnDec._wired = true;
+    btnDec.addEventListener('click', function() {
+      var s = parseInt(document.getElementById('gSheets').value, 10) || 1;
+      if (s > 1) {
+        document.getElementById('gSheets').value = s - 1;
+        updateSheetsCalculation();
+      }
+    });
+  }
+  var btnInc = document.getElementById('btnIncSheets');
+  if (btnInc && !btnInc._wired) {
+    btnInc._wired = true;
+    btnInc.addEventListener('click', function() {
+      var s = parseInt(document.getElementById('gSheets').value, 10) || 1;
+      if (s < 25) {
+        document.getElementById('gSheets').value = s + 1;
+        updateSheetsCalculation();
+      }
+    });
+  }
+  var sheetsInp = document.getElementById('gSheets');
+  if (sheetsInp && !sheetsInp._wired) {
+    sheetsInp._wired = true;
+    sheetsInp.addEventListener('input', updateSheetsCalculation);
+    sheetsInp.addEventListener('change', updateSheetsCalculation);
+  }
+  document.querySelectorAll('.sheet-pill').forEach(function(pill) {
+    if (!pill._wired) {
+      pill._wired = true;
+      pill.addEventListener('click', function() {
+        var s = parseInt(this.getAttribute('data-sheets'), 10) || 1;
+        document.getElementById('gSheets').value = s;
+        updateSheetsCalculation();
+      });
+    }
+  });
+  updateSheetsCalculation();
+}
+
 function loadGenSection() {
   loadPlanSelect('gPlanId');
   updateCodePreview();
+  initSheetCalculator();
   loadBatches();
 }
 
@@ -361,8 +442,8 @@ document.getElementById('genForm').addEventListener('submit', function(e) {
     prefix:     prefix,
     note:       note,
   }).then(function(r) {
-    btn.disabled    = false;
-    btn.textContent = '🎫 Generar Fichas';
+    btn.disabled = false;
+    updateSheetsCalculation();
 
     _lastBatchId   = r.batch_id;
     _lastBatchData = r;
@@ -371,8 +452,8 @@ document.getElementById('genForm').addEventListener('submit', function(e) {
     showCodesResult(r);
     loadBatches();
   }).catch(function(err) {
-    btn.disabled    = false;
-    btn.textContent = '🎫 Generar Fichas';
+    btn.disabled = false;
+    updateSheetsCalculation();
     toast((err && (err.error || err.message)) || 'Error al generar fichas', 'error');
   });
 });
@@ -382,7 +463,9 @@ function showCodesResult(r) {
   var title   = document.getElementById('resultTitle');
   var grid    = document.getElementById('codesGrid');
 
-  title.textContent = (r.generated || (r.codes && r.codes.length) || '') + ' fichas — ' + (r.plan ? r.plan.name : '');
+  var total = r.generated || (r.codes && r.codes.length) || 0;
+  var sheets = Math.ceil(total / TICKETS_PER_LETTER_PAGE);
+  title.textContent = total + ' fichas (' + sheets + (sheets === 1 ? ' hoja carta' : ' hojas carta') + ') — ' + (r.plan ? r.plan.name : '');
   grid.innerHTML    = '';
   r.codes.forEach(function(code) {
     var chip = document.createElement('span');
@@ -439,7 +522,12 @@ function loadBatches() {
       var tr = tbody.insertRow();
       td(tr, fmtDate(b.created_at));
       td(tr, b.plan_name);
-      td(tr, b.vouchers_total);
+      var totalText = String(b.vouchers_total);
+      if (b.vouchers_total >= 36 && b.vouchers_total % 36 === 0) {
+        var sh = b.vouchers_total / 36;
+        totalText += ' (' + sh + (sh === 1 ? ' hoja)' : ' hojas)');
+      }
+      td(tr, totalText);
       td(tr, b.vouchers_available);
       td(tr, b.vouchers_sold);
       td(tr, b.vouchers_active);
