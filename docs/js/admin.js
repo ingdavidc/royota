@@ -48,28 +48,41 @@ function apiFetch(method, url, body) {
       }
     }
     if (url.startsWith('/api/kiosks')) {
+      var _pingKioskSync = function() {
+        try {
+          var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
+          var img = new Image();
+          img.src = apiBase + '/api/kiosks/sync-beacon?t=' + Date.now();
+        } catch (_) {}
+      };
       if (method === 'GET') {
         var all = url.indexOf('all=true') !== -1;
         return window.firebaseDb.getKiosks(all);
       }
       if (method === 'POST') {
         return window.firebaseDb.saveKiosk(body).then(function() {
+          _pingKioskSync();
           return { message: 'Caseta guardada exitosamente' };
         });
       }
       if (url.includes('/toggle') && method === 'PATCH') {
         var tId = decodeURIComponent(url.split('/api/kiosks/')[1].split('/')[0]);
-        return window.firebaseDb.toggleKiosk(tId);
+        return window.firebaseDb.toggleKiosk(tId).then(function(res) {
+          _pingKioskSync();
+          return res;
+        });
       }
       if (method === 'PUT') {
         var pId = decodeURIComponent(url.split('/api/kiosks/')[1]);
         return window.firebaseDb.saveKiosk(body, pId).then(function() {
+          _pingKioskSync();
           return { message: 'Caseta actualizada exitosamente' };
         });
       }
       if (method === 'DELETE') {
         var dId = decodeURIComponent(url.split('/api/kiosks/')[1]);
         return window.firebaseDb.deleteKioskPermanent(dId).then(function() {
+          _pingKioskSync();
           return { message: 'Caseta eliminada exitosamente' };
         });
       }
@@ -1410,6 +1423,11 @@ function unblockPhone(phone) {
 var _currentKiosks = [];
 
 function loadKiosksSection() {
+  try {
+    var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
+    var img = new Image();
+    img.src = apiBase + '/api/kiosks/sync-beacon?t=' + Date.now();
+  } catch (_) {}
   var tbody = document.getElementById('kiosksBody');
   if (!tbody) return;
 

@@ -8,18 +8,54 @@
 const { Router } = require('express');
 const { authRequired } = require('../middleware/auth');
 const { getDb } = require('../database');
+const { getLiveKiosks, invalidateKiosksCache } = require('../services/whatsapp-bot');
 
 const router = Router();
 
 // GET /api/kiosks — Listar kioskos (Público: para portal cautivo, bot y admin)
-router.get('/', (req, res) => {
-  const db = getDb();
+router.get('/', async (req, res) => {
   const all = req.query.all === 'true';
+  if (!all) {
+    try {
+      const live = await getLiveKiosks();
+      if (live && live.length) {
+        return res.json(live);
+      }
+    } catch (_) {}
+  }
+  const db = getDb();
   const query = all
     ? 'SELECT * FROM kiosks ORDER BY sort_order ASC, id ASC'
     : 'SELECT * FROM kiosks WHERE is_active = 1 ORDER BY sort_order ASC, id ASC';
   const kiosks = db.prepare(query).all();
   res.json(kiosks);
+});
+
+// GET /api/kiosks/sync-beacon — Beacon anti-CSP para sincronización inmediata
+router.get('/sync-beacon', async (req, res) => {
+  try {
+    invalidateKiosksCache();
+    await getLiveKiosks();
+  } catch (_) {}
+  const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
+  res.writeHead(200, {
+    'Content-Type': 'image/gif',
+    'Content-Length': gif.length,
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Access-Control-Allow-Origin': '*'
+  });
+  res.end(gif);
+});
+
+// POST /api/kiosks/sync — Sincronización explícita desde panel
+router.post('/sync', async (req, res) => {
+  try {
+    invalidateKiosksCache();
+    const live = await getLiveKiosks();
+    res.json({ message: 'Kioskos sincronizados con éxito desde Firestore', count: live.length, kiosks: live });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // POST /api/kiosks — Crear nuevo kiosko (Admin)
@@ -35,6 +71,7 @@ router.post('/', authRequired, (req, res) => {
     VALUES (?, ?, ?, ?, ?)
   `).run(name.trim(), location.trim(), contact.trim(), notes.trim(), parseInt(sort_order, 10) || 0);
 
+  invalidateKiosksCache();
   const kiosk = db.prepare('SELECT * FROM kiosks WHERE id = ?').get(result.lastInsertRowid);
   res.status(201).json({ message: 'Kiosko creado exitosamente', kiosk });
 });
@@ -64,6 +101,7 @@ router.put('/:id', authRequired, (req, res) => {
     id
   );
 
+  invalidateKiosksCache();
   const updated = db.prepare('SELECT * FROM kiosks WHERE id = ?').get(id);
   res.json({ message: 'Kiosko actualizado', kiosk: updated });
 });
@@ -77,6 +115,7 @@ router.patch('/:id/toggle', authRequired, (req, res) => {
 
   const newState = k.is_active ? 0 : 1;
   db.prepare('UPDATE kiosks SET is_active = ? WHERE id = ?').run(newState, id);
+  invalidateKiosksCache();
   res.json({ message: `Kiosko ${newState ? 'activado' : 'desactivado'}`, is_active: newState });
 });
 
@@ -85,6 +124,7 @@ router.delete('/:id', authRequired, (req, res) => {
   const { id } = req.params;
   const db = getDb();
   db.prepare('DELETE FROM kiosks WHERE id = ?').run(id);
+  invalidateKiosksCache();
   res.json({ message: 'Kiosko eliminado exitosamente' });
 });
 

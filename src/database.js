@@ -328,9 +328,7 @@ function _seedKiosks(db) {
       VALUES (?, ?, ?, ?, ?)
     `);
     const tx = db.transaction(function () {
-      insert.run('Taquilla Principal', 'Entrada peatonal del Balneario', 'Recepción', 'Abierto 7:00 AM - 6:00 PM', 1);
-      insert.run('Restaurante El Río', 'Frente a las piscinas naturales', 'Caja Restaurante', 'Venta de fichas y bebidas frías', 2);
-      insert.run('Kiosko Los Samanes', 'Zona de kioskos y hamacas', 'Encargado Kiosko', 'Venta de fichas en efectivo', 3);
+      insert.run('Estadero El Viajero', 'Al lado de Pan de Yuca', 'Recepción', 'Abierto 8:00 AM - 10:00 PM', 1);
     });
     tx();
   }

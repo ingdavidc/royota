@@ -105,23 +105,150 @@ function cleanPhoneDigits(str) {
   return String(str || '').replace(/\D/g, '');
 }
 
+let _cachedLiveKiosks = null;
+let _lastKiosksFetch = 0;
+
 /**
- * Obtiene la lista formateada de kioskos / casetas activas
+ * Invalida el caché de kioskos para forzar recarga inmediata
  */
-function getKiosksFormatted(full = false) {
+function invalidateKiosksCache() {
+  _cachedLiveKiosks = null;
+  _lastKiosksFetch = 0;
+}
+
+/**
+ * Consulta en tiempo real las casetas / kioskos configurados en Cloud Firestore (fuente viva del panel administrativo)
+ * y los sincroniza automáticamente en SQLite local para consistencia total.
+ */
+async function getLiveKiosks() {
+  const now = Date.now();
+  if (_cachedLiveKiosks && (now - _lastKiosksFetch < 10000)) {
+    return _cachedLiveKiosks;
+  }
+
+  try {
+    const res = await fetch('https://firestore.googleapis.com/v1/projects/fichas-royota/databases/(default)/documents/kiosks?pageSize=50');
+    if (res.ok) {
+      const data = await res.json();
+      if (data.documents && data.documents.length) {
+        const firestoreKiosks = [];
+        data.documents.forEach(doc => {
+          const f = doc.fields || {};
+          let isActive = 1;
+          if (f.is_active) {
+            if (f.is_active.booleanValue !== undefined) {
+              isActive = f.is_active.booleanValue ? 1 : 0;
+            } else if (f.is_active.integerValue !== undefined) {
+              isActive = Number(f.is_active.integerValue);
+            }
+          }
+          if (isActive === 1) {
+            firestoreKiosks.push({
+              id: doc.name.split('/').pop(),
+              name: f.name ? f.name.stringValue : 'Caseta Autorizada',
+              location: f.location ? f.location.stringValue : '',
+              contact: f.contact ? f.contact.stringValue : '',
+              notes: f.notes ? f.notes.stringValue : '',
+              sort_order: f.sort_order ? Number(f.sort_order.integerValue || 0) : 0,
+              is_active: 1
+            });
+          }
+        });
+
+        if (firestoreKiosks.length) {
+          firestoreKiosks.sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name));
+          _cachedLiveKiosks = firestoreKiosks;
+          _lastKiosksFetch = now;
+
+          // Sincronizar en SQLite local para consistencia total
+          try {
+            const db = getDb();
+            const syncTrans = db.transaction(() => {
+              db.prepare('UPDATE kiosks SET is_active = 0').run();
+              for (const k of firestoreKiosks) {
+                const existing = db.prepare('SELECT id FROM kiosks WHERE name = ?').get(k.name);
+                if (existing) {
+                  db.prepare(`
+                    UPDATE kiosks
+                    SET location = ?, contact = ?, notes = ?, sort_order = ?, is_active = 1
+                    WHERE id = ?
+                  `).run(k.location, k.contact, k.notes, k.sort_order, existing.id);
+                  k.sqlite_id = existing.id;
+                } else {
+                  const ins = db.prepare(`
+                    INSERT INTO kiosks (name, location, contact, notes, sort_order, is_active)
+                    VALUES (?, ?, ?, ?, ?, 1)
+                  `).run(k.name, k.location, k.contact, k.notes, k.sort_order);
+                  k.sqlite_id = ins.lastInsertRowid;
+                }
+              }
+            });
+            syncTrans();
+          } catch (_) {}
+
+          return _cachedLiveKiosks;
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[WhatsApp Bot] Error consultando casetas/kioskos en Firestore:', err.message);
+  }
+
+  // Fallback a SQLite local
+  try {
+    const db = getDb();
+    const localKiosks = db.prepare('SELECT * FROM kiosks WHERE is_active = 1 ORDER BY sort_order ASC, id ASC').all();
+    if (localKiosks && localKiosks.length) {
+      _cachedLiveKiosks = localKiosks;
+      return localKiosks;
+    }
+  } catch (_) {}
+
+  return [
+    { name: 'Estadero El Viajero', location: 'Al lado de Pan de Yuca', contact: 'Recepción', notes: 'Abierto 8:00 AM - 10:00 PM' }
+  ];
+}
+
+/**
+ * Da formato a la lista de kioskos
+ */
+function formatKiosksList(kiosks, full = false) {
+  if (!kiosks || !kiosks.length) {
+    return '• Estadero El Viajero (Al lado de Pan de Yuca)';
+  }
+  return kiosks.map(k => {
+    let line = `📍 *${k.name}:* ${k.location}`;
+    if (full && k.notes) line += ` _(${k.notes})_`;
+    return line;
+  }).join('\n');
+}
+
+/**
+ * Obtiene la lista formateada sincrónicamente (usando caché o SQLite)
+ */
+function getKiosksFormattedSync(full = false) {
+  if (_cachedLiveKiosks && _cachedLiveKiosks.length) {
+    return formatKiosksList(_cachedLiveKiosks, full);
+  }
   try {
     const db = getDb();
     const kiosks = db.prepare('SELECT * FROM kiosks WHERE is_active = 1 ORDER BY sort_order ASC, id ASC').all();
-    if (!kiosks.length) {
-      return '• Taquilla Principal del Balneario (Entrada)';
+    if (kiosks && kiosks.length) {
+      return formatKiosksList(kiosks, full);
     }
-    return kiosks.map(k => {
-      let line = `📍 *${k.name}:* ${k.location}`;
-      if (full && k.notes) line += ` _(${k.notes})_`;
-      return line;
-    }).join('\n');
+  } catch (_) {}
+  return '• Estadero El Viajero (Al lado de Pan de Yuca)';
+}
+
+/**
+ * Obtiene la lista formateada de kioskos / casetas activas consultando la fuente viva de Firestore
+ */
+async function getKiosksFormatted(full = false) {
+  try {
+    const kiosks = await getLiveKiosks();
+    return formatKiosksList(kiosks, full);
   } catch (err) {
-    return '• Taquilla Principal del Balneario';
+    return getKiosksFormattedSync(full);
   }
 }
 
@@ -316,7 +443,7 @@ async function buildMenuMessage() {
   const plans = await getLivePlans();
   const businessName = config.business.name || 'Balneario Río Royota';
   const paymentPhone = config.whatsapp.paymentPhone || '3174251419';
-  const kiosksList = getKiosksFormatted(false);
+  const kiosksList = await getKiosksFormatted(false);
 
   let msg = `📶 *¡Bienvenido a ${businessName}!* 🚀\n`;
   msg += `Compra tu ficha de internet de forma 100% automática.\n\n`;
@@ -344,8 +471,8 @@ async function buildMenuMessage() {
 /**
  * Mensaje de suspensión formal cuando un usuario alcanza 2 intentos fallidos
  */
-function buildSuspensionMessage() {
-  const kiosksList = getKiosksFormatted(true);
+async function buildSuspensionMessage() {
+  const kiosksList = await getKiosksFormatted(true);
   return `🚫 *NÚMERO TEMPORALMENTE SUSPENDIDO* 🚫\n` +
     `━━━━━━━━━━━━━━━━━━━━\n` +
     `Has alcanzado el límite de *2 intentos no válidos* de comprobante. Por medidas de seguridad y prevención de fraudes, tu número ha sido suspendido por *24 horas* para compras en línea.\n\n` +
@@ -359,9 +486,9 @@ function buildSuspensionMessage() {
 /**
  * Helper para formatear advertencia de strike
  */
-function formatStrikeWarning(strike) {
+async function formatStrikeWarning(strike) {
   if (strike.isBlocked) return '';
-  const kiosksShort = getKiosksFormatted(false);
+  const kiosksShort = await getKiosksFormatted(false);
   return `\n\n⚠️ *ADVERTENCIA (Intento 1 de 2):* Te queda solo 1 intento más. De no ser aprobado tu comprobante, tu número será suspendido por 24 horas y solo podrás adquirir el ticket en tienda física (casetas autorizadas).\n\n🏪 *Casetas físicas para pago en efectivo:*\n${kiosksShort}`;
 }
 
@@ -422,10 +549,10 @@ async function processPaymentReceipt(sock, msg, senderJid) {
       const reason = analysis.tamper_reason || 'Se detectaron alteraciones o tipografía inconsistente en el comprobante.';
       const strike = recordStrike(senderPhone, `Comprobante alterado/editado: ${reason}`);
       if (strike.isBlocked) {
-        await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
+        await sock.sendMessage(senderJid, { text: await buildSuspensionMessage() }, { quoted: msg });
       } else {
         await sock.sendMessage(senderJid, {
-          text: `🚫 *Comprobante no válido (Inconsistencias detectadas)*\n\nEl sistema de auditoría detectó posibles alteraciones o edición digital en los datos del comprobante (${reason}).${formatStrikeWarning(strike)}`,
+          text: `🚫 *Comprobante no válido (Inconsistencias detectadas)*\n\nEl sistema de auditoría detectó posibles alteraciones o edición digital en los datos del comprobante (${reason}).${await formatStrikeWarning(strike)}`,
         }, { quoted: msg });
       }
       return;
@@ -437,10 +564,10 @@ async function processPaymentReceipt(sock, msg, senderJid) {
       const strike = recordStrike(senderPhone, `Comprobante inválido: ${reason}`);
 
       if (strike.isBlocked) {
-        await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
+        await sock.sendMessage(senderJid, { text: await buildSuspensionMessage() }, { quoted: msg });
       } else {
         await sock.sendMessage(senderJid, {
-          text: `❌ *No se pudo validar el pago*\n\nMotivo: ${reason}\n\nPor favor envía una captura de pantalla original y nítida donde se observe claramente el valor, el número de aprobación y la cuenta de destino.${formatStrikeWarning(strike)}`,
+          text: `❌ *No se pudo validar el pago*\n\nMotivo: ${reason}\n\nPor favor envía una captura de pantalla original y nítida donde se observe claramente el valor, el número de aprobación y la cuenta de destino.${await formatStrikeWarning(strike)}`,
         }, { quoted: msg });
       }
       return;
@@ -451,10 +578,10 @@ async function processPaymentReceipt(sock, msg, senderJid) {
     if (platformUpper.includes('TRANSFIYA') || (analysis.notes && String(analysis.notes).toUpperCase().includes('TRANSFIYA'))) {
       const strike = recordStrike(senderPhone, 'Intento de pago con Transfiya (no aceptado)');
       if (strike.isBlocked) {
-        await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
+        await sock.sendMessage(senderJid, { text: await buildSuspensionMessage() }, { quoted: msg });
       } else {
         await sock.sendMessage(senderJid, {
-          text: `❌ *Medio de pago no aceptado*\n\nPor políticas estrictas de seguridad contra fraude, *NO recibimos transferencias por Transfiya*.\n\nÚnicamente aceptamos pagos directos por:\n• *Daviplata* al número: \`${targetPhone}\`\n• *Llave Bre-B* al número: \`${targetPhone}\`\n\nSi deseas pagar en efectivo, escribe *CASETAS*.${formatStrikeWarning(strike)}`,
+          text: `❌ *Medio de pago no aceptado*\n\nPor políticas estrictas de seguridad contra fraude, *NO recibimos transferencias por Transfiya*.\n\nÚnicamente aceptamos pagos directos por:\n• *Daviplata* al número: \`${targetPhone}\`\n• *Llave Bre-B* al número: \`${targetPhone}\`\n\nSi deseas pagar en efectivo, escribe *CASETAS*.${await formatStrikeWarning(strike)}`,
         }, { quoted: msg });
       }
       return;
@@ -467,10 +594,10 @@ async function processPaymentReceipt(sock, msg, senderJid) {
     if (cleanedExtractedDest && !cleanedExtractedDest.includes(cleanedTarget) && !cleanedTarget.includes(cleanedExtractedDest)) {
       const strike = recordStrike(senderPhone, `Destino incorrecto: ${analysis.destination_phone}`);
       if (strike.isBlocked) {
-        await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
+        await sock.sendMessage(senderJid, { text: await buildSuspensionMessage() }, { quoted: msg });
       } else {
         await sock.sendMessage(senderJid, {
-          text: `❌ *Cuenta de destino incorrecta*\n\nEl comprobante muestra destino: *${analysis.destination_phone}*, pero el pago debe ser transferido a la cuenta autorizada: *${targetPhone}*.${formatStrikeWarning(strike)}`,
+          text: `❌ *Cuenta de destino incorrecta*\n\nEl comprobante muestra destino: *${analysis.destination_phone}*, pero el pago debe ser transferido a la cuenta autorizada: *${targetPhone}*.${await formatStrikeWarning(strike)}`,
         }, { quoted: msg });
       }
       return;
@@ -481,10 +608,10 @@ async function processPaymentReceipt(sock, msg, senderJid) {
     if (!cleanRef || cleanRef.length < 3) {
       const strike = recordStrike(senderPhone, 'Referencia no identificada en la imagen');
       if (strike.isBlocked) {
-        await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
+        await sock.sendMessage(senderJid, { text: await buildSuspensionMessage() }, { quoted: msg });
       } else {
         await sock.sendMessage(senderJid, {
-          text: `❌ No se pudo identificar el número de referencia o aprobación en el comprobante. Por favor envía una captura más nítida.${formatStrikeWarning(strike)}`,
+          text: `❌ No se pudo identificar el número de referencia o aprobación en el comprobante. Por favor envía una captura más nítida.${await formatStrikeWarning(strike)}`,
         }, { quoted: msg });
       }
       return;
@@ -495,10 +622,10 @@ async function processPaymentReceipt(sock, msg, senderJid) {
     if (existingRef) {
       const strike = recordStrike(senderPhone, `Comprobante duplicado: ${cleanRef}`);
       if (strike.isBlocked) {
-        await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
+        await sock.sendMessage(senderJid, { text: await buildSuspensionMessage() }, { quoted: msg });
       } else {
         await sock.sendMessage(senderJid, {
-          text: `⚠️ *Comprobante duplicado / Reutilizado*\n\nEste comprobante (Ref: *${cleanRef}*) ya fue registrado y procesado anteriormente el día ${existingRef.created_at}.\nCada comprobante es válido para una única ficha de internet.${formatStrikeWarning(strike)}`,
+          text: `⚠️ *Comprobante duplicado / Reutilizado*\n\nEste comprobante (Ref: *${cleanRef}*) ya fue registrado y procesado anteriormente el día ${existingRef.created_at}.\nCada comprobante es válido para una única ficha de internet.${await formatStrikeWarning(strike)}`,
         }, { quoted: msg });
       }
       return;
@@ -512,12 +639,12 @@ async function processPaymentReceipt(sock, msg, senderJid) {
     if (!matchedPlan) {
       const strike = recordStrike(senderPhone, `Monto $${paidAmount} no coincide con planes`);
       if (strike.isBlocked) {
-        await sock.sendMessage(senderJid, { text: buildSuspensionMessage() }, { quoted: msg });
+        await sock.sendMessage(senderJid, { text: await buildSuspensionMessage() }, { quoted: msg });
       } else {
         const formattedPaid = paidAmount.toLocaleString('es-CO');
         let planListStr = activePlans.map(p => `• *${p.name}* (${p.duration}) → *$${p.price.toLocaleString('es-CO')} COP*`).join('\n');
         await sock.sendMessage(senderJid, {
-          text: `⚠️ *Monto recibido no coincide con ningún plan*\n\nDetectamos un pago por *$${formattedPaid} COP*, pero actualmente no coincide con el valor exacto de ninguno de nuestros planes disponibles:\n\n${planListStr}${formatStrikeWarning(strike)}`,
+          text: `⚠️ *Monto recibido no coincide con ningún plan*\n\nDetectamos un pago por *$${formattedPaid} COP*, pero actualmente no coincide con el valor exacto de ninguno de nuestros planes disponibles:\n\n${planListStr}${await formatStrikeWarning(strike)}`,
         }, { quoted: msg });
       }
       return;
@@ -686,6 +813,10 @@ async function startWhatsAppBot(forceClean = false) {
   _state.lastError = null;
   console.log('[WhatsApp Bot] Iniciando servicio de WhatsApp con Baileys...');
 
+  // Pre-cargar planes y casetas en vivo desde Firestore
+  getLivePlans().catch(() => {});
+  getLiveKiosks().catch(() => {});
+
   try {
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     const { version } = await fetchLatestBaileysVersion().catch(() => ({ version: [2, 3000, 1043857760] }));
@@ -837,7 +968,7 @@ async function startWhatsAppBot(forceClean = false) {
           // Solo enviar el aviso de suspensión una vez cada 2 horas para no spamear
           if (now - lastWarned > 2 * 60 * 60 * 1000) {
             _warnedSuspended.set(senderPhone, now);
-            await sock.sendMessage(remoteJid, { text: buildSuspensionMessage() }, { quoted: msg });
+            await sock.sendMessage(remoteJid, { text: await buildSuspensionMessage() }, { quoted: msg });
           }
           continue; // No procesar ninguna petición de números bloqueados
         }
@@ -1027,7 +1158,7 @@ async function startWhatsAppBot(forceClean = false) {
             await sock.sendMessage(remoteJid, { text: complaintMsg });
           } else if (isKioskQuery) {
             _offTopicTracker.delete(senderPhone);
-            const kiosksFull = getKiosksFormatted(true);
+            const kiosksFull = await getKiosksFormatted(true);
             const kioskMsg =
               `🏪 *PUNTOS DE VENTA FÍSICOS (CASETAS Y KIOSKOS)* 🏖️\n` +
               `━━━━━━━━━━━━━━━━━━━━\n` +
@@ -1262,4 +1393,9 @@ module.exports = {
   clearStrikes,
   checkPhoneBlocked,
   sendDirectWhatsAppMessage,
+  getLivePlans,
+  getLiveKiosks,
+  invalidateKiosksCache,
+  getKiosksFormatted,
+  getKiosksFormattedSync,
 };

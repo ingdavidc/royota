@@ -38,9 +38,7 @@
   ];
 
   var DEFAULT_KIOSKS = [
-    { id: 'taquilla-principal', name: 'Taquilla Principal', location: 'Entrada peatonal del Balneario', contact: 'Recepción', notes: 'Abierto 7:00 AM - 6:00 PM', sort_order: 1, is_active: 1 },
-    { id: 'restaurante-el-rio', name: 'Restaurante El Río', location: 'Frente a las piscinas naturales', contact: 'Caja Restaurante', notes: 'Venta de fichas y bebidas frías', sort_order: 2, is_active: 1 },
-    { id: 'kiosko-los-samanes', name: 'Kiosko Los Samanes', location: 'Zona de kioskos y hamacas', contact: 'Encargado Kiosko', notes: 'Venta de fichas en efectivo', sort_order: 3, is_active: 1 }
+    { id: 'estadero-el-viajero', name: 'Estadero El Viajero', location: 'Al lado de Pan de Yuca', contact: 'Recepción', notes: 'Abierto 8:00 AM - 10:00 PM', sort_order: 1, is_active: 1 }
   ];
 
   function parseDurationMs(str) {
@@ -238,14 +236,16 @@
     getKiosks: function(all) {
       if (!db) return Promise.resolve(DEFAULT_KIOSKS);
       var q = db.collection('kiosks');
-      if (!all) q = q.where('is_active', '==', 1);
       return q.get().then(function(snap) {
-        if (snap.empty) return DEFAULT_KIOSKS;
+        if (snap.empty) return all ? [] : DEFAULT_KIOSKS;
         var list = [];
         snap.forEach(function(d) {
           var k = d.data();
           k.id = d.id;
-          list.push(k);
+          var isActive = (k.is_active === 1 || k.is_active === true || k.is_active === '1' || k.is_active === undefined);
+          if (all || isActive) {
+            list.push(k);
+          }
         });
         list.sort(function(a, b) {
           return (a.sort_order || 0) - (b.sort_order || 0);
