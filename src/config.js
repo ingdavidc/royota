@@ -2,30 +2,44 @@
  * src/config.js
  * ─────────────────────────────────────────────────────────────
  * Centraliza todas las variables de entorno con validación y
- * valores por defecto.
+ * valores por defecto seguros.
  */
 'use strict';
 require('dotenv').config();
-
-function required(key) {
-  const val = process.env[key];
-  if (!val || val.trim() === '') {
-    throw new Error(`[Config] Variable de entorno obligatoria no definida: ${key}`);
-  }
-  return val.trim();
-}
+const crypto = require('crypto');
 
 function optional(key, defaultValue) {
   const val = process.env[key];
   return (val && val.trim() !== '') ? val.trim() : defaultValue;
 }
 
-const jwtSecret = optional('JWT_SECRET', 'dev-secret-inseguro-cambiar-en-produccion-123456');
+const nodeEnv = optional('NODE_ENV', 'development');
+
+// Nunca usar un secreto JWT estático predecible cuando no está configurado
+let jwtSecret = optional('JWT_SECRET', '');
+if (!jwtSecret || jwtSecret.length < 32 || jwtSecret.includes('dev-secret-inseguro')) {
+  jwtSecret = crypto.randomBytes(48).toString('hex');
+  if (nodeEnv === 'production') {
+    console.error('[Config] ⚠️ JWT_SECRET no configurado o inseguro en producción. Usando clave efímera aleatoria por arranque.');
+  }
+}
+
+// Evitar contraseña admin por defecto predecible en producción
+let adminPass = optional('ADMIN_PASS', '');
+let adminPassGenerated = false;
+if (!adminPass) {
+  if (nodeEnv === 'production') {
+    adminPass = crypto.randomBytes(18).toString('base64url');
+    adminPassGenerated = true;
+  } else {
+    adminPass = 'admin123';
+  }
+}
 
 const config = {
   // ── Servidor ───────────────────────────────────────────────
   port:    parseInt(optional('PORT', '3000'), 10),
-  nodeEnv: optional('NODE_ENV', 'development'),
+  nodeEnv,
   tz:      optional('TZ', 'America/Bogota'),
 
   // ── Negocio ────────────────────────────────────────────────
@@ -41,21 +55,39 @@ const config = {
     expiresIn: optional('JWT_EXPIRES_IN', '10h'),
   },
 
-  // ── MikroTik REST API ──────────────────────────────────────
+  // ── CORS ───────────────────────────────────────────────────
+  cors: {
+    allowedOrigins: optional(
+      'CORS_ORIGINS',
+      'https://royota.dctelematica.com,http://localhost:3000,http://127.0.0.1:3000'
+    ).split(',').map((s) => s.trim()).filter(Boolean),
+  },
+
+  // ── Firebase & Auth Admin ──────────────────────────────────
+  firebase: {
+    projectId:          optional('FIREBASE_PROJECT_ID', 'fichas-royota'),
+    serviceAccount:     optional('FIREBASE_SERVICE_ACCOUNT', ''),
+    allowedAdminUids:   optional('ALLOWED_ADMIN_UIDS', '2yDqpc64kwQt92PqGOBefC38zA92')
+      .split(',').map((s) => s.trim()).filter(Boolean),
+    allowedAdminEmails: optional('ALLOWED_ADMIN_EMAILS', 'ing.david@dctelematica.com')
+      .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean),
+  },
+
+  // ── MikroTik REST API & Cloud Sync ─────────────────────────
   mikrotik: {
-    // Si MIKROTIK_MOCK=true, simula el router sin necesitar el hardware físico
     mock:      optional('MIKROTIK_MOCK', 'true') === 'true',
     host:      optional('MIKROTIK_HOST', '192.168.88.1'),
     port:      parseInt(optional('MIKROTIK_PORT', '443'), 10),
-    user:      optional('MIKROTIK_USER', 'admin'),
+    user:      optional('MIKROTIK_USER', 'api-fichas'),
     pass:      optional('MIKROTIK_PASS', ''),
     server:    optional('MIKROTIK_HOTSPOT_SERVER', 'hotspot1'),
     useSsl:    optional('MIKROTIK_USE_SSL', 'true') !== 'false',
-    verifySsl: optional('MIKROTIK_VERIFY_SSL', 'false') === 'true',
+    verifySsl: optional('MIKROTIK_VERIFY_SSL', 'true') === 'true',
     timeoutMs: parseInt(optional('MIKROTIK_TIMEOUT_MS', '8000'), 10),
+    syncToken: optional('MIKROTIK_SYNC_TOKEN', ''),
   },
 
-  // ── Scheduler de expiración continua ──────────────────────
+  // ── Scheduler de limpieza ──────────────────────────────────
   cleanup: {
     cron: optional('CLEANUP_CRON', '*/5 * * * *'),
   },
@@ -63,14 +95,15 @@ const config = {
   // ── Admin por defecto ──────────────────────────────────────
   admin: {
     user: optional('ADMIN_USER', 'admin'),
-    pass: optional('ADMIN_PASS', 'admin123'),
+    pass: adminPass,
+    generatedBootstrapPass: adminPassGenerated,
   },
 
   // ── WhatsApp & IA Bot (Automatización de Ventas) ───────────
   whatsapp: {
     enabled:        optional('WHATSAPP_ENABLED', 'true') === 'true',
     geminiApiKey:   optional('GEMINI_API_KEY', ''),
-    geminiModel:    optional('GEMINI_MODEL', 'gemini-1.5-flash'),
+    geminiModel:    optional('GEMINI_MODEL', 'gemini-2.5-flash'),
     paymentPhone:   optional('PAYMENT_PHONE', '3174251419'),
     daviplataPhone: optional('DAVIPLATA_PHONE', '3174251419'),
     brebKey:        optional('BREB_KEY', '3174251419'),

@@ -1,28 +1,42 @@
+/**
+ * src/middleware/auth.js
+ * ─────────────────────────────────────────────────────────────
+ * Middleware estricto de autenticación administrativa.
+ * Acepta únicamente:
+ *  1. JWT local firmado con config.jwt.secret (HS256)
+ *  2. Firebase ID Token verificado criptográficamente (RS256) + whitelist
+ */
+'use strict';
+
 const jwt = require('jsonwebtoken');
 const config = require('../config');
+const { verifyFirebaseIdToken } = require('../services/firebase-auth-verifier');
 
-function authRequired(req, res, next) {
+async function authRequired(req, res, next) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
     return res.status(401).json({ error: 'Token requerido' });
   }
 
-  const token = header.split(' ')[1];
+  const token = header.slice(7).trim();
   if (!token) {
     return res.status(401).json({ error: 'Token vacío' });
   }
 
+  // 1. Verificar JWT local HS256
   try {
-    const payload = jwt.verify(token, config.jwt.secret);
+    const payload = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] });
     req.admin = payload;
     return next();
-  } catch (err) {
-    // Si no es un JWT local válido, pero hay un token de sesión (ej: Firebase UID / Cloud),
-    // permitir acceso administrativo para no bloquear el panel híbrido.
-    if (token.length > 5) {
-      req.admin = { id: 1, username: 'admin', role: 'admin' };
-      return next();
-    }
+  } catch (_) {
+    // Continuar hacia verificación criptográfica de Firebase ID Token
+  }
+
+  // 2. Verificar Firebase ID Token RS256 contra llaves de Google + lista blanca
+  try {
+    req.admin = await verifyFirebaseIdToken(token);
+    return next();
+  } catch (_) {
     return res.status(401).json({ error: 'Token inválido o expirado' });
   }
 }

@@ -1,22 +1,19 @@
 /**
  * src/routes/whatsapp.js
  * ─────────────────────────────────────────────────────────────
- * Endpoints administrativos para el bot de WhatsApp.
- *
- * GET  /api/whatsapp/status    → Estado de conexión y código QR
- * POST /api/whatsapp/logout    → Cerrar sesión y forzar nuevo QR
- * GET  /api/whatsapp/payments  → Historial de pagos procesados por WhatsApp
+ * Endpoints administrativos autenticados para el bot de WhatsApp.
  */
 'use strict';
 
 const { Router } = require('express');
 const { authRequired } = require('../middleware/auth');
 const { getBotStatus, logoutBot, restartBot, sendDirectWhatsAppMessage } = require('../services/whatsapp-bot');
+const { firestoreFetch, toFirestoreFields } = require('../services/firestore-client');
 const { getDb } = require('../database');
 
 const router = Router();
 
-// Enviar mensaje de WhatsApp a un cliente directamente desde el panel
+// Enviar mensaje de WhatsApp a un cliente directamente desde el panel (Auth requerido)
 router.post('/send-message', authRequired, async (req, res) => {
   const { phone, message, complaint_id, status } = req.body;
   if (!phone || !message) {
@@ -26,7 +23,6 @@ router.post('/send-message', authRequired, async (req, res) => {
   try {
     const result = await sendDirectWhatsAppMessage(phone, message);
 
-    // Si viene asociado a un caso de PQRS, actualizar estado y notas
     if (complaint_id) {
       const nowStr = new Date().toISOString();
       const noteEntry = `[WhatsApp ${new Date().toLocaleTimeString('es-CO')}]: ${message}`;
@@ -43,18 +39,20 @@ router.post('/send-message', authRequired, async (req, res) => {
       } catch (_) {}
 
       try {
-        // Actualizar en Firestore para persistencia permanente
-        await fetch(`https://firestore.googleapis.com/v1/projects/fichas-royota/databases/(default)/documents/complaints/${complaint_id}?updateMask.fieldPaths=status&updateMask.fieldPaths=admin_notes&updateMask.fieldPaths=updated_at`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fields: {
-              status: { stringValue: status || 'resolved' },
-              admin_notes: { stringValue: noteEntry },
-              updated_at: { stringValue: nowStr }
-            }
-          })
-        });
+        await firestoreFetch(
+          `/complaints/${encodeURIComponent(String(complaint_id))}?updateMask.fieldPaths=status&updateMask.fieldPaths=admin_notes&updateMask.fieldPaths=updated_at`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              fields: toFirestoreFields({
+                status: status || 'resolved',
+                admin_notes: noteEntry,
+                updated_at: nowStr,
+              }),
+            }),
+          }
+        );
       } catch (_) {}
     }
 
@@ -65,33 +63,13 @@ router.post('/send-message', authRequired, async (req, res) => {
   }
 });
 
-// GET /api/whatsapp/send-beacon — Baliza anti-CSP para enviar mensaje desde el navegador
-router.get('/send-beacon', async (req, res) => {
-  const { phone, message, msg, complaint_id, status } = req.query;
-  const textToSend = message || msg;
-  if (phone && textToSend) {
-    try {
-      await sendDirectWhatsAppMessage(phone, textToSend);
-    } catch (err) {
-      console.warn('[WhatsApp Beacon] Error:', err.message);
-    }
-  }
-  const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
-  res.writeHead(200, {
-    'Content-Type': 'image/gif',
-    'Content-Length': pixel.length,
-    'Cache-Control': 'no-cache, no-store, must-revalidate',
-  });
-  res.end(pixel);
-});
-
-// Estado de conexión del Bot y Código QR (Público para fácil visualización)
-router.get('/status', (req, res) => {
+// Estado de conexión del Bot y Código QR (Auth requerido para evitar robo de QR)
+router.get('/status', authRequired, (req, res) => {
   res.json(getBotStatus());
 });
 
-// Reiniciar bot y forzar generación de nuevo código QR
-router.post('/restart', async (req, res) => {
+// Reiniciar bot y forzar generación de nuevo código QR (Auth requerido)
+router.post('/restart', authRequired, async (req, res) => {
   try {
     const result = await restartBot();
     res.json(result || { success: true, message: 'Bot reiniciado con éxito. Generando código QR...' });
@@ -100,23 +78,7 @@ router.post('/restart', async (req, res) => {
   }
 });
 
-// GET /api/whatsapp/restart-beacon — Baliza anti-CSP para reiniciar bot y generar QR
-router.get('/restart-beacon', async (req, res) => {
-  try {
-    await restartBot();
-  } catch (err) {
-    console.error('[WhatsApp] Error restart-beacon:', err.message);
-  }
-  const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
-  res.writeHead(200, {
-    'Content-Type': 'image/gif',
-    'Content-Length': pixel.length,
-    'Cache-Control': 'no-cache, no-store, must-revalidate',
-  });
-  res.end(pixel);
-});
-
-// Cerrar sesión y desvincular número
+// Cerrar sesión y desvincular número (Auth requerido)
 router.post('/logout', authRequired, async (req, res) => {
   try {
     const result = await logoutBot();
@@ -126,27 +88,11 @@ router.post('/logout', authRequired, async (req, res) => {
   }
 });
 
-// GET /api/whatsapp/logout-beacon — Baliza anti-CSP para desvincular WhatsApp
-router.get('/logout-beacon', async (req, res) => {
-  try {
-    await logoutBot();
-  } catch (err) {
-    console.error('[WhatsApp] Error logout-beacon:', err.message);
-  }
-  const pixel = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
-  res.writeHead(200, {
-    'Content-Type': 'image/gif',
-    'Content-Length': pixel.length,
-    'Cache-Control': 'no-cache, no-store, must-revalidate',
-  });
-  res.end(pixel);
-});
-
 // Historial de comprobantes procesados con IA
 router.get('/payments', authRequired, (req, res) => {
   const db = getDb();
-  const page = parseInt(req.query.page, 10) || 1;
-  const limit = parseInt(req.query.limit, 10) || 20;
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 20));
   const offset = (page - 1) * limit;
 
   const payments = db.prepare(`

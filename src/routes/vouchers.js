@@ -1,17 +1,8 @@
 /**
  * src/routes/vouchers.js
  * ─────────────────────────────────────────────────────────────
- * Rutas completas de gestión de fichas (vouchers).
- *
- * POST /api/vouchers/generate      → Generar lote de fichas
- * GET  /api/vouchers               → Listar fichas con filtros
- * GET  /api/vouchers/stats         → Estadísticas para dashboard
- * GET  /api/vouchers/batches       → Historial de lotes
- * GET  /api/vouchers/batch/:id     → Fichas de un lote
- * POST /api/vouchers/sell          → Marcar ficha como vendida
- * POST /api/vouchers/activate      → Activar ficha (portal cautivo)
- * GET  /api/vouchers/check/:code   → Estado de ficha (portal)
- * POST /api/vouchers/revoke/:id    → Revocar ficha
+ * Rutas completas de gestión de fichas (vouchers) con protección
+ * atómica anti-TOCTOU y validación de MAC/cortesías.
  */
 'use strict';
 
@@ -20,50 +11,24 @@ const { getDb }  = require('../database');
 const { authRequired }   = require('../middleware/auth');
 const mikrotik           = require('../services/mikrotik-api');
 const { generateBatch, listBatches, getBatchVouchers, CHARSETS } = require('../services/voucher-generator');
+const { parseDurationMs, getBogotaDateStr, getBogotaMidnightMs } = require('../utils/helpers');
 
 const router = Router();
 const _activatingCodes = new Set();
+const REGEX_MAC = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/;
+const REGEX_CODE = /^[A-Z0-9][A-Z0-9_-]{2,23}$/;
 
-// ── Helper: parsear duración MikroTik a ms ───────────────────
-function parseDurationMs(str) {
-  if (!str) return 3_600_000; // default 1h
-  const m = str.match(/^(\d+)([mhd])$/i);
-  if (!m) return 3_600_000;
-  const n = parseInt(m[1], 10);
-  switch (m[2].toLowerCase()) {
-    case 'm': return n * 60_000;
-    case 'h': return n * 3_600_000;
-    case 'd': return n * 86_400_000;
-    default:  return 3_600_000;
-  }
-}
-
-// ════════════════════════════════════════════════════════════════
-//  GENERAR LOTE DE FICHAS
-// ════════════════════════════════════════════════════════════════
-/**
- * POST /api/vouchers/generate
- * Body: {
- *   plan_id: number,
- *   quantity: number (1-1000),
- *   code_length?: number (4-16, default 8),
- *   charset?: 'full'|'numeric'|'alpha' (default 'full'),
- *   group_size?: number (0=sin separador, 4=grupos de 4),
- *   separator?: string (default '-'),
- *   prefix?: string,
- *   note?: string
- * }
- */
+// ── GENERAR LOTE DE FICHAS ────────────────────────────────────
 router.post('/generate', authRequired, async (req, res) => {
   const {
     plan_id,
-    quantity   = 10,
+    quantity    = 10,
     code_length = 8,
-    charset    = 'full',
+    charset     = 'full',
     group_size  = 0,
-    separator  = '-',
-    prefix     = '',
-    note       = '',
+    separator   = '-',
+    prefix      = '',
+    note        = '',
   } = req.body;
 
   if (!plan_id) {
@@ -78,20 +43,21 @@ router.post('/generate', authRequired, async (req, res) => {
       charset,
       groupSize:  parseInt(group_size, 10),
       separator,
-      prefix:     prefix.toUpperCase(),
+      prefix:     String(prefix || '').toUpperCase(),
       batchNote:  note,
     });
 
-    // Registrar quién generó el lote
-    getDb().prepare(
-      'UPDATE voucher_batches SET created_by = ? WHERE id = ?'
-    ).run(req.admin.id, result.batchId);
+    if (req.admin.id) {
+      getDb().prepare(
+        'UPDATE voucher_batches SET created_by = ? WHERE id = ?'
+      ).run(req.admin.id, result.batchId);
+    }
 
     res.status(201).json({
-      message:  `${result.generated} fichas generadas exitosamente`,
-      batch_id: result.batchId,
-      plan:     result.plan,
-      codes:    result.codes,
+      message:   `${result.generated} fichas generadas exitosamente`,
+      batch_id:  result.batchId,
+      plan:      result.plan,
+      codes:     result.codes,
       generated: result.generated,
     });
   } catch (err) {
@@ -100,15 +66,18 @@ router.post('/generate', authRequired, async (req, res) => {
   }
 });
 
-// ════════════════════════════════════════════════════════════════
-//  ELIMINAR TODAS LAS FICHAS (Reset total de pruebas)
-// ════════════════════════════════════════════════════════════════
-router.post('/clear-all', (req, res) => {
+// ── ELIMINAR TODAS LAS FICHAS (Requiere Admin Autenticado) ────
+router.post('/clear-all', authRequired, (req, res) => {
   const db = getDb();
   try {
-    db.prepare('DELETE FROM vouchers').run();
-    db.prepare('DELETE FROM voucher_batches').run();
-    console.log('[Vouchers] 🗑️ Todas las fichas locales y en cola fueron eliminadas.');
+    const tx = db.transaction(() => {
+      db.prepare('DELETE FROM sales').run();
+      db.prepare('DELETE FROM whatsapp_payments').run();
+      db.prepare('DELETE FROM vouchers').run();
+      db.prepare('DELETE FROM voucher_batches').run();
+    });
+    tx();
+    console.log('[Vouchers] 🗑️ Todas las fichas locales y en cola fueron eliminadas por admin:', req.admin.username);
     res.json({ ok: true, message: 'Todas las fichas han sido eliminadas' });
   } catch (err) {
     console.error('[Vouchers] Error al limpiar fichas:', err);
@@ -116,19 +85,20 @@ router.post('/clear-all', (req, res) => {
   }
 });
 
-// ════════════════════════════════════════════════════════════════
-//  LISTAR FICHAS (con filtros y paginación)
-// ════════════════════════════════════════════════════════════════
+// ── LISTAR FICHAS (con filtros y paginación) ──────────────────
 router.get('/', authRequired, (req, res) => {
   const db = getDb();
   const {
     status,
     plan_id,
     batch_id,
-    q,          // búsqueda por código
+    q,
     page  = 1,
     limit = 50,
   } = req.query;
+
+  const parsedLimit = Math.min(200, Math.max(1, parseInt(limit, 10) || 50));
+  const parsedPage  = Math.max(1, parseInt(page, 10) || 1);
 
   const conditions = [];
   const params     = [];
@@ -136,10 +106,10 @@ router.get('/', authRequired, (req, res) => {
   if (status)   { conditions.push('v.status = ?');         params.push(status); }
   if (plan_id)  { conditions.push('v.plan_id = ?');        params.push(plan_id); }
   if (batch_id) { conditions.push('v.batch_id = ?');       params.push(batch_id); }
-  if (q)        { conditions.push('v.code LIKE ?');        params.push(`%${q.toUpperCase()}%`); }
+  if (q)        { conditions.push('v.code LIKE ?');        params.push(`%${String(q).toUpperCase()}%`); }
 
   const where  = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
-  const offset = (Math.max(1, parseInt(page, 10)) - 1) * parseInt(limit, 10);
+  const offset = (parsedPage - 1) * parsedLimit;
 
   const vouchers = db.prepare(`
     SELECT v.id, v.code, v.status, v.created_at, v.sold_at, v.activated_at,
@@ -155,7 +125,7 @@ router.get('/', authRequired, (req, res) => {
     ${where}
     ORDER BY v.id DESC
     LIMIT ? OFFSET ?
-  `).all(...params, parseInt(limit, 10), offset);
+  `).all(...params, parsedLimit, offset);
 
   const total = db.prepare(
     `SELECT COUNT(*) AS c FROM vouchers v ${where}`
@@ -164,15 +134,13 @@ router.get('/', authRequired, (req, res) => {
   res.json({
     vouchers,
     total,
-    page:  parseInt(page, 10),
-    limit: parseInt(limit, 10),
-    pages: Math.ceil(total / parseInt(limit, 10)),
+    page:  parsedPage,
+    limit: parsedLimit,
+    pages: Math.ceil(total / parsedLimit),
   });
 });
 
-// ════════════════════════════════════════════════════════════════
-//  ESTADÍSTICAS PARA DASHBOARD
-// ════════════════════════════════════════════════════════════════
+// ── ESTADÍSTICAS PARA DASHBOARD ───────────────────────────────
 router.get('/stats', authRequired, (req, res) => {
   const db = getDb();
 
@@ -219,17 +187,13 @@ router.get('/stats', authRequired, (req, res) => {
   });
 });
 
-// ════════════════════════════════════════════════════════════════
-//  HISTORIAL DE LOTES
-// ════════════════════════════════════════════════════════════════
+// ── HISTORIAL DE LOTES ────────────────────────────────────────
 router.get('/batches', authRequired, (req, res) => {
-  const limit = parseInt(req.query.limit, 10) || 50;
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
   res.json(listBatches(limit));
 });
 
-// ════════════════════════════════════════════════════════════════
-//  FICHAS DE UN LOTE (para impresión)
-// ════════════════════════════════════════════════════════════════
+// ── FICHAS DE UN LOTE (para impresión) ────────────────────────
 router.get('/batch/:id', authRequired, (req, res) => {
   const { status } = req.query;
   const vouchers = getBatchVouchers(parseInt(req.params.id, 10), status || null);
@@ -237,7 +201,6 @@ router.get('/batch/:id', authRequired, (req, res) => {
     return res.status(404).json({ error: 'Lote no encontrado o vacío' });
   }
 
-  // Incluir info del lote
   const db    = getDb();
   const batch = db.prepare(`
     SELECT b.*, p.name AS plan_name, p.price, p.duration, p.speed_limit
@@ -248,9 +211,7 @@ router.get('/batch/:id', authRequired, (req, res) => {
   res.json({ batch, vouchers });
 });
 
-// ════════════════════════════════════════════════════════════════
-//  CHARSETS DISPONIBLES (para el formulario de generación)
-// ════════════════════════════════════════════════════════════════
+// ── CHARSETS DISPONIBLES ──────────────────────────────────────
 router.get('/charsets', authRequired, (req, res) => {
   res.json(
     Object.entries(CHARSETS).map(([key, val]) => ({
@@ -261,9 +222,7 @@ router.get('/charsets', authRequired, (req, res) => {
   );
 });
 
-// ════════════════════════════════════════════════════════════════
-//  VENDER FICHA (registro de venta manual)
-// ════════════════════════════════════════════════════════════════
+// ── VENDER FICHA (registro de venta manual atómico) ───────────
 router.post('/sell', authRequired, (req, res) => {
   const {
     voucher_id,
@@ -277,116 +236,150 @@ router.post('/sell', authRequired, (req, res) => {
   }
 
   const db = getDb();
-  const voucher = db.prepare(`
-    SELECT v.*, p.price FROM vouchers v
-    JOIN plans p ON v.plan_id = p.id
-    WHERE v.id = ? AND v.status = 'available'
-  `).get(voucher_id);
-
-  if (!voucher) {
-    return res.status(404).json({ error: 'Ficha no encontrada o no disponible' });
-  }
+  const sellerId = req.admin.id || null;
 
   const transaction = db.transaction(() => {
-    db.prepare(`
+    const voucher = db.prepare(`
+      SELECT v.*, p.price FROM vouchers v
+      JOIN plans p ON v.plan_id = p.id
+      WHERE v.id = ? AND v.status = 'available'
+    `).get(voucher_id);
+
+    if (!voucher) return null;
+
+    const upd = db.prepare(`
       UPDATE vouchers
       SET status = 'sold', sold_at = datetime('now'),
           sold_by = ?, payment_method = ?, buyer_note = ?
-      WHERE id = ?
-    `).run(req.admin.id, payment_method, buyer_note, voucher_id);
+      WHERE id = ? AND status = 'available'
+    `).run(sellerId, payment_method, buyer_note, voucher_id);
+
+    if (upd.changes !== 1) return null;
 
     db.prepare(`
       INSERT INTO sales (voucher_id, plan_id, amount, payment_method, seller_id, notes)
       VALUES (?, ?, ?, ?, ?, ?)
-    `).run(voucher_id, voucher.plan_id, voucher.price, payment_method, req.admin.id, notes);
+    `).run(voucher_id, voucher.plan_id, voucher.price, payment_method, sellerId, notes);
+
+    return voucher;
   });
 
-  transaction();
+  const sold = transaction();
+  if (!sold) {
+    return res.status(404).json({ error: 'Ficha no encontrada o no disponible' });
+  }
 
-  res.json({ message: 'Venta registrada', code: voucher.code, amount: voucher.price });
+  res.json({ message: 'Venta registrada', code: sold.code, amount: sold.price });
 });
 
-// ════════════════════════════════════════════════════════════════
-//  ACTIVAR FICHA — Portal cautivo (sin auth requerido)
-// ════════════════════════════════════════════════════════════════
+// ── ACTIVAR FICHA — Portal cautivo (Atómico anti-TOCTOU) ──────
 router.post('/activate', async (req, res) => {
   const { code } = req.body;
   if (!code) return res.status(400).json({ error: 'Código requerido' });
 
   const cleanCode = String(code).toUpperCase().trim();
+  if (!REGEX_CODE.test(cleanCode)) {
+    return res.status(400).json({ error: 'Formato de código inválido' });
+  }
 
-  // Prevenir condiciones de carrera por doble clic o peticiones concurrentes
   if (_activatingCodes.has(cleanCode)) {
     return res.status(409).json({ error: 'Esta ficha ya está siendo procesada. Por favor espera un momento.' });
   }
 
-  const db = getDb();
-
-  const voucher = db.prepare(`
-    SELECT v.*, p.duration, p.speed_limit, p.name AS plan_name,
-           p.data_limit, p.shared_users, p.profile_name
-    FROM vouchers v
-    JOIN plans p ON v.plan_id = p.id
-    WHERE v.code = ? AND v.status IN ('available', 'sold')
-  `).get(cleanCode);
-
-  if (!voucher) {
-    return res.status(404).json({ error: 'Código inválido, ya utilizado o expirado' });
-  }
-
   _activatingCodes.add(cleanCode);
   const startTime = Date.now();
+  const db = getDb();
 
   try {
-    // Crear usuario en el router
-    await mikrotik.createHotspotUser(voucher.code, voucher.code, {
-      profile:         voucher.profile_name || voucher.plan_name,
-      limitUptime:     voucher.duration,
-      rateLimit:       voucher.speed_limit,
-      limitBytesTotal: voucher.data_limit,
-      sharedUsers:     voucher.shared_users,
-      comment:         `Ficha generada por sistema ROYOTA`,
+    // Reserva atómica previa antes de llamar al router para eliminar condición TOCTOU
+    let voucher = null;
+    let prevStatus = null;
+    let expiresAt = null;
+
+    const claimTx = db.transaction(() => {
+      const row = db.prepare(`
+        SELECT v.*, p.duration, p.speed_limit, p.name AS plan_name,
+               p.data_limit, p.shared_users, p.profile_name, p.price
+        FROM vouchers v
+        JOIN plans p ON v.plan_id = p.id
+        WHERE v.code = ? AND v.status IN ('available', 'sold')
+      `).get(cleanCode);
+
+      if (!row) return false;
+
+      const durMs = parseDurationMs(row.duration);
+      const finalExpiryMs = Math.min(Date.now() + durMs, getBogotaMidnightMs());
+      expiresAt = new Date(finalExpiryMs).toISOString();
+      prevStatus = row.status;
+
+      const upd = db.prepare(`
+        UPDATE vouchers
+        SET status = 'active', sold_at = COALESCE(sold_at, datetime('now')),
+            activated_at = datetime('now'), expires_at = ?
+        WHERE id = ? AND status IN ('available', 'sold')
+      `).run(expiresAt, row.id);
+
+      if (upd.changes !== 1) return false;
+      voucher = row;
+      return true;
     });
 
-    // Vigencia estricta: No puede sobrepasar las 12 de la noche de hoy (America/Bogota)
-    const durMs = parseDurationMs(voucher.duration);
-    const planExpiry = Date.now() + durMs;
-    const bogotaDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
-    const midnightTime = new Date(`${bogotaDateStr}T23:59:59.999-05:00`).getTime();
-    const finalExpiryMs = Math.min(planExpiry, midnightTime);
-    const expiresAt = new Date(finalExpiryMs).toISOString();
+    if (!claimTx() || !voucher) {
+      return res.status(404).json({ error: 'Código inválido, ya utilizado o expirado' });
+    }
 
-    // Actualizar estado en BD
-    db.prepare(`
-      UPDATE vouchers
-      SET status = 'active', is_sold = 1, sold_at = COALESCE(sold_at, datetime('now')),
-          activated_at = datetime('now'), expires_at = ?, mikrotik_synced = 1
-      WHERE id = ?
-    `).run(expiresAt, voucher.id);
+    try {
+      await mikrotik.createHotspotUser(voucher.code, voucher.code, {
+        profile:         voucher.profile_name || voucher.plan_name,
+        limitUptime:     voucher.duration,
+        rateLimit:       voucher.speed_limit,
+        limitBytesTotal: voucher.data_limit,
+        sharedUsers:     voucher.shared_users,
+        comment:         'Ficha generada por sistema ROYOTA',
+      });
 
-    // Auto-facturación y registro contable automático al activar en portal
-    if (voucher.status === 'available') {
+      db.prepare('UPDATE vouchers SET mikrotik_synced = 1 WHERE id = ?').run(voucher.id);
+    } catch (mkErr) {
+      // Revertir reclamo atómico si falló la creación directa en MikroTik
+      db.prepare(`
+        UPDATE vouchers
+        SET status = ?, activated_at = NULL, expires_at = NULL
+        WHERE id = ?
+      `).run(prevStatus, voucher.id);
+
+      db.prepare(`
+        INSERT INTO sync_log (action, voucher_code, status, http_status, response, duration_ms)
+        VALUES ('create', ?, 'error', ?, ?, ?)
+      `).run(voucher.code, mkErr.httpStatus || 0, mkErr.message, Date.now() - startTime);
+
+      return res.status(502).json({
+        error: 'No se pudo activar la ficha en este momento. Intenta de nuevo.',
+      });
+    }
+
+    if (prevStatus === 'available') {
       try {
         db.prepare(`
-          INSERT INTO sales (voucher_id, plan_id, amount, payment_method, admin_id, notes)
-          VALUES (?, ?, ?, 'activacion_portal', 1, 'Auto-facturación por activación en portal')
+          INSERT INTO sales (voucher_id, plan_id, amount, payment_method, notes)
+          VALUES (?, ?, ?, 'activacion_portal', 'Auto-facturación por activación en portal')
         `).run(voucher.id, voucher.plan_id, voucher.price || 0);
       } catch (errSale) {
         console.warn('[Vouchers] Aviso registrando auto-facturación:', errSale.message);
       }
     }
 
-    // Si se envió la MAC del cliente, desbloquear cualquier restricción de prueba previa
+    // Solo desbloquear wa_trials si la MAC enviada tiene formato válido tras activación real
     if (req.body.mac) {
-      try {
-        const cleanMac = String(req.body.mac).trim().toUpperCase();
-        db.prepare(`
-          UPDATE wa_trials
-          SET blocked = 0, unblocked = 1, attempts = 0, updated_at = datetime('now')
-          WHERE mac = ?
-        `).run(cleanMac);
-        console.log(`[Vouchers] 🔓 MAC ${cleanMac} desbloqueada tras activar ficha física.`);
-      } catch (_) {}
+      const cleanMac = String(req.body.mac).trim().toUpperCase().replace(/-/g, ':');
+      if (REGEX_MAC.test(cleanMac)) {
+        try {
+          db.prepare(`
+            UPDATE wa_trials
+            SET blocked = 0, unblocked = 1, attempts = 0, updated_at = datetime('now')
+            WHERE mac = ?
+          `).run(cleanMac);
+        } catch (_) {}
+      }
     }
 
     db.prepare(`
@@ -402,42 +395,30 @@ router.post('/activate', async (req, res) => {
       speed:      voucher.speed_limit,
       expires_at: expiresAt,
     });
-
-  } catch (err) {
-    console.error('[Activate] Error MikroTik:', err.message);
-
-    db.prepare(`
-      INSERT INTO sync_log (action, voucher_code, status, http_status, response, duration_ms)
-      VALUES ('create', ?, 'error', ?, ?, ?)
-    `).run(voucher.code, err.httpStatus || 0, err.message, Date.now() - startTime);
-
-    return res.status(502).json({
-      error: 'No se pudo activar la ficha en este momento. Intenta de nuevo.',
-    });
   } finally {
     _activatingCodes.delete(cleanCode);
   }
 });
 
-// ════════════════════════════════════════════════════════════════
-//  VERIFICAR ESTADO DE FICHA (portal, sin auth)
-// ════════════════════════════════════════════════════════════════
+// ── VERIFICAR ESTADO DE FICHA (portal, sin auth) ──────────────
 router.get('/check/:code', (req, res) => {
+  const cleanCode = String(req.params.code || '').toUpperCase().trim();
+  if (!REGEX_CODE.test(cleanCode)) {
+    return res.status(400).json({ error: 'Formato de código inválido' });
+  }
   const db = getDb();
   const v = db.prepare(`
     SELECT v.code, v.status, v.activated_at, v.expires_at,
            p.name AS plan_name, p.duration, p.speed_limit
     FROM vouchers v JOIN plans p ON v.plan_id = p.id
     WHERE v.code = ?
-  `).get(req.params.code.toUpperCase().trim());
+  `).get(cleanCode);
 
   if (!v) return res.status(404).json({ error: 'Código no encontrado' });
   res.json(v);
 });
 
-// ════════════════════════════════════════════════════════════════
-//  REVOCAR FICHA
-// ════════════════════════════════════════════════════════════════
+// ── REVOCAR FICHA ─────────────────────────────────────────────
 router.post('/revoke/:id', authRequired, async (req, res) => {
   const db      = getDb();
   const voucher = db.prepare('SELECT * FROM vouchers WHERE id = ?').get(req.params.id);
@@ -451,10 +432,7 @@ router.post('/revoke/:id', authRequired, async (req, res) => {
 
   try {
     if (voucher.mikrotik_synced && voucher.status === 'active') {
-      // 1. Expulsar la sesión activa inmediatamente del Hotspot
       await mikrotik.kickActiveUser(voucher.code);
-
-      // 2. Eliminar de /ip/hotspot/user
       const mkUser = await mikrotik.findHotspotUser(voucher.code);
       if (mkUser) await mikrotik.removeHotspotUser(mkUser['.id']);
     }
@@ -473,17 +451,13 @@ router.post('/revoke/:id', authRequired, async (req, res) => {
   }
 });
 
-// ════════════════════════════════════════════════════════════════
-//  CORTESÍA WHATSAPP (1 minuto x 2 intentos diarios)
-// ════════════════════════════════════════════════════════════════
-function getBogotaDate() {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
-}
-
+// ── CORTESÍA WHATSAPP (2 minutos x 2 intentos diarios, MAC validada) ──
 router.get('/trial/status', (req, res) => {
-  const mac = (req.query.mac || '').trim().toUpperCase();
-  const dateStr = getBogotaDate();
-  if (!mac) return res.json({ date: dateStr, attempts: 0, blocked: false, remaining: 2, unblocked: false });
+  const mac = String(req.query.mac || '').trim().toUpperCase().replace(/-/g, ':');
+  const dateStr = getBogotaDateStr();
+  if (!REGEX_MAC.test(mac)) {
+    return res.json({ date: dateStr, attempts: 0, blocked: false, remaining: 2, unblocked: false });
+  }
 
   const db = getDb();
   const row = db.prepare('SELECT * FROM wa_trials WHERE mac = ? AND date_str = ?').get(mac, dateStr);
@@ -504,78 +478,82 @@ router.get('/trial/status', (req, res) => {
 });
 
 router.post('/trial/request', async (req, res) => {
-  const { mac } = req.body;
-  if (!mac) {
-    return res.status(400).json({ error: 'La dirección MAC del dispositivo es requerida para la cortesía' });
+  const rawMac = String(req.body?.mac || '').trim().toUpperCase().replace(/-/g, ':');
+  if (!REGEX_MAC.test(rawMac)) {
+    return res.status(400).json({
+      error: 'Se requiere una dirección MAC válida del Hotspot para solicitar cortesía.',
+    });
   }
 
-  const cleanMac = String(mac).trim().toUpperCase();
-  const dateStr = getBogotaDate();
+  const dateStr = getBogotaDateStr();
   const db = getDb();
 
-  const existing = db.prepare('SELECT * FROM wa_trials WHERE mac = ? AND date_str = ?').get(cleanMac, dateStr);
+  const trialTx = db.transaction(() => {
+    const existing = db.prepare('SELECT * FROM wa_trials WHERE mac = ? AND date_str = ?').get(rawMac, dateStr);
 
-  if (existing && existing.blocked === 1 && existing.unblocked === 0) {
+    if (existing && existing.blocked === 1 && existing.unblocked === 0) {
+      return { blocked: true, attempts: existing.attempts };
+    }
+
+    const currentAttempts = existing ? existing.attempts : 0;
+    if (currentAttempts >= 2 && (!existing || existing.unblocked === 0)) {
+      db.prepare("UPDATE wa_trials SET blocked = 1, updated_at = datetime('now') WHERE id = ?").run(existing.id);
+      return { blocked: true, attempts: 2 };
+    }
+
+    const newAttempts = currentAttempts + 1;
+    const isBlocked = newAttempts >= 2 ? 1 : 0;
+
+    if (existing) {
+      db.prepare(`
+        UPDATE wa_trials
+        SET attempts = ?, blocked = ?, unblocked = 0, last_attempt_at = datetime('now'), updated_at = datetime('now')
+        WHERE id = ?
+      `).run(newAttempts, isBlocked, existing.id);
+    } else {
+      db.prepare(`
+        INSERT INTO wa_trials (mac, date_str, attempts, blocked, unblocked, last_attempt_at)
+        VALUES (?, ?, ?, ?, 0, datetime('now'))
+      `).run(rawMac, dateStr, newAttempts, isBlocked);
+    }
+
+    return { blocked: false, newAttempts, isBlocked };
+  });
+
+  const outcome = trialTx();
+  if (outcome.blocked) {
     return res.status(403).json({
       error: 'Has agotado tus 2 intentos gratuitos del día de hoy. Por favor adquiere una ficha física en las casetas autorizadas.',
       blocked: true,
-      attempts: existing.attempts,
+      attempts: outcome.attempts,
       remaining: 0,
     });
   }
 
-  const currentAttempts = existing ? existing.attempts : 0;
-  if (currentAttempts >= 2 && (!existing || existing.unblocked === 0)) {
-    db.prepare("UPDATE wa_trials SET blocked = 1, updated_at = datetime('now') WHERE id = ?").run(existing.id);
-    return res.status(403).json({
-      error: 'Has agotado tus 2 intentos gratuitos del día de hoy. Por favor adquiere una ficha física en las casetas autorizadas.',
-      blocked: true,
-      attempts: 2,
-      remaining: 0,
-    });
-  }
-
-  const newAttempts = currentAttempts + 1;
-  const isBlocked = newAttempts >= 2 ? 1 : 0;
-
-  if (existing) {
-    db.prepare(`
-      UPDATE wa_trials
-      SET attempts = ?, blocked = ?, unblocked = 0, last_attempt_at = datetime('now'), updated_at = datetime('now')
-      WHERE id = ?
-    `).run(newAttempts, isBlocked, existing.id);
-  } else {
-    db.prepare(`
-      INSERT INTO wa_trials (mac, date_str, attempts, blocked, unblocked, last_attempt_at)
-      VALUES (?, ?, ?, ?, 0, datetime('now'))
-    `).run(cleanMac, dateStr, newAttempts, isBlocked);
-  }
-
-  // Generar usuario Hotspot de cortesía de 2 minutos
-  const macSuffix = cleanMac.replace(/[^A-F0-9]/gi, '').slice(-6);
-  const trialUser = `WA-${macSuffix}-${newAttempts}`;
+  const macSuffix = rawMac.replace(/[^A-F0-9]/g, '').slice(-6);
+  const trialUser = `WA-${macSuffix}-${outcome.newAttempts}`;
 
   try {
     await mikrotik.createHotspotUser(trialUser, trialUser, {
       profile:     'default',
       limitUptime: '2m',
       rateLimit:   '5M/5M',
-      comment:     `Cortesia WhatsApp 2m (Intento ${newAttempts}/2 - ${cleanMac})`,
+      comment:     `Cortesia WhatsApp 2m (${outcome.newAttempts}/2)`,
     });
   } catch (err) {
     console.warn('[Trial] Aviso creando usuario en MikroTik:', err.message);
   }
 
-  const msg = newAttempts === 1
+  const msg = outcome.newAttempts === 1
     ? '¡2 minutos de navegación otorgados! Realiza tu transferencia y envía el comprobante por WhatsApp.'
     : '¡Última oportunidad! Te quedan 2 minutos para completar tu pago y enviar el comprobante.';
 
   res.json({
     ok: true,
     code: trialUser,
-    attempt: newAttempts,
-    remaining: Math.max(0, 2 - newAttempts),
-    blocked: isBlocked === 1,
+    attempt: outcome.newAttempts,
+    remaining: Math.max(0, 2 - outcome.newAttempts),
+    blocked: outcome.isBlocked === 1,
     duration: '2m',
     message: msg,
   });

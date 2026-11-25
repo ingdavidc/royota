@@ -623,13 +623,7 @@
       }
       var encoded = encodeURIComponent(msgText || _defaultWaMsg);
 
-      // Activar silent trial de 2 minutos para asegurar que el usuario tenga conexión al abrir WhatsApp
-      try {
-        if (typeof submitMikrotikTrialLogin === 'function') {
-          submitMikrotikTrialLogin();
-        }
-      } catch (_) {}
-
+      // Nota: no iniciar cortesía ilimitada en cada click; el usuario dispone de Paso 1 (2 intentos/día)
       var isMobile = /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
 
       if (isMobile) {
@@ -726,7 +720,7 @@
       renderPlans(_cachedPlans, false);
     }
 
-    /* ── Render de Planes ── */
+    /* ── Render de Planes (Construcción segura DOM sin XSS) ── */
     function renderPlans(plans, updateCache) {
       if (!plans || !plans.length) {
         plans = DEFAULT_FALLBACK_PLANS;
@@ -737,43 +731,72 @@
       }
       var isOnlineActive = isOnlinePurchaseActive();
       var sym = (_settings && _settings.currencySymbol) || '$';
-      var html = '';
+
+      plansList.textContent = '';
       for (var i = 0; i < plans.length; i++) {
-        var p = plans[i];
-        var formattedPrice = sym + Number(p.price || 0).toLocaleString();
+        (function(p) {
+          var formattedPrice = sym + Number(p.price || 0).toLocaleString();
+          var itemDiv = document.createElement('div');
+          itemDiv.className = isOnlineActive ? 'plan-item' : 'plan-item plan-item-static';
+          itemDiv.style.cursor = isOnlineActive ? 'pointer' : 'default';
+          if (isOnlineActive) {
+            itemDiv.title = 'Pedir ficha por WhatsApp';
+            itemDiv.addEventListener('click', function() {
+              window.pedirPlan(p.name, formattedPrice);
+            });
+          }
 
-        var buyBtnHtml = isOnlineActive
-          ? '<button type="button" class="plan-buy-btn" onclick="event.stopPropagation(); pedirPlan(\'' + escapeHtml(p.name) + '\', \'' + formattedPrice + '\');">Pedir 🪪</button>'
-          : '';
+          var left = document.createElement('div');
+          left.className = 'plan-info-left';
+          var nameElPlan = document.createElement('div');
+          nameElPlan.className = 'plan-name';
+          nameElPlan.textContent = p.name || '';
+          var metaEl = document.createElement('div');
+          metaEl.className = 'plan-meta';
+          var spDur = document.createElement('span');
+          spDur.textContent = '⏱ ' + (p.duration || '');
+          var spSpd = document.createElement('span');
+          spSpd.textContent = '⚡ ' + (p.speed_limit || '');
+          metaEl.appendChild(spDur);
+          metaEl.appendChild(spSpd);
+          left.appendChild(nameElPlan);
+          left.appendChild(metaEl);
 
-        var itemClickAttr = isOnlineActive
-          ? ' onclick="pedirPlan(\'' + escapeHtml(p.name) + '\', \'' + formattedPrice + '\')" style="cursor:pointer;" title="Pedir ficha por WhatsApp"'
-          : ' style="cursor:default;"';
+          var right = document.createElement('div');
+          right.className = 'plan-price-wrap';
+          var priceEl = document.createElement('div');
+          priceEl.className = 'plan-price';
+          priceEl.textContent = formattedPrice;
+          right.appendChild(priceEl);
 
-        var itemClass = isOnlineActive ? 'plan-item' : 'plan-item plan-item-static';
+          if (isOnlineActive) {
+            var buyBtn = document.createElement('button');
+            buyBtn.type = 'button';
+            buyBtn.className = 'plan-buy-btn';
+            buyBtn.textContent = 'Pedir 🪪';
+            buyBtn.addEventListener('click', function(e) {
+              e.stopPropagation();
+              window.pedirPlan(p.name, formattedPrice);
+            });
+            right.appendChild(buyBtn);
+          }
 
-        html += '<div class="' + itemClass + '"' + itemClickAttr + '>' +
-                  '<div class="plan-info-left">' +
-                    '<div class="plan-name">' + escapeHtml(p.name) + '</div>' +
-                    '<div class="plan-meta">' +
-                      '<span>⏱ ' + escapeHtml(p.duration) + '</span>' +
-                      '<span>⚡ ' + escapeHtml(p.speed_limit) + '</span>' +
-                    '</div>' +
-                  '</div>' +
-                  '<div class="plan-price-wrap">' +
-                    '<div class="plan-price">' + formattedPrice + '</div>' +
-                    buyBtnHtml +
-                  '</div>' +
-                '</div>';
+          itemDiv.appendChild(left);
+          itemDiv.appendChild(right);
+          plansList.appendChild(itemDiv);
+        })(plans[i]);
       }
 
       if (!isOnlineActive) {
-        html += '<div style="margin-top:12px; padding:10px 14px; background:rgba(0, 229, 255, 0.05); border:1px dashed rgba(0, 229, 255, 0.25); border-radius:10px; font-size:12px; color:#80cbc4; text-align:center; line-height:1.4;">' +
-                  '💵 <strong>Compra física en casetas:</strong> Adquiere tu ficha en efectivo en cualquiera de nuestras casetas autorizadas (ver sección abajo 👇).' +
-                '</div>';
+        var noteDiv = document.createElement('div');
+        noteDiv.style.cssText = 'margin-top:12px; padding:10px 14px; background:rgba(0, 229, 255, 0.05); border:1px dashed rgba(0, 229, 255, 0.25); border-radius:10px; font-size:12px; color:#80cbc4; text-align:center; line-height:1.4;';
+        var strongTxt = document.createElement('strong');
+        strongTxt.textContent = 'Compra física en casetas: ';
+        noteDiv.appendChild(document.createTextNode('💵 '));
+        noteDiv.appendChild(strongTxt);
+        noteDiv.appendChild(document.createTextNode('Adquiere tu ficha en efectivo en cualquiera de nuestras casetas autorizadas (ver sección abajo 👇).'));
+        plansList.appendChild(noteDiv);
       }
-
-      plansList.innerHTML = html;
     }
 
     /* ── Inicialización Inmediata (0.00s de retraso) ── */
@@ -804,26 +827,42 @@
       });
     }
 
-    /* ── Render de Kioskos / Casetas ── */
+    /* ── Render de Kioskos / Casetas (DOM seguro) ── */
     function renderKiosks(kiosks) {
       var kList = document.getElementById('portalKiosksList');
       if (!kList) return;
+      kList.textContent = '';
       if (!kiosks || !kiosks.length) {
-        kList.innerHTML = '<div style="font-size:13px; color:#80cbc4; text-align:center;">Venta de fichas en Taquilla Principal</div>';
+        var defDiv = document.createElement('div');
+        defDiv.style.cssText = 'font-size:13px; color:#80cbc4; text-align:center;';
+        defDiv.textContent = 'Venta de fichas en Taquilla Principal';
+        kList.appendChild(defDiv);
         return;
       }
-      var html = '';
       for (var i = 0; i < kiosks.length; i++) {
         var k = kiosks[i];
-        html += '<div style="padding:11px 14px; background:rgba(0, 229, 255, 0.05); border:1px solid rgba(0, 229, 255, 0.18); border-radius:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
-                  '<div>' +
-                    '<div style="font-weight:700; color:#ffffff; font-size:14px;">📍 ' + escapeHtml(k.name) + '</div>' +
-                    '<div style="font-size:12px; color:#80cbc4; margin-top:2px;">' + escapeHtml(k.location) + '</div>' +
-                  '</div>' +
-                  (k.notes ? '<div style="font-size:11.5px; color:#e0f2f1; background:rgba(4,25,33,0.8); border:1px solid rgba(0,229,255,0.2); padding:4px 9px; border-radius:6px;">' + escapeHtml(k.notes) + '</div>' : '') +
-                '</div>';
+        var card = document.createElement('div');
+        card.style.cssText = 'padding:11px 14px; background:rgba(0, 229, 255, 0.05); border:1px solid rgba(0, 229, 255, 0.18); border-radius:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;';
+
+        var infoWrap = document.createElement('div');
+        var nm = document.createElement('div');
+        nm.style.cssText = 'font-weight:700; color:#ffffff; font-size:14px;';
+        nm.textContent = '📍 ' + (k.name || '');
+        var lc = document.createElement('div');
+        lc.style.cssText = 'font-size:12px; color:#80cbc4; margin-top:2px;';
+        lc.textContent = k.location || '';
+        infoWrap.appendChild(nm);
+        infoWrap.appendChild(lc);
+        card.appendChild(infoWrap);
+
+        if (k.notes) {
+          var nt = document.createElement('div');
+          nt.style.cssText = 'font-size:11.5px; color:#e0f2f1; background:rgba(4,25,33,0.8); border:1px solid rgba(0,229,255,0.2); padding:4px 9px; border-radius:6px;';
+          nt.textContent = k.notes;
+          card.appendChild(nt);
+        }
+        kList.appendChild(card);
       }
-      kList.innerHTML = html;
     }
 
     // Inicialización inmediata de casetas con fallback predeterminado (Cero retraso)
@@ -1392,7 +1431,8 @@
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
   }());

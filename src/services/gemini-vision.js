@@ -2,45 +2,25 @@
  * src/services/gemini-vision.js
  * ─────────────────────────────────────────────────────────────
  * Servicio de Inteligencia Artificial para análisis de comprobantes
- * de pago (Daviplata, Bre-B, Transfiya, Nequi, Bancolombia, etc.)
- * utilizando la API de Google Gemini (Flash Vision) con JSON estructurado.
+ * usando la API de Google Gemini con clave en cabecera HTTP (`x-goog-api-key`).
  */
 'use strict';
 
 const config = require('../config');
 
-/**
- * Analiza una imagen de comprobante de pago enviada por WhatsApp.
- *
- * @param {Buffer} imageBuffer - Buffer de la imagen.
- * @param {string} mimeType    - Tipo MIME (ej: 'image/jpeg', 'image/png').
- * @returns {Promise<{
- *   is_payment_receipt: boolean,
- *   platform: string,
- *   amount: number,
- *   reference_number: string,
- *   destination_phone: string,
- *   date_time: string,
- *   is_successful: boolean,
- *   confidence: number,
- *   rejection_reason?: string
- * }>}
- */
 async function analyzeReceipt(imageBuffer, mimeType = 'image/jpeg') {
   const apiKey = config.whatsapp.geminiApiKey;
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY no está configurada en las variables de entorno.');
   }
 
-  const primaryModel = config.whatsapp.geminiModel || 'gemini-3.5-flash-lite';
+  const primaryModel = config.whatsapp.geminiModel || 'gemini-2.5-flash';
   const candidateModels = [
     primaryModel,
-    'gemini-3.5-flash-lite',
-    'gemini-3.1-flash-lite',
-    'gemini-3.8-flash',
-    'gemini-flash-lite-latest',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash-latest',
   ];
-  // Deduplicar modelos
   const modelsToTry = [...new Set(candidateModels)];
 
   const targetPhone = config.whatsapp.paymentPhone || '3174251419';
@@ -64,14 +44,14 @@ Instrucciones de extracción y auditoría forense:
 2. "platform": Identifica con exactitud si es "Daviplata", "Bre-B", "Transfiya", "Nequi", "Bancolombia" u "Otro".
 3. "amount": El valor exacto transferido expresado como NÚMERO entero en pesos colombianos (ej. si dice "$ 5.000,00" o "$5.000", extrae 5000). Si no se puede determinar, pon 0.
 4. "reference_number": El número de aprobación, comprobante, referencia, ID de transacción o número de autorización. Límpialo de palabras y espacios (solo el código o dígitos alfanuméricos).
-5. "destination_phone": El número de teléfono celular o llave de destino que aparece en el comprobante (ej: 3174251419 o 317 425 1419).
-6. "date_time": La fecha y hora que figura en el recibo.
+5. "destination_phone": El número de teléfono celular o llave de destino que aparece en el comprobante (ej: 3174251419 o 317 425 1419). Si no aparece visible en el recibo, deja "".
+6. "date_time": La fecha y hora que figura en el recibo (idealmente ISO YYYY-MM-DD HH:mm si es legible).
 7. "is_successful": true si la transferencia dice "Exitosa", "Aprobada", "Listo", NO es de Transfiya, y no presenta mensajes de error, rechazo o fondos insuficientes.
 8. "is_tampered": AUDITORÍA FORENSE: true si detectas cualquier indicio de manipulación digital en la imagen:
    - El número de destino o el monto tienen una tipografía, color, grosor o alineación ligeramente distinta al resto de la app.
    - Parches rectangulares borrosos, blancos o con ruido de compresión desigual detrás del número de destino.
    - Montaje burdo de capturas de pantalla o textos pegados con herramientas como Canva o editores de celular.
-9. "tamper_reason": Si "is_tampered" es true, explica técnicamente qué anomalía detectaste (ej. "Tipografía del número destino no coincide con la fuente nativa de Daviplata").
+9. "tamper_reason": Si "is_tampered" es true, explica técnicamente qué anomalía detectaste.
 10. "confidence": Nivel de certeza de 0.0 a 1.0.
 11. "rejection_reason": Si no es exitoso, es ilegible o manipulado, describe el motivo en español brevemente.
 
@@ -118,10 +98,13 @@ Devuelve EXCLUSIVAMENTE el JSON con el siguiente formato:
 
   for (const model of modelsToTry) {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
         body: JSON.stringify(requestBody),
       });
 
@@ -129,7 +112,7 @@ Devuelve EXCLUSIVAMENTE el JSON con el siguiente formato:
         const errorText = await response.text();
         console.warn(`[Gemini Vision] Modelo ${model} respondió status ${response.status}: ${errorText.slice(0, 150)}...`);
         lastError = new Error(`Error en modelo ${model}: ${response.status}`);
-        continue; // intentar siguiente modelo
+        continue;
       }
 
       const data = await response.json();
@@ -140,8 +123,7 @@ Devuelve EXCLUSIVAMENTE el JSON con el siguiente formato:
         continue;
       }
 
-      const parsed = JSON.parse(textContent);
-      return parsed;
+      return JSON.parse(textContent);
     } catch (err) {
       console.warn(`[Gemini Vision] Falló intento con modelo ${model}: ${err.message}`);
       lastError = err;

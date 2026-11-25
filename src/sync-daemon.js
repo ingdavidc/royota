@@ -13,26 +13,8 @@
 
 const https = require('https');
 const http  = require('http');
-const os    = require('os');
 const config = require('./config');
-
-function getMatchingLocalIp(targetHost) {
-  try {
-    const interfaces = os.networkInterfaces();
-    const parts = targetHost.split('.');
-    if (parts.length === 4) {
-      const prefix = parts.slice(0, 3).join('.') + '.';
-      for (const name of Object.keys(interfaces)) {
-        for (const iface of interfaces[name]) {
-          if (iface.family === 'IPv4' && !iface.internal && iface.address.startsWith(prefix)) {
-            return iface.address;
-          }
-        }
-      }
-    }
-  } catch (_) {}
-  return undefined;
-}
+const { getMatchingLocalIp } = require('./utils/helpers');
 
 const { host, port, user, pass } = config.mikrotik;
 const auth = Buffer.from(user + ':' + pass).toString('base64');

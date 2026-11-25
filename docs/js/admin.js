@@ -4,19 +4,69 @@
 'use strict';
 
 /* ── Auth ─────────────────────────────────────────────────── */
-var TOKEN = localStorage.getItem('fichas_token') || (location.hostname === 'localhost' ? 'dev-token' : null);
+var TOKEN = localStorage.getItem('fichas_token') || null;
 var ME    = safeJSON(localStorage.getItem('fichas_admin')) || { username: 'Admin' };
-if (!TOKEN) location.href = './login.html';
+if (!TOKEN && !(window.firebaseDb && window.firebaseDb.auth)) {
+  location.href = './login.html';
+}
 
 document.getElementById('adminName').textContent = ME.username || 'Admin';
 
-/* ── Negocio ─────────────────────────────────────────────── */
-apiFetch('GET', '/api/config').then(function(c) {
-  if (c.businessName) {
-    document.getElementById('topbarTitle').textContent = c.businessName;
-    document.title = 'Admin — ' + c.businessName;
+function getAuthTokenPromise() {
+  if (window.firebaseDb && window.firebaseDb.getFreshToken) {
+    return window.firebaseDb.getFreshToken().then(function(t) {
+      if (t) {
+        TOKEN = t;
+        localStorage.setItem('fichas_token', t);
+      }
+      return TOKEN;
+    });
   }
-}).catch(function(){});
+  return Promise.resolve(TOKEN);
+}
+
+/** Petición HTTP autenticada directa al backend Express (reemplaza balizas GET inseguras) */
+function httpApiFetch(method, url, body) {
+  return getAuthTokenPromise().then(function(tok) {
+    if (!tok) {
+      logout();
+      return Promise.reject({ error: 'Sesión requerida' });
+    }
+    return new Promise(function(resolve, reject) {
+      var fullUrl = (window.API_BASE || '') + url;
+      var xhr = new XMLHttpRequest();
+      xhr.open(method, fullUrl, true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.setRequestHeader('Authorization', 'Bearer ' + tok);
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState !== 4) return;
+        var d;
+        try { d = JSON.parse(xhr.responseText); } catch(_) { d = {}; }
+        if (xhr.status === 401) {
+          if (url.indexOf('/api/whatsapp') === -1 && url.indexOf('/api/mikrotik') === -1 && url.indexOf('/api/kiosks') === -1 && url.indexOf('/api/complaints') === -1) {
+            logout();
+          }
+          reject(d);
+          return;
+        }
+        if (xhr.status >= 400) { reject(d); return; }
+        resolve(d);
+      };
+      xhr.onerror = function() { reject({ error: 'Error de red' }); };
+      xhr.send(body ? JSON.stringify(body) : null);
+    });
+  });
+}
+
+/* ── Negocio ─────────────────────────────────────────────── */
+function loadBrandingHeader() {
+  apiFetch('GET', '/api/config').then(function(c) {
+    if (c.businessName) {
+      document.getElementById('topbarTitle').textContent = c.businessName;
+      document.title = 'Admin — ' + c.businessName;
+    }
+  }).catch(function(){});
+}
 
 /* ══════════════════════════════════════════════════════════
    HELPERS
@@ -26,10 +76,14 @@ function safeJSON(s) { try { return JSON.parse(s || '{}'); } catch(_) { return {
 function logout() {
   localStorage.removeItem('fichas_token');
   localStorage.removeItem('fichas_admin');
-  location.href = './login.html';
+  if (window.firebaseDb && window.firebaseDb.logout) {
+    window.firebaseDb.logout().finally(function() { location.href = './login.html'; });
+  } else {
+    location.href = './login.html';
+  }
 }
 
-/** Petición autenticada (con soporte directo a Firestore y fallback HTTP) */
+/** Petición autenticada (con soporte directo a Firestore y backend HTTP autenticado) */
 function apiFetch(method, url, body) {
   if (window.firebaseDb) {
     if (url === '/api/config' || url === '/api/settings') {
@@ -49,11 +103,7 @@ function apiFetch(method, url, body) {
     }
     if (url.startsWith('/api/kiosks')) {
       var _pingKioskSync = function() {
-        try {
-          var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
-          var img = new Image();
-          img.src = apiBase + '/api/kiosks/sync-beacon?t=' + Date.now();
-        } catch (_) {}
+        httpApiFetch('POST', '/api/kiosks/sync', {}).catch(function(){});
       };
       if (method === 'GET') {
         var all = url.indexOf('all=true') !== -1;
@@ -93,22 +143,7 @@ function apiFetch(method, url, body) {
       }
       if (method === 'POST') {
         return window.firebaseDb.saveIpBinding(body).then(function(res) {
-          var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
-          try {
-            var bImg = new Image();
-            bImg.src = apiBase + '/api/mikrotik/sync/binding-beacon?mac=' + encodeURIComponent(body.mac_address) +
-              '&comment=' + encodeURIComponent(body.comment || '') +
-              '&type=' + encodeURIComponent(body.type || 'bypassed') +
-              '&address=' + encodeURIComponent(body.address || '') +
-              '&_t=' + Date.now();
-          } catch (_) {}
-          try {
-            fetch(apiBase + '/api/mikrotik/sync/push-binding', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(body)
-            }).catch(function(){});
-          } catch (_) {}
+          httpApiFetch('POST', '/api/mikrotik/sync/push-binding', body).catch(function(){});
           return { message: 'Dispositivo registrado en IP Binding exitosamente', id: res && res.id };
         });
       }
@@ -124,15 +159,8 @@ function apiFetch(method, url, body) {
           } catch (_) {}
         }
         return window.firebaseDb.deleteIpBinding(bindId).then(function() {
-          var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
           if (macParam) {
-            try {
-              var bImg = new Image();
-              bImg.src = apiBase + '/api/mikrotik/sync/remove-binding-beacon?mac=' + encodeURIComponent(macParam) + '&_t=' + Date.now();
-            } catch (_) {}
-            try {
-              fetch(apiBase + '/api/mikrotik/bindings/' + encodeURIComponent(macParam), { method: 'DELETE' }).catch(function(){});
-            } catch (_) {}
+            httpApiFetch('DELETE', '/api/mikrotik/bindings/' + encodeURIComponent(macParam)).catch(function(){});
           }
           return { message: 'Dispositivo eliminado de IP Binding exitosamente' };
         });
@@ -140,23 +168,7 @@ function apiFetch(method, url, body) {
     }
     if (url === '/api/vouchers/generate' && method === 'POST') {
       return window.firebaseDb.generateVouchers(body).then(function(res) {
-        // Doble garantía de inyección inmediata a MikroTik en nube
-        var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
-        var p = res.plan || {};
-        try {
-          var bImg = new Image();
-          bImg.src = apiBase + '/api/mikrotik/sync/beacon?codes=' + encodeURIComponent((res.codes || []).join(',')) +
-            '&plan=' + encodeURIComponent(p.name || '1 Hora Basico') +
-            '&dur=' + encodeURIComponent(p.duration || '1h') +
-            '&spd=' + encodeURIComponent(p.speed_limit || '5M/2M') +
-            '&prc=' + encodeURIComponent(p.price || 2000) +
-            '&_t=' + Date.now();
-        } catch (_) {}
-        fetch(apiBase + '/api/mikrotik/sync/push-batch', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ vouchers: res.codes, plan: res.plan })
-        }).catch(function(){});
+        httpApiFetch('POST', '/api/mikrotik/sync/push-batch', { vouchers: res.codes, plan: res.plan }).catch(function(){});
         return res;
       });
     }
@@ -191,30 +203,7 @@ function apiFetch(method, url, body) {
     }
   }
 
-  return new Promise(function(resolve, reject) {
-    var fullUrl = (window.API_BASE || '') + url;
-    var xhr = new XMLHttpRequest();
-    xhr.open(method, fullUrl, true);
-    xhr.setRequestHeader('Content-Type', 'application/json');
-    var tokenHeader = (TOKEN && TOKEN !== 'null') ? TOKEN : 'firebase_admin_session';
-    xhr.setRequestHeader('Authorization', 'Bearer ' + tokenHeader);
-    xhr.onreadystatechange = function() {
-      if (xhr.readyState !== 4) return;
-      var d;
-      try { d = JSON.parse(xhr.responseText); } catch(_) { d = {}; }
-      if (xhr.status === 401) {
-        if (url.indexOf('/api/whatsapp') === -1 && url.indexOf('/api/mikrotik') === -1 && url.indexOf('/api/kiosks') === -1 && url.indexOf('/api/complaints') === -1) {
-          logout();
-        }
-        reject(d);
-        return;
-      }
-      if (xhr.status >= 400) { reject(d); return; }
-      resolve(d);
-    };
-    xhr.onerror = function() { reject({ error: 'Error de red' }); };
-    xhr.send(body ? JSON.stringify(body) : null);
-  });
+  return httpApiFetch(method, url, body);
 }
 
 /** Toast notification */
@@ -334,7 +323,7 @@ function updateSheetsCalculation() {
   if (!sheetsInput) return;
   var sheets = parseInt(sheetsInput.value, 10);
   if (isNaN(sheets) || sheets < 1) sheets = 1;
-  if (sheets > 25) sheets = 25; // Hasta 25 hojas (900 fichas)
+  if (sheets > 20) sheets = 20; // Máx 20 hojas (960 fichas <= límite backend 1000)
   sheetsInput.value = sheets;
 
   var totalVouchers = sheets * TICKETS_PER_LETTER_PAGE;
@@ -383,7 +372,7 @@ function initSheetCalculator() {
     btnInc._wired = true;
     btnInc.addEventListener('click', function() {
       var s = parseInt(document.getElementById('gSheets').value, 10) || 1;
-      if (s < 25) {
+      if (s < 20) {
         document.getElementById('gSheets').value = s + 1;
         updateSheetsCalculation();
       }
@@ -709,18 +698,9 @@ function borrarTodasLasFichas() {
     ? window.firebaseDb.clearAllVouchers()
     : Promise.resolve();
 
-  var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
-  var pBackend = fetch(apiBase + '/api/vouchers/clear-all', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' }
-  }).catch(function(){});
+  var pBackend = httpApiFetch('POST', '/api/vouchers/clear-all', {}).catch(function(){});
 
-  try {
-    var bImg = new Image();
-    bImg.src = apiBase + '/api/mikrotik/sync/clear-all?token=RoyotaCloud_SyncToken_2026_SecureKey&_t=' + Date.now();
-  } catch (_) {}
-
-  pFirestore.then(function() {
+  Promise.all([pFirestore, pBackend]).then(function() {
     toast('¡Base de datos limpiada con éxito! Ya no hay fichas de prueba.', 'ok');
     loadVouchers(1);
     if (typeof loadDashboard === 'function') loadDashboard();
@@ -838,17 +818,7 @@ function savePlan(e) {
   var method = _editingPlanId ? 'PUT' : 'POST';
 
   apiFetch(method, url, body).then(function() {
-    // Sincronizar User Profile inmediatamente con MikroTik vía baliza anti-CSP
-    var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
-    try {
-      var pImg = new Image();
-      pImg.src = apiBase + '/api/mikrotik/sync/plan-beacon?name=' + encodeURIComponent(body.name) +
-        '&dur=' + encodeURIComponent(body.duration) +
-        '&speed=' + encodeURIComponent(body.speed_limit) +
-        '&price=' + encodeURIComponent(body.price) +
-        '&shared=' + encodeURIComponent(body.shared_users) +
-        '&is_active=1&_t=' + Date.now();
-    } catch (_) {}
+    httpApiFetch('POST', '/api/mikrotik/sync/plan-sync', body).catch(function(){});
 
     if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = 'Guardar Plan'; }
     toast(_editingPlanId ? 'Plan actualizado' : 'Plan creado', 'ok');
@@ -877,18 +847,32 @@ var _mkRealtimeUnsub = null;
 function renderMikrotikCard(r) {
   var box = document.getElementById('mkStatus');
   if (!box) return;
-  var okTitle = r.syncMode ? ('✅ ' + r.syncMode) : '✅ Conectado correctamente';
-  box.innerHTML = '<span class="mk-status-ok">' + okTitle + '</span>' +
-    '<div class="mk-info-grid">' +
-      mkCard('Versión RouterOS', r.version) +
-      mkCard('Uptime', r.uptime) +
-      mkCard('CPU', (r.cpuLoad !== undefined && r.cpuLoad !== null ? r.cpuLoad : '—') + '%') +
-      mkCard('RAM libre', fmtBytes(r.freeMemory)) +
-    '</div>';
+  box.textContent = '';
+
+  var okSpan = el('span', { className: 'mk-status-ok' }, r.syncMode ? ('✅ ' + r.syncMode) : '✅ Conectado correctamente');
+  box.appendChild(okSpan);
+
+  var grid = el('div', { className: 'mk-info-grid' });
+  grid.appendChild(mkCardEl('Versión RouterOS', r.version));
+  grid.appendChild(mkCardEl('Uptime', r.uptime));
+  grid.appendChild(mkCardEl('CPU', (r.cpuLoad !== undefined && r.cpuLoad !== null ? r.cpuLoad : '—') + '%'));
+  grid.appendChild(mkCardEl('RAM libre', fmtBytes(r.freeMemory)));
+  box.appendChild(grid);
+}
+
+function loadCloudSyncScriptCard() {
+  var cmdBox = document.getElementById('cloudSyncCmdBox');
+  if (!cmdBox) return;
+  httpApiFetch('GET', '/api/mikrotik/sync/setup-script').then(function(res) {
+    cmdBox.textContent = (res && res.script) ? res.script : 'No disponible.';
+  }).catch(function() {
+    cmdBox.textContent = 'No se pudo cargar el script autenticado desde el backend.';
+  });
 }
 
 function loadMikrotikSection() {
   testMikrotik();
+  loadCloudSyncScriptCard();
   loadActiveUsers();
   loadSyncLog();
 }
@@ -896,11 +880,11 @@ function loadMikrotikSection() {
 function testMikrotik() {
   var box = document.getElementById('mkStatus');
   if (!box) return;
-  box.innerHTML = '<span style="color:var(--muted)">⏳ Verificando enlace con router y nube…</span>';
+  box.textContent = '';
+  box.appendChild(el('span', { style: 'color:var(--muted)' }, '⏳ Verificando enlace con router y nube…'));
 
   var handled = false;
 
-  // 1. Escuchar telemetría en tiempo real desde Firestore (sin restricciones CSP ni CORS)
   if (window.firebaseDb && window.firebaseDb.onMikrotikStatusChange) {
     if (_mkRealtimeUnsub) _mkRealtimeUnsub();
     _mkRealtimeUnsub = window.firebaseDb.onMikrotikStatusChange(function(r) {
@@ -914,28 +898,29 @@ function testMikrotik() {
     });
   }
 
-  // 2. Consulta paralela al backend API
   apiFetch('GET', '/api/mikrotik/test').then(function(r) {
     if (r.ok) {
       handled = true;
       renderMikrotikCard(r);
     } else if (!handled) {
-      box.innerHTML = '<span class="mk-status-err">❌ ' + (r.error || 'Sin conexión') + '</span>';
+      box.textContent = '';
+      box.appendChild(el('span', { className: 'mk-status-err' }, '❌ ' + (r.error || 'Sin conexión')));
     }
   }).catch(function(e) {
     setTimeout(function() {
       if (!handled) {
-        box.innerHTML = '<span class="mk-status-err">❌ ' + (e.error || 'Sin conexión') + '</span>';
+        box.textContent = '';
+        box.appendChild(el('span', { className: 'mk-status-err' }, '❌ ' + ((e && e.error) || 'Sin conexión')));
       }
     }, 2500);
   });
 }
 
-function mkCard(label, val) {
-  return '<div class="mk-info-card">' +
-    '<div class="mk-info-label">' + label + '</div>' +
-    '<div class="mk-info-val">'   + (val || '—') + '</div>' +
-  '</div>';
+function mkCardEl(label, val) {
+  var card = el('div', { className: 'mk-info-card' });
+  card.appendChild(el('div', { className: 'mk-info-label' }, label));
+  card.appendChild(el('div', { className: 'mk-info-val' }, val || '—'));
+  return card;
 }
 
 function fmtBytes(b) {
@@ -1304,11 +1289,7 @@ function requestNewQr() {
     btn.disabled = true;
     btn.textContent = '⏳ Generando QR...';
   }
-  var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
-  try {
-    var bImg = new Image();
-    bImg.src = apiBase + '/api/whatsapp/restart-beacon?_t=' + Date.now();
-  } catch (_) {}
+  httpApiFetch('POST', '/api/whatsapp/restart', {}).catch(function(){});
 
   toast('Solicitando código QR en tiempo real...', 'ok');
   setTimeout(function() {
@@ -1321,12 +1302,6 @@ function requestNewQr() {
 
 function disconnectWhatsApp() {
   if (!confirm('¿Estás seguro de que deseas desvincular el WhatsApp actual? El bot dejará de atender hasta que vincules un nuevo número.')) return;
-  var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
-  try {
-    var bImg = new Image();
-    bImg.src = apiBase + '/api/whatsapp/logout-beacon?_t=' + Date.now();
-  } catch (_) {}
-
   apiFetch('POST', '/api/whatsapp/logout').then(function(res) {
     toast(res.message || 'Sesión de WhatsApp cerrada', 'ok');
     localStorage.removeItem('wa_last_status');
@@ -1353,14 +1328,22 @@ function loadWhatsAppPayments() {
 
     data.payments.forEach(function(p) {
       var tr = document.createElement('tr');
-      tr.innerHTML =
-        '<td>' + fmtDate(p.created_at) + '</td>' +
-        '<td><strong>' + (p.sender_phone || '—') + '</strong></td>' +
-        '<td><span class="badge">' + (p.platform || 'Daviplata') + '</span></td>' +
-        '<td><code>' + (p.reference_number || '—') + '</code></td>' +
-        '<td style="color:#4ade80; font-weight:bold;">' + fmtMoney(p.amount) + '</td>' +
-        '<td>' + (p.plan_name ? p.plan_name + ' (' + p.plan_duration + ')' : '—') + '</td>' +
-        '<td><strong style="color:var(--cyan);">' + (p.voucher_code || '—') + '</strong></td>';
+      td(tr, fmtDate(p.created_at));
+      var phTd = tr.insertCell();
+      phTd.appendChild(el('strong', null, p.sender_phone || '—'));
+      var plTd = tr.insertCell();
+      plTd.appendChild(el('span', { className: 'badge' }, p.platform || 'Daviplata'));
+      var rfTd = tr.insertCell();
+      rfTd.appendChild(el('code', null, p.reference_number || '—'));
+      var amTd = tr.insertCell();
+      amTd.style.color = '#4ade80';
+      amTd.style.fontWeight = 'bold';
+      amTd.textContent = fmtMoney(p.amount);
+      td(tr, p.plan_name ? (p.plan_name + ' (' + p.plan_duration + ')') : '—');
+      var vcTd = tr.insertCell();
+      var vcStrong = el('strong', null, p.voucher_code || '—');
+      vcStrong.style.color = 'var(--cyan)';
+      vcTd.appendChild(vcStrong);
       tbody.appendChild(tr);
     });
   }).catch(function(err) {
@@ -1382,24 +1365,38 @@ function loadWhatsAppStrikes() {
 
     list.forEach(function(s) {
       var tr = document.createElement('tr');
-      var statusHtml = '';
-      if (s.is_blocked || (s.blocked_until && new Date(s.blocked_until) > new Date())) {
-        statusHtml = '<span class="badge" style="background:rgba(248,113,113,0.2); color:#f87171; font-weight:bold;">🚫 Bloqueado hasta ' + fmtDate(s.blocked_until) + '</span>';
-      } else if (s.strikes > 0) {
-        statusHtml = '<span class="badge" style="background:rgba(250,204,21,0.2); color:#facc15;">⚠️ ' + s.strikes + ' Strike(s)</span>';
-      } else {
-        statusHtml = '<span class="badge" style="background:rgba(74,222,128,0.2); color:#4ade80;">Normal</span>';
-      }
+      var pTd = tr.insertCell();
+      pTd.appendChild(el('strong', null, s.phone || '—'));
 
-      tr.innerHTML =
-        '<td><strong>' + s.phone + '</strong></td>' +
-        '<td><span class="stat-pill">' + s.strikes + ' / 3</span></td>' +
-        '<td>' + statusHtml + '</td>' +
-        '<td style="font-size:12px; color:var(--muted);">' + (s.last_reason || '—') + '</td>' +
-        '<td>' + fmtDate(s.updated_at) + '</td>' +
-        '<td>' +
-          '<button class="btn btn-sm btn-ghost" onclick="unblockPhone(\'' + s.phone + '\')" title="Desbloquear y limpiar strikes">🔓 Desbloquear</button>' +
-        '</td>';
+      var stTd = tr.insertCell();
+      stTd.appendChild(el('span', { className: 'stat-pill' }, (s.strikes || 0) + ' / 2'));
+
+      var statTd = tr.insertCell();
+      var badgeSpan = document.createElement('span');
+      badgeSpan.className = 'badge';
+      if (s.is_blocked || (s.blocked_until && new Date(s.blocked_until) > new Date())) {
+        badgeSpan.style.cssText = 'background:rgba(248,113,113,0.2); color:#f87171; font-weight:bold;';
+        badgeSpan.textContent = '🚫 Bloqueado hasta ' + fmtDate(s.blocked_until);
+      } else if (s.strikes > 0) {
+        badgeSpan.style.cssText = 'background:rgba(250,204,21,0.2); color:#facc15;';
+        badgeSpan.textContent = '⚠️ ' + s.strikes + ' Strike(s)';
+      } else {
+        badgeSpan.style.cssText = 'background:rgba(74,222,128,0.2); color:#4ade80;';
+        badgeSpan.textContent = 'Normal';
+      }
+      statTd.appendChild(badgeSpan);
+
+      var rsnTd = td(tr, s.last_reason || '—');
+      rsnTd.style.fontSize = '12px';
+      rsnTd.style.color = 'var(--muted)';
+
+      td(tr, fmtDate(s.updated_at));
+
+      var actTd = tr.insertCell();
+      var bUnblock = el('button', { type: 'button', className: 'btn btn-sm btn-ghost', title: 'Desbloquear y limpiar strikes' }, '🔓 Desbloquear');
+      bUnblock.addEventListener('click', function() { unblockPhone(s.phone); });
+      actTd.appendChild(bUnblock);
+
       tbody.appendChild(tr);
     });
   }).catch(function(err) {
@@ -1423,17 +1420,13 @@ function unblockPhone(phone) {
 var _currentKiosks = [];
 
 function loadKiosksSection() {
-  try {
-    var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
-    var img = new Image();
-    img.src = apiBase + '/api/kiosks/sync-beacon?t=' + Date.now();
-  } catch (_) {}
+  httpApiFetch('POST', '/api/kiosks/sync', {}).catch(function(){});
   var tbody = document.getElementById('kiosksBody');
   if (!tbody) return;
 
   apiFetch('GET', '/api/kiosks?all=true').then(function(kiosks) {
     _currentKiosks = kiosks || [];
-    tbody.innerHTML = '';
+    tbody.textContent = '';
     if (!_currentKiosks.length) {
       tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--muted)">No hay casetas registradas. Haz clic en "Nueva Caseta / Kiosko" para agregar una.</td></tr>';
       return;
@@ -1441,38 +1434,45 @@ function loadKiosksSection() {
 
     _currentKiosks.forEach(function(k) {
       var tr = document.createElement('tr');
-      var statusBadge = k.is_active
-        ? '<span class="badge" style="background:rgba(74,222,128,0.2); color:#4ade80;">Activo</span>'
-        : '<span class="badge" style="background:rgba(255,255,255,0.1); color:var(--muted);">Inactivo</span>';
+      td(tr, k.sort_order || 0);
 
-      var safeId = String(k.id || '').replace(/'/g, "\\'");
+      var nameTd = tr.insertCell();
+      nameTd.appendChild(el('strong', null, k.name || ''));
 
-      tr.innerHTML =
-        '<td>' + (k.sort_order || 0) + '</td>' +
-        '<td><strong>' + escapeHtml(k.name) + '</strong></td>' +
-        '<td>' + escapeHtml(k.location) + '</td>' +
-        '<td>' + (k.contact ? escapeHtml(k.contact) : '—') + '</td>' +
-        '<td style="font-size:12px; color:var(--muted);">' + (k.notes ? escapeHtml(k.notes) : '—') + '</td>' +
-        '<td>' + statusBadge + '</td>' +
-        '<td>' +
-          '<div style="display:flex; gap:6px;">' +
-            '<button type="button" class="btn btn-sm btn-ghost btn-edit-kiosk" onclick="editKiosk(\'' + safeId + '\')" title="Editar">✏️</button>' +
-            '<button type="button" class="btn btn-sm btn-ghost btn-toggle-kiosk" onclick="toggleKiosk(\'' + safeId + '\')" title="Activar/Desactivar">' + (k.is_active ? '⏸️' : '▶️') + '</button>' +
-            '<button type="button" class="btn btn-sm btn-danger btn-delete-kiosk" onclick="deleteKiosk(\'' + safeId + '\')" title="Eliminar">🗑️</button>' +
-          '</div>' +
-        '</td>';
+      td(tr, k.location || '');
+      td(tr, k.contact || '—');
 
-      // Event listeners directos como respaldo
-      var bEdit = tr.querySelector('.btn-edit-kiosk');
-      if (bEdit) bEdit.addEventListener('click', function() { editKiosk(k.id); });
-      var bToggle = tr.querySelector('.btn-toggle-kiosk');
-      if (bToggle) bToggle.addEventListener('click', function() { toggleKiosk(k.id); });
-      var bDel = tr.querySelector('.btn-delete-kiosk');
-      if (bDel) bDel.addEventListener('click', function() { deleteKiosk(k.id); });
+      var notesTd = td(tr, k.notes || '—');
+      notesTd.style.fontSize = '12px';
+      notesTd.style.color = 'var(--muted)';
 
+      var statTd = tr.insertCell();
+      var badge = el('span', { className: 'badge' }, k.is_active ? 'Activo' : 'Inactivo');
+      badge.style.cssText = k.is_active
+        ? 'background:rgba(74,222,128,0.2); color:#4ade80;'
+        : 'background:rgba(255,255,255,0.1); color:var(--muted);';
+      statTd.appendChild(badge);
+
+      var actTd = tr.insertCell();
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'display:flex; gap:6px;';
+
+      var bEdit = el('button', { type: 'button', className: 'btn btn-sm btn-ghost btn-edit-kiosk', title: 'Editar' }, '✏️');
+      bEdit.addEventListener('click', function() { editKiosk(k.id); });
+
+      var bToggle = el('button', { type: 'button', className: 'btn btn-sm btn-ghost btn-toggle-kiosk', title: 'Activar/Desactivar' }, k.is_active ? '⏸️' : '▶️');
+      bToggle.addEventListener('click', function() { toggleKiosk(k.id); });
+
+      var bDel = el('button', { type: 'button', className: 'btn btn-sm btn-danger btn-delete-kiosk', title: 'Eliminar' }, '🗑️');
+      bDel.addEventListener('click', function() { deleteKiosk(k.id); });
+
+      wrap.appendChild(bEdit);
+      wrap.appendChild(bToggle);
+      wrap.appendChild(bDel);
+      actTd.appendChild(wrap);
       tbody.appendChild(tr);
     });
-  }).catch(function(err) {
+  }).catch(function() {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#f87171">Error cargando casetas y kioskos.</td></tr>';
   });
 }
@@ -1617,35 +1617,69 @@ function loadComplaintsSection() {
       var tr = document.createElement('tr');
       var radicado = c.radicado || ('PQRS-' + String(c.id).padStart(4, '0'));
 
-      var statusBadge = '';
-      if (c.status === 'resolved') {
-        statusBadge = '<span class="badge" style="background:rgba(74,222,128,0.2); color:#4ade80;">✅ Resuelto</span>';
-      } else if (c.status === 'in_progress') {
-        statusBadge = '<span class="badge" style="background:rgba(56,189,248,0.2); color:#38bdf8;">🔄 En proceso</span>';
-      } else {
-        statusBadge = '<span class="badge" style="background:rgba(250,204,21,0.2); color:#facc15;">⏳ Pendiente</span>';
-      }
+      var radTd = tr.insertCell();
+      radTd.appendChild(el('strong', null, '#' + radicado));
 
+      var dtTd = td(tr, fmtDate(c.created_at));
+      dtTd.style.whiteSpace = 'nowrap';
+
+      var phTd = tr.insertCell();
       var cleanPhone = String(c.phone || '').replace(/\D/g, '');
       var phoneDisplay = cleanPhone || c.phone || '—';
-      var phoneLink = cleanPhone
-        ? '<a href="https://wa.me/' + (cleanPhone.startsWith('57') ? cleanPhone : ('57' + cleanPhone)) + '" target="_blank" rel="noopener" style="color:var(--cyan); text-decoration:none;" title="Chatear en WhatsApp">💬 ' + (c.client_name ? ('<strong>' + escapeHtml(c.client_name) + '</strong> (' + phoneDisplay + ')') : phoneDisplay) + '</a>'
-        : (c.client_name || c.phone || '—');
+      if (cleanPhone) {
+        var waHref = 'https://wa.me/' + (cleanPhone.startsWith('57') ? cleanPhone : ('57' + cleanPhone));
+        var linkEl = el('a', { href: waHref, target: '_blank', rel: 'noopener noreferrer', title: 'Chatear en WhatsApp' });
+        linkEl.style.cssText = 'color:var(--cyan); text-decoration:none;';
+        linkEl.appendChild(document.createTextNode('💬 '));
+        if (c.client_name) {
+          linkEl.appendChild(el('strong', null, c.client_name));
+          linkEl.appendChild(document.createTextNode(' (' + phoneDisplay + ')'));
+        } else {
+          linkEl.appendChild(document.createTextNode(phoneDisplay));
+        }
+        phTd.appendChild(linkEl);
+      } else {
+        phTd.textContent = c.client_name || c.phone || '—';
+      }
 
-      tr.innerHTML =
-        '<td><strong>#' + radicado + '</strong></td>' +
-        '<td style="white-space:nowrap;">' + fmtDate(c.created_at) + '</td>' +
-        '<td>' + phoneLink + '</td>' +
-        '<td style="max-width:280px; word-break:break-word;">' + escapeHtml(c.message) + '</td>' +
-        '<td>' + statusBadge + '</td>' +
-        '<td style="font-size:12px; color:var(--muted); max-width:200px;">' + (c.admin_notes ? escapeHtml(c.admin_notes) : '—') + '</td>' +
-        '<td>' +
-          '<div style="display:flex; gap:6px;">' +
-            '<button class="btn btn-sm btn-ghost" onclick="openComplaintModal(\'' + c.id + '\')" title="Atender / Responder">✏️ Atender</button>' +
-            (c.status !== 'resolved' ? '<button class="btn btn-sm btn-ghost" onclick="quickResolveComplaint(\'' + c.id + '\')" title="Marcar como Resuelto">✅</button>' : '') +
-            '<button class="btn btn-sm btn-danger" onclick="deleteComplaint(\'' + c.id + '\')" title="Eliminar">🗑️</button>' +
-          '</div>' +
-        '</td>';
+      var msgTd = td(tr, c.message || '');
+      msgTd.style.maxWidth = '280px';
+      msgTd.style.wordBreak = 'break-word';
+
+      var stTd = tr.insertCell();
+      var stBadge = document.createElement('span');
+      stBadge.className = 'badge';
+      if (c.status === 'resolved') {
+        stBadge.style.cssText = 'background:rgba(74,222,128,0.2); color:#4ade80;';
+        stBadge.textContent = '✅ Resuelto';
+      } else if (c.status === 'in_progress') {
+        stBadge.style.cssText = 'background:rgba(56,189,248,0.2); color:#38bdf8;';
+        stBadge.textContent = '🔄 En proceso';
+      } else {
+        stBadge.style.cssText = 'background:rgba(250,204,21,0.2); color:#facc15;';
+        stBadge.textContent = '⏳ Pendiente';
+      }
+      stTd.appendChild(stBadge);
+
+      var notesTd = td(tr, c.admin_notes || '—');
+      notesTd.style.cssText = 'font-size:12px; color:var(--muted); max-width:200px;';
+
+      var actTd = tr.insertCell();
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'display:flex; gap:6px;';
+      var bAtt = el('button', { type: 'button', className: 'btn btn-sm btn-ghost', title: 'Atender / Responder' }, '✏️ Atender');
+      bAtt.addEventListener('click', function() { openComplaintModal(c.id); });
+      wrap.appendChild(bAtt);
+      if (c.status !== 'resolved') {
+        var bRes = el('button', { type: 'button', className: 'btn btn-sm btn-ghost', title: 'Marcar como Resuelto' }, '✅');
+        bRes.addEventListener('click', function() { quickResolveComplaint(c.id); });
+        wrap.appendChild(bRes);
+      }
+      var bDel = el('button', { type: 'button', className: 'btn btn-sm btn-danger', title: 'Eliminar' }, '🗑️');
+      bDel.addEventListener('click', function() { deleteComplaint(c.id); });
+      wrap.appendChild(bDel);
+      actTd.appendChild(wrap);
+
       tbody.appendChild(tr);
     });
   }
@@ -1776,40 +1810,33 @@ function sendReplyViaBot() {
     loadComplaintsSection();
   }
 
-  // Enviar mediante Firestore Outbox (100% inmune a bloqueos de CSP y conexión en el navegador)
+  // Enviar mediante Firestore Outbox y respaldo POST autenticado
   if (window.firebaseDb && window.firebaseDb.sendWhatsAppReply) {
     window.firebaseDb.sendWhatsAppReply(target, formattedMsg, _activeComplaint.id, statusVal, rawMsg)
       .then(function() {
         onSuccess();
       })
-      .catch(function(err) {
-        console.warn('[sendReplyViaBot] Error en Outbox:', err);
-        // Fallback: Beacon de imagen
-        try {
-          var img = new Image();
-          var beaconUrl = (window.API_BASE || 'https://royota-bot.onrender.com') +
-            '/api/whatsapp/send-beacon?phone=' + encodeURIComponent(target) +
-            '&msg=' + encodeURIComponent(formattedMsg) +
-            '&complaint_id=' + encodeURIComponent(_activeComplaint.id || '') +
-            '&status=' + encodeURIComponent(statusVal) +
-            '&t=' + Date.now();
-          img.src = beaconUrl;
-        } catch (_) {}
-        setTimeout(onSuccess, 800);
+      .catch(function() {
+        httpApiFetch('POST', '/api/whatsapp/send-message', {
+          phone: target,
+          message: formattedMsg,
+          complaint_id: _activeComplaint.id || null,
+          status: statusVal,
+        }).then(onSuccess).catch(function(err2) {
+          if (btn) { btn.disabled = false; btn.textContent = '📤 Enviar Respuesta por WhatsApp'; }
+          toast((err2 && err2.error) || 'Error al enviar mensaje por WhatsApp', 'error');
+        });
       });
   } else {
-    // Fallback: Beacon de imagen
-    try {
-      var img = new Image();
-      var beaconUrl = (window.API_BASE || 'https://royota-bot.onrender.com') +
-        '/api/whatsapp/send-beacon?phone=' + encodeURIComponent(target) +
-        '&msg=' + encodeURIComponent(formattedMsg) +
-        '&complaint_id=' + encodeURIComponent(_activeComplaint.id || '') +
-        '&status=' + encodeURIComponent(statusVal) +
-        '&t=' + Date.now();
-      img.src = beaconUrl;
-    } catch (_) {}
-    setTimeout(onSuccess, 800);
+    httpApiFetch('POST', '/api/whatsapp/send-message', {
+      phone: target,
+      message: formattedMsg,
+      complaint_id: _activeComplaint.id || null,
+      status: statusVal,
+    }).then(onSuccess).catch(function(err2) {
+      if (btn) { btn.disabled = false; btn.textContent = '📤 Enviar Respuesta por WhatsApp'; }
+      toast((err2 && err2.error) || 'Error al enviar mensaje por WhatsApp', 'error');
+    });
   }
 }
 
@@ -2023,7 +2050,7 @@ function loadIpBindings() {
       return;
     }
 
-    var html = '';
+    tbody.textContent = '';
     _cachedIpBindings.forEach(function(item) {
       var icon = '📱';
       var commLow = (item.comment || '').toLowerCase();
@@ -2032,56 +2059,76 @@ function loadIpBindings() {
       else if (commLow.includes('impresora') || commLow.includes('pos')) icon = '🖨️';
       else if (commLow.includes('admin') || commLow.includes('pc') || commLow.includes('laptop')) icon = '💻';
 
-      var typeBadge = '<span class="badge badge-success" style="font-weight:700; font-size:11px;">🟢 BYPASSED</span>';
+      var tr = document.createElement('tr');
+
+      var nameTd = tr.insertCell();
+      nameTd.style.cssText = 'font-weight:600; color:#e0e9f0; display:flex; align-items:center; gap:8px;';
+      var iconSpan = el('span', null, icon);
+      iconSpan.style.fontSize = '16px';
+      nameTd.appendChild(iconSpan);
+      nameTd.appendChild(el('span', null, item.comment || 'Sin nombre'));
+
+      var macTd = tr.insertCell();
+      var macCode = el('code', null, item.mac_address || '');
+      macCode.style.cssText = 'background:rgba(0,0,0,0.4); padding:3px 8px; border-radius:6px; color:#00d4ff; font-weight:700; letter-spacing:0.5px;';
+      macTd.appendChild(macCode);
+
+      var ipTd = td(tr, item.address || 'Dinámica (DHCP)');
+      ipTd.style.color = item.address ? '#e0e9f0' : '#8ba3b8';
+      ipTd.style.fontFamily = 'monospace';
+
+      var tpTd = tr.insertCell();
+      var tpBadge = document.createElement('span');
+      tpBadge.style.cssText = 'font-weight:700; font-size:11px;';
       if (item.type === 'blocked') {
-        typeBadge = '<span class="badge badge-danger" style="font-weight:700; font-size:11px;">🔴 BLOCKED</span>';
+        tpBadge.className = 'badge badge-danger';
+        tpBadge.textContent = '🔴 BLOCKED';
       } else if (item.type === 'regular') {
-        typeBadge = '<span class="badge badge-warning" style="font-weight:700; font-size:11px;">🔵 REGULAR</span>';
+        tpBadge.className = 'badge badge-warning';
+        tpBadge.textContent = '🔵 REGULAR';
+      } else {
+        tpBadge.className = 'badge badge-success';
+        tpBadge.textContent = '🟢 BYPASSED';
       }
+      tpTd.appendChild(tpBadge);
 
       var dateStr = '—';
       if (item.created_at) {
         try {
-          var d = new Date(item.created_at);
-          dateStr = d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
+          dateStr = new Date(item.created_at).toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
         } catch (_) {}
       }
+      var dtTd = td(tr, dateStr);
+      dtTd.style.cssText = 'font-size:12px; color:#8ba3b8;';
 
-      var safeId = escapeHtml(item.id || item.mac_address);
-      var safeMac = escapeHtml(item.mac_address);
-      var safeComm = escapeHtml(item.comment || 'Sin nombre');
-      var safeType = escapeHtml(item.type || 'bypassed');
-      var safeIp = escapeHtml(item.address || 'Dinámica (DHCP)');
+      var actTd = tr.insertCell();
+      actTd.style.textAlign = 'right';
+      var wrap = document.createElement('div');
+      wrap.style.cssText = 'display:inline-flex; gap:6px; justify-content:flex-end;';
 
-      html += '<tr>' +
-        '<td style="font-weight:600; color:#e0e9f0; display:flex; align-items:center; gap:8px;">' +
-          '<span style="font-size:16px;">' + icon + '</span>' +
-          '<span>' + safeComm + '</span>' +
-        '</td>' +
-        '<td><code style="background:rgba(0,0,0,0.4); padding:3px 8px; border-radius:6px; color:#00d4ff; font-weight:700; letter-spacing:0.5px;">' + safeMac + '</code></td>' +
-        '<td style="color:' + (item.address ? '#e0e9f0' : '#8ba3b8') + '; font-family:monospace;">' + safeIp + '</td>' +
-        '<td>' + typeBadge + '</td>' +
-        '<td style="font-size:12px; color:#8ba3b8;">' + dateStr + '</td>' +
-        '<td style="text-align:right;">' +
-          '<div style="display:inline-flex; gap:6px; justify-content:flex-end;">' +
-            '<button type="button" class="btn btn-xs btn-ghost" title="Copiar comando MikroTik RouterOS" ' +
-              'onclick="copyBindingCommandFor(\'' + safeMac + '\', \'' + safeComm.replace(/'/g, "\\'") + '\', \'' + safeType + '\', \'' + (item.address || '') + '\')">' +
-              '📋 Copiar Script' +
-            '</button>' +
-            '<button type="button" class="btn btn-xs btn-danger" title="Eliminar dispositivo de IP Binding" ' +
-              'onclick="deleteIpBindingItem(\'' + safeId + '\', \'' + safeMac + '\', \'' + safeComm.replace(/'/g, "\\'") + '\')">' +
-              '🗑️' +
-            '</button>' +
-          '</div>' +
-        '</td>' +
-      '</tr>';
+      var bCopy = el('button', { type: 'button', className: 'btn btn-xs btn-ghost', title: 'Copiar comando MikroTik RouterOS' }, '📋 Copiar Script');
+      bCopy.addEventListener('click', function() {
+        copyBindingCommandFor(item.mac_address, item.comment || 'Sin nombre', item.type || 'bypassed', item.address || '');
+      });
+
+      var bDel = el('button', { type: 'button', className: 'btn btn-xs btn-danger', title: 'Eliminar dispositivo de IP Binding' }, '🗑️');
+      bDel.addEventListener('click', function() {
+        deleteIpBindingItem(item.id || item.mac_address, item.mac_address, item.comment || '');
+      });
+
+      wrap.appendChild(bCopy);
+      wrap.appendChild(bDel);
+      actTd.appendChild(wrap);
+      tbody.appendChild(tr);
     });
-    tbody.innerHTML = html;
   }).catch(function(err) {
     console.warn('Error loadIpBindings:', err);
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px; color:#ff4444;">' +
-      'Error al cargar dispositivos: ' + ((err && err.message) || 'Error de conexión') +
-      '</td></tr>';
+    tbody.textContent = '';
+    var errTr = tbody.insertRow();
+    var errTd = errTr.insertCell();
+    errTd.colSpan = 6;
+    errTd.style.cssText = 'text-align:center; padding:20px; color:#ff4444;';
+    errTd.textContent = 'Error al cargar dispositivos: ' + ((err && err.message) || 'Error de conexión');
   });
 }
 
@@ -2122,16 +2169,52 @@ window.handleSaveIpBinding = handleSaveIpBinding;
 window.loadIpBindings = loadIpBindings;
 window.deleteIpBindingItem = deleteIpBindingItem;
 
-/* ── Arranque inicial ───────────────────────────────────── */
-if (window.firebaseDb && window.firebaseDb.seedInitialDataIfEmpty) {
-  window.firebaseDb.seedInitialDataIfEmpty().then(function() {
+/* ── Arranque inicial verificado con Firebase Auth o JWT local ─ */
+function startAdminUi() {
+  loadBrandingHeader();
+  if (window.firebaseDb && window.firebaseDb.seedInitialDataIfEmpty) {
+    window.firebaseDb.seedInitialDataIfEmpty().then(function() {
+      loadDashboard();
+      loadPlanFilterDropdown();
+    }).catch(function() {
+      loadDashboard();
+      loadPlanFilterDropdown();
+    });
+  } else {
     loadDashboard();
     loadPlanFilterDropdown();
-  }).catch(function() {
-    loadDashboard();
-    loadPlanFilterDropdown();
+  }
+}
+
+if (typeof firebase !== 'undefined' && firebase.auth) {
+  var _booted = false;
+  firebase.auth().onAuthStateChanged(function(user) {
+    if (!user) {
+      logout();
+      return;
+    }
+    user.getIdToken().then(function(idToken) {
+      TOKEN = idToken;
+      localStorage.setItem('fichas_token', idToken);
+      ME = { username: user.email, uid: user.uid };
+      localStorage.setItem('fichas_admin', JSON.stringify(ME));
+      document.getElementById('adminName').textContent = user.email || 'Admin';
+      if (!_booted) {
+        _booted = true;
+        startAdminUi();
+      }
+    }).catch(function() {
+      logout();
+    });
   });
 } else {
-  loadDashboard();
-  loadPlanFilterDropdown();
+  if (!TOKEN) {
+    location.href = './login.html';
+  } else {
+    httpApiFetch('GET', '/api/auth/me').then(function() {
+      startAdminUi();
+    }).catch(function() {
+      logout();
+    });
+  }
 }

@@ -293,7 +293,11 @@ function _seedAdmin(db) {
     db.prepare(
       'INSERT INTO admins (username, password, role, full_name) VALUES (?, ?, ?, ?)'
     ).run(config.admin.user, hash, 'superadmin', 'Administrador');
-    console.log(`[DB] ✅ Admin "${config.admin.user}" creado. Cambia la contraseña al primer login.`);
+    if (config.admin.generatedBootstrapPass) {
+      console.log(`[DB] ✅ Admin inicial "${config.admin.user}" creado con clave bootstrap aleatoria: ${config.admin.pass} (configura ADMIN_PASS y cámbiala de inmediato).`);
+    } else {
+      console.log(`[DB] ✅ Admin "${config.admin.user}" creado. Cambia la contraseña al primer login.`);
+    }
   }
 }
 

@@ -20,9 +20,9 @@ router.post('/login', (req, res) => {
   }
 
   const db = getDb();
-  const admin = db.prepare('SELECT * FROM admins WHERE username = ?').get(username.trim());
+  const admin = db.prepare('SELECT * FROM admins WHERE username = ?').get(String(username).trim());
 
-  if (!admin || !bcrypt.compareSync(password, admin.password)) {
+  if (!admin || !bcrypt.compareSync(String(password), admin.password)) {
     return res.status(401).json({ error: 'Credenciales inválidas' });
   }
 
@@ -30,13 +30,12 @@ router.post('/login', (req, res) => {
     return res.status(403).json({ error: 'Usuario desactivado' });
   }
 
-  // Registrar último login
   db.prepare("UPDATE admins SET last_login = datetime('now') WHERE id = ?").run(admin.id);
 
   const token = jwt.sign(
     { id: admin.id, username: admin.username, role: admin.role, name: admin.full_name },
     config.jwt.secret,
-    { expiresIn: config.jwt.expiresIn }
+    { expiresIn: config.jwt.expiresIn, algorithm: 'HS256' }
   );
 
   res.json({
@@ -57,19 +56,29 @@ router.get('/me', authRequired, (req, res) => {
 
 // POST /api/auth/change-password
 router.post('/change-password', authRequired, (req, res) => {
+  if (req.admin.authType === 'firebase' || !req.admin.id) {
+    return res.status(400).json({
+      error: 'Las cuentas autenticadas con Firebase deben cambiar su contraseña desde Firebase Auth.',
+    });
+  }
+
   const { currentPassword, newPassword } = req.body;
-  if (!currentPassword || !newPassword || newPassword.length < 6) {
-    return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres' });
+  if (!currentPassword || !newPassword || String(newPassword).length < 8) {
+    return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 8 caracteres' });
   }
 
   const db = getDb();
   const admin = db.prepare('SELECT * FROM admins WHERE id = ?').get(req.admin.id);
 
-  if (!bcrypt.compareSync(currentPassword, admin.password)) {
+  if (!admin) {
+    return res.status(404).json({ error: 'Administrador no encontrado' });
+  }
+
+  if (!bcrypt.compareSync(String(currentPassword), admin.password)) {
     return res.status(401).json({ error: 'Contraseña actual incorrecta' });
   }
 
-  const hash = bcrypt.hashSync(newPassword, 10);
+  const hash = bcrypt.hashSync(String(newPassword), 10);
   db.prepare('UPDATE admins SET password = ? WHERE id = ?').run(hash, req.admin.id);
 
   res.json({ message: 'Contraseña actualizada exitosamente' });

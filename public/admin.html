@@ -19,8 +19,8 @@
       measurementId: "G-WSXG9T6NRM"
     };
   </script>
-  <script src="./js/config.js?v=40"></script>
-  <script src="./js/firebase-db.js?v=43"></script>
+  <script src="./js/config.js?v=41"></script>
+  <script src="./js/firebase-db.js?v=45"></script>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📶</text></svg>">
 </head>
 <body>
@@ -125,7 +125,7 @@
                 <div style="display:flex; gap:10px; align-items:center;">
                   <button type="button" class="btn btn-ghost" id="btnDecSheets" style="font-size:18px; font-weight:bold; width:42px; height:42px; padding:0; flex-shrink:0; border:1px solid rgba(255,255,255,0.15); display:flex; align-items:center; justify-content:center;" title="Disminuir 1 hoja">➖</button>
                   <div style="position:relative; flex:1;">
-                    <input type="number" id="gSheets" class="finput" value="1" min="1" max="25" style="text-align:center; font-size:18px; font-weight:700; color:#00d4ff; padding-right:75px;">
+                    <input type="number" id="gSheets" class="finput" value="1" min="1" max="20" style="text-align:center; font-size:18px; font-weight:700; color:#00d4ff; padding-right:75px;">
                     <span style="position:absolute; right:14px; top:50%; transform:translateY(-50%); font-size:13px; color:#8ba3b8; pointer-events:none;">hoja(s)</span>
                   </div>
                   <button type="button" class="btn btn-ghost" id="btnIncSheets" style="font-size:18px; font-weight:bold; width:42px; height:42px; padding:0; flex-shrink:0; border:1px solid rgba(255,255,255,0.15); display:flex; align-items:center; justify-content:center;" title="Aumentar 1 hoja">➕</button>
@@ -474,26 +474,11 @@
       </div>
 
       <div class="panel" style="margin-top:16px;">
-        <div class="panel-hd"><span class="panel-title">📁 Archivo de Configuración Maestro (.rsc)</span></div>
+        <div class="panel-hd"><span class="panel-title">📁 Plantillas RouterOS (.rsc) Protegidas</span></div>
         <div class="panel-body" style="font-size:13.5px; line-height: 1.6;">
-          <p style="color:var(--muted); margin-bottom: 12px;">
-            Este script contiene la configuración completa preprogramada para el MikroTik (Hotspot, Pools DHCP para 1022 usuarios, perfiles de velocidad PCQ, DNS y aislamiento de antenas).
+          <p style="color:var(--muted); margin-bottom: 10px;">
+            Por seguridad, los scripts maestros con credenciales fueron retirados del acceso público web y movidos fuera de la raíz pública del servidor (`scripts/mikrotik/`). Usa variables de entorno seguras y nunca subas contraseñas a páginas estáticas.
           </p>
-          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
-            <a href="./mikrotik-config-royota.rsc" download="mikrotik-config-royota.rsc" class="btn btn-primary btn-sm" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
-              📥 Descargar mikrotik-config-royota.rsc
-            </a>
-            <a href="./mikrotik-hotspot-hardening.rsc" download="mikrotik-hotspot-hardening.rsc" class="btn btn-ghost btn-sm" style="text-decoration:none; display:inline-flex; align-items:center; gap:6px;">
-              🛡️ Descargar Script de Seguridad y Firewall
-            </a>
-          </div>
-          <div style="background:rgba(0,0,0,0.3); padding:10px 14px; border-radius:6px; font-size:12px; color:#cbd5e1;">
-            💡 <strong>Cómo cargarlo en Winbox:</strong>
-            <ol style="margin:6px 0 0 18px; padding:0; line-height:1.7;">
-              <li>Abre Winbox y arrastra el archivo descargado dentro de la ventana <strong>Files</strong>.</li>
-              <li>Abre <strong>New Terminal</strong> y escribe: <code style="color:#38bdf8;">/import file-name=mikrotik-config-royota.rsc</code></li>
-            </ol>
-          </div>
         </div>
       </div>
 
@@ -501,13 +486,11 @@
         <div class="panel-hd"><span class="panel-title">⚡ Sincronización Automática Cloud (Balneario 24/7)</span></div>
         <div class="panel-body" style="font-size:13.5px; line-height: 1.6;">
           <p style="color:var(--muted); margin-bottom: 10px;">
-            Para que tu MikroTik físico en el balneario inyecte las fichas vendidas por WhatsApp en tiempo real (incluso detrás de la ONT sin IP pública fija), pega este comando en la <strong>New Terminal</strong> de Winbox:
+            Comando RouterOS cargado dinámicamente solo para administradores autenticados (con verificación TLS y permisos mínimos):
           </p>
-          <div style="background: rgba(0,0,0,0.5); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); font-family: monospace; font-size: 12px; color: #38bdf8; overflow-x: auto; user-select: all; white-space: pre-wrap;">/system script add name="sync-cloud-vouchers" policy=ftp,reboot,read,write,policy,test,password,sniff,sensitive,romon source=":do {\r\n :local cpu [/system resource get cpu-load];\r\n :local up [/system resource get uptime];\r\n :local ver [/system resource get version];\r\n :local mem [/system resource get free-memory];\r\n /tool fetch url=\"https://royota-bot.onrender.com/api/mikrotik/sync/vouchers.rsc?token=RoyotaCloud_SyncToken_2026_SecureKey&cpu=\$cpu&uptime=\$up&version=\$ver&mem=\$mem\" dst-path=\"sync.rsc\" check-certificate=no;\r\n :delay 500ms;\r\n :local f [/file find name=\"sync.rsc\"];\r\n :if (\$f != \"\") do={\r\n :local fSize [/file get \$f size];\r\n :if (\$fSize > 40) do={\r\n /import file-name=\"sync.rsc\";\r\n :log info \"MikroTik Cloud: Fichas nuevas inyectadas al instante\";\r\n };\r\n /file remove \"sync.rsc\";\r\n };\r\n} on-error={}"
-
-/system scheduler add interval=3s name="cloud-sync-scheduler" on-event="sync-cloud-vouchers" start-time=startup</div>
+          <div id="cloudSyncCmdBox" style="background: rgba(0,0,0,0.5); padding: 12px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.15); font-family: monospace; font-size: 12px; color: #38bdf8; overflow-x: auto; user-select: all; white-space: pre-wrap;">⏳ Cargando comando autenticado desde el servidor...</div>
           <p style="font-size: 12px; color: #80cbc4; margin-top: 8px;">
-            ⚡ <strong>Sincronización Ultrarrápida (3 segundos):</strong> El router consulta la nube cada 3 segundos e inyecta cualquier ficha de forma instantánea sin demora para el cliente.
+            ⚡ <strong>Sincronización Segura:</strong> El router consulta la nube automáticamente usando el token definido en las variables privadas del servidor (`MIKROTIK_SYNC_TOKEN`).
           </p>
         </div>
       </div>
@@ -1077,6 +1060,6 @@
 <!-- ══ TOAST ════════════════════════════════════════════════= -->
 <div class="toast-wrap" id="toastWrap" aria-live="polite"></div>
 
-<script src="./js/admin.js?v=44"></script>
+<script src="./js/admin.js?v=45"></script>
 </body>
 </html>

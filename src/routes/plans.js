@@ -1,5 +1,5 @@
 /**
- * src/routes/plans.js  — CRUD completo de planes
+ * src/routes/plans.js — CRUD completo de planes con validación estricta
  */
 'use strict';
 
@@ -9,17 +9,33 @@ const { authRequired } = require('../middleware/auth');
 
 const router = Router();
 
-// Expresión regular para validar formato de duración MikroTik
+const NAME_RE      = /^[A-Za-z0-9ÁÉÍÓÚáéíóúÑñ ._-]{1,50}$/;
+const PROFILE_RE   = /^[A-Za-z0-9 _.-]{1,32}$/;
 const DURATION_RE  = /^\d+[mhd]$/i;
-// Formato velocidad: 5M/5M, 2048k/2048k, etc.
 const SPEED_RE     = /^\d+[MkGmkg]\/\d+[MkGmkg]$/;
 
 function validatePlan(body) {
-  const { name, duration, speed_limit, price } = body;
-  if (!name?.trim())                       return 'name es requerido';
-  if (!DURATION_RE.test(duration))         return 'duration inválido (ej: 30m, 1h, 1d, 7d)';
-  if (!SPEED_RE.test(speed_limit))         return 'speed_limit inválido (ej: 5M/5M)';
-  if (price == null || isNaN(price) || price < 0) return 'price debe ser un número >= 0';
+  const { name, duration, speed_limit, price, profile_name, shared_users } = body;
+  const cleanName = String(name || '').trim();
+  if (!cleanName || !NAME_RE.test(cleanName)) {
+    return 'name inválido (máx 50 caracteres alfanuméricos, espacios, guiones o puntos)';
+  }
+  if (!DURATION_RE.test(String(duration || '').trim())) {
+    return 'duration inválido (ej: 30m, 1h, 1d, 7d)';
+  }
+  if (!SPEED_RE.test(String(speed_limit || '').trim())) {
+    return 'speed_limit inválido (ej: 5M/5M)';
+  }
+  if (price == null || isNaN(price) || Number(price) < 0) {
+    return 'price debe ser un número >= 0';
+  }
+  if (profile_name && !PROFILE_RE.test(String(profile_name).trim())) {
+    return 'profile_name inválido';
+  }
+  if (shared_users !== undefined) {
+    const su = parseInt(shared_users, 10);
+    if (isNaN(su) || su < 1 || su > 20) return 'shared_users debe estar entre 1 y 20';
+  }
   return null;
 }
 
@@ -59,11 +75,14 @@ router.post('/', authRequired, (req, res) => {
                        shared_users, profile_name, description, sort_order)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
-    name.trim(), duration.toLowerCase(), speed_limit,
-    parseFloat(price), data_limit || null,
+    String(name).trim(),
+    String(duration).trim().toLowerCase(),
+    String(speed_limit).trim(),
+    parseFloat(price),
+    data_limit ? String(data_limit).trim() : null,
     parseInt(shared_users, 10) || 1,
-    profile_name || 'default',
-    description  || '',
+    (profile_name ? String(profile_name).trim() : 'default') || 'default',
+    String(description || '').slice(0, 200),
     parseInt(sort_order, 10) || 0
   );
 
@@ -85,11 +104,14 @@ router.put('/:id', authRequired, (req, res) => {
       description = ?, sort_order = ?, is_active = ?
     WHERE id = ?
   `).run(
-    name.trim(), duration.toLowerCase(), speed_limit,
-    parseFloat(price), data_limit || null,
+    String(name).trim(),
+    String(duration).trim().toLowerCase(),
+    String(speed_limit).trim(),
+    parseFloat(price),
+    data_limit ? String(data_limit).trim() : null,
     parseInt(shared_users, 10) || 1,
-    profile_name || 'default',
-    description  || '',
+    (profile_name ? String(profile_name).trim() : 'default') || 'default',
+    String(description || '').slice(0, 200),
     parseInt(sort_order, 10) || 0,
     is_active !== undefined ? (is_active ? 1 : 0) : 1,
     req.params.id

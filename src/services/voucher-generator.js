@@ -133,6 +133,9 @@ async function generateBatch(options = {}) {
   const insertVoucher = db.prepare(
     'INSERT INTO vouchers (code, plan_id, batch_id) VALUES (?, ?, ?)'
   );
+  const checkCodeExists = db.prepare(
+    'SELECT 1 FROM vouchers WHERE code = ?'
+  );
 
   const codes = [];
   const MAX_ATTEMPTS_PER_CODE = 100;
@@ -151,7 +154,7 @@ async function generateBatch(options = {}) {
         rawCode  = prefix + generateCode(charSet.chars, codeLength - prefix.length);
         fullCode = formatCode(rawCode, groupSize, separator);
       } while (
-        db.prepare('SELECT 1 FROM vouchers WHERE code = ?').get(fullCode)
+        checkCodeExists.get(fullCode)
       );
 
       insertVoucher.run(fullCode, planId, batchId);

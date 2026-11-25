@@ -2,12 +2,6 @@
  * functions/index.js
  * ─────────────────────────────────────────────────────────────
  * Backend Serverless para Hotspot Fichas ROYOTA en Firebase.
- *
- * Incluye:
- * 1. Express API exportada como Cloud Function `api`
- * 2. Base de datos Cloud Firestore (Planes, Fichas, Lotes, Ajustes, Ventas)
- * 3. Integración con MikroTik RouterOS v7
- * 4. Tarea programada (Scheduled Function) de limpieza automática
  */
 'use strict';
 
@@ -21,21 +15,27 @@ const crypto    = require('crypto');
 
 const mikrotik  = require('./mikrotik');
 
-// Inicializar Firebase Admin
 admin.initializeApp();
 const db = admin.firestore();
 
-// ── Configuraciones Generales ──────────────────────────────────
-const JWT_SECRET     = process.env.JWT_SECRET || 'jwt-fichas-royota-secure-key-2026';
+// Evitar secreto JWT predecible si no está definido en variables de entorno
+let JWT_SECRET = process.env.JWT_SECRET || '';
+if (!JWT_SECRET || JWT_SECRET.includes('jwt-fichas-royota-secure-key')) {
+  JWT_SECRET = crypto.randomBytes(48).toString('hex');
+  console.error('[Functions] ⚠️ JWT_SECRET no configurado en entorno; usando clave efímera aleatoria.');
+}
 const JWT_EXPIRES_IN = '10h';
-const DEFAULT_USER   = process.env.ADMIN_USER || 'admin';
-const DEFAULT_PASS   = process.env.ADMIN_PASS || 'admin123';
 
-// ── Generador de Códigos ──────────────────────────────────────
+const ALLOWED_ORIGINS = [
+  'https://royota.dctelematica.com',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+];
+
 const CHARSETS = {
   numeric: '0123456789',
   alpha:   'ABCDEFGHJKLMNPQRSTUVWXYZ',
-  full:    '23456789ABCDEFGHJKLMNPQRSTUVWXYZ', // sin 0, 1, O, I para evitar confusión
+  full:    '23456789ABCDEFGHJKLMNPQRSTUVWXYZ',
 };
 
 function generateCode(length = 8, charsetType = 'full', prefix = '') {
@@ -68,7 +68,11 @@ function parseDurationMs(str) {
   }
 }
 
-// ── Middleware de Autenticación Admin ─────────────────────────
+function getBogotaMidnightMs() {
+  const bogotaDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
+  return new Date(`${bogotaDateStr}T23:59:59.999-05:00`).getTime();
+}
+
 function authRequired(req, res, next) {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -76,21 +80,27 @@ function authRequired(req, res, next) {
   }
   const token = authHeader.split(' ')[1];
   try {
-    req.admin = jwt.verify(token, JWT_SECRET);
-    next();
+    req.admin = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
+    return next();
   } catch (_) {
-    return res.status(401).json({ error: 'Token inválido o expirado' });
+    // Fallback: verificar Firebase ID Token si viene del SDK cliente
+    admin.auth().verifyIdToken(token)
+      .then((decoded) => {
+        req.admin = { uid: decoded.uid, username: decoded.email || decoded.uid, role: 'superadmin' };
+        next();
+      })
+      .catch(() => res.status(401).json({ error: 'Token inválido o expirado' }));
   }
 }
 
-// ── Inicializar Express App ───────────────────────────────────
 const app = express();
-app.use(cors({ origin: true }));
+app.use(cors({
+  origin(origin, cb) {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    return cb(new Error('Origen no permitido por CORS'));
+  },
+}));
 app.use(express.json());
-
-// ═══════════════════════════════════════════════════════════════
-//  RUTAS DE CONFIGURACIÓN & PORTAL CAUTIVO
-// ═══════════════════════════════════════════════════════════════
 
 const DEFAULT_SETTINGS = {
   business_name:    'Balneario Río Royota',
@@ -105,7 +115,6 @@ const DEFAULT_SETTINGS = {
   currencySymbol:   '$',
 };
 
-// GET /api/config & GET /api/settings/public
 app.get(['/config', '/settings/public'], async (req, res) => {
   try {
     const doc = await db.collection('settings').doc('general').get();
@@ -117,12 +126,11 @@ app.get(['/config', '/settings/public'], async (req, res) => {
       currency:       data.currency || 'COP',
       currencySymbol: data.currencySymbol || '$',
     });
-  } catch (err) {
+  } catch (_) {
     res.json(DEFAULT_SETTINGS);
   }
 });
 
-// GET /api/settings (auth)
 app.get('/settings', authRequired, async (req, res) => {
   try {
     const doc = await db.collection('settings').doc('general').get();
@@ -132,11 +140,9 @@ app.get('/settings', authRequired, async (req, res) => {
   }
 });
 
-// PUT /api/settings (auth)
 app.put('/settings', authRequired, async (req, res) => {
   try {
-    const payload = req.body;
-    await db.collection('settings').doc('general').set(payload, { merge: true });
+    await db.collection('settings').doc('general').set(req.body, { merge: true });
     const updated = (await db.collection('settings').doc('general').get()).data();
     res.json({ message: 'Configuración guardada en Firestore', settings: updated });
   } catch (err) {
@@ -144,15 +150,10 @@ app.put('/settings', authRequired, async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════════
-//  RUTAS DE PLANES DE INTERNET
-// ═══════════════════════════════════════════════════════════════
-
-// GET /api/plans (público)
 app.get('/plans', async (req, res) => {
   try {
     const snap = await db.collection('plans').where('is_active', '!=', 0).get();
-    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     list.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0) || (a.price || 0) - (b.price || 0));
     res.json(list);
   } catch (err) {
@@ -160,11 +161,10 @@ app.get('/plans', async (req, res) => {
   }
 });
 
-// GET /api/plans/all (auth)
 app.get('/plans/all', authRequired, async (req, res) => {
   try {
     const snap = await db.collection('plans').get();
-    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
     list.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0) || (a.price || 0) - (b.price || 0));
     res.json(list);
   } catch (err) {
@@ -172,7 +172,6 @@ app.get('/plans/all', authRequired, async (req, res) => {
   }
 });
 
-// POST /api/plans (auth)
 app.post('/plans', authRequired, async (req, res) => {
   try {
     const { name, duration, speed_limit, price, shared_users, sort_order, description } = req.body;
@@ -196,7 +195,6 @@ app.post('/plans', authRequired, async (req, res) => {
   }
 });
 
-// PUT /api/plans/:id (auth)
 app.put('/plans/:id', authRequired, async (req, res) => {
   try {
     const { name, duration, speed_limit, price, shared_users, sort_order, description, is_active } = req.body;
@@ -216,7 +214,6 @@ app.put('/plans/:id', authRequired, async (req, res) => {
   }
 });
 
-// DELETE /api/plans/:id (auth)
 app.delete('/plans/:id', authRequired, async (req, res) => {
   try {
     await db.collection('plans').doc(req.params.id).update({ is_active: 0 });
@@ -226,11 +223,6 @@ app.delete('/plans/:id', authRequired, async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════════
-//  RUTAS DE FICHAS (VOUCHERS)
-// ═══════════════════════════════════════════════════════════════
-
-// POST /api/vouchers/generate (auth)
 app.post('/vouchers/generate', authRequired, async (req, res) => {
   try {
     const { plan_id, quantity = 10, code_length = 8, charset = 'full', prefix = '', note = '' } = req.body;
@@ -238,9 +230,8 @@ app.post('/vouchers/generate', authRequired, async (req, res) => {
     if (!planDoc.exists) return res.status(404).json({ error: 'Plan no encontrado' });
     const plan = planDoc.data();
 
-    const count = Math.min(Math.max(parseInt(quantity, 10) || 10, 1), 500);
+    const count = Math.min(Math.max(parseInt(quantity, 10) || 10, 1), 450);
 
-    // Crear lote
     const batchRef = await db.collection('voucher_batches').add({
       plan_id:     planDoc.id,
       plan_name:   plan.name,
@@ -273,9 +264,9 @@ app.post('/vouchers/generate', authRequired, async (req, res) => {
     await batch.commit();
 
     res.status(201).json({
-      message:     `Lote de ${count} fichas generado`,
-      batch_id:    batchRef.id,
-      plan_name:   plan.name,
+      message:      `Lote de ${count} fichas generado`,
+      batch_id:     batchRef.id,
+      plan_name:    plan.name,
       sample_codes: codes.slice(0, 5),
     });
   } catch (err) {
@@ -283,7 +274,6 @@ app.post('/vouchers/generate', authRequired, async (req, res) => {
   }
 });
 
-// GET /api/vouchers (auth)
 app.get('/vouchers', authRequired, async (req, res) => {
   try {
     const { status, plan_id, search, limit = 100 } = req.query;
@@ -291,12 +281,12 @@ app.get('/vouchers', authRequired, async (req, res) => {
     if (status)  query = query.where('status', '==', status);
     if (plan_id) query = query.where('plan_id', '==', plan_id);
 
-    const snap = await query.limit(parseInt(limit, 10) || 100).get();
-    let list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const snap = await query.limit(Math.min(200, parseInt(limit, 10) || 100)).get();
+    let list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
     if (search) {
-      const s = search.toUpperCase();
-      list = list.filter(v => v.code.includes(s));
+      const s = String(search).toUpperCase();
+      list = list.filter((v) => v.code.includes(s));
     }
 
     res.json({ vouchers: list, total: list.length });
@@ -305,27 +295,35 @@ app.get('/vouchers', authRequired, async (req, res) => {
   }
 });
 
-// GET /api/vouchers/stats (auth)
 app.get('/vouchers/stats', authRequired, async (req, res) => {
   try {
-    const snap = await db.collection('vouchers').get();
-    const stats = { available: 0, sold: 0, active: 0, expired: 0 };
-    snap.docs.forEach(d => {
-      const st = d.data().status;
-      if (stats[st] !== undefined) stats[st]++;
-    });
+    const [availAgg, soldAgg, activeAgg, expAgg] = await Promise.all([
+      db.collection('vouchers').where('status', '==', 'available').count().get(),
+      db.collection('vouchers').where('status', '==', 'sold').count().get(),
+      db.collection('vouchers').where('status', '==', 'active').count().get(),
+      db.collection('vouchers').where('status', '==', 'expired').count().get(),
+    ]);
 
-    const salesSnap = await db.collection('sales').get();
-    let todayRev = 0, monthRev = 0;
+    const stats = {
+      available: availAgg.data().count,
+      sold:      soldAgg.data().count,
+      active:    activeAgg.data().count,
+      expired:   expAgg.data().count,
+    };
+
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10);
     const monthStr = now.toISOString().slice(0, 7);
+    const monthStartIso = `${monthStr}-01T00:00:00.000Z`;
 
-    salesSnap.docs.forEach(d => {
+    const salesSnap = await db.collection('sales').where('created_at', '>=', monthStartIso).get();
+    let todayRev = 0, monthRev = 0;
+
+    salesSnap.docs.forEach((d) => {
       const s = d.data();
       const dt = s.created_at || '';
       if (dt.startsWith(todayStr)) todayRev += (s.amount || 0);
-      if (dt.startsWith(monthStr)) monthRev += (s.amount || 0);
+      monthRev += (s.amount || 0);
     });
 
     res.json({
@@ -338,66 +336,69 @@ app.get('/vouchers/stats', authRequired, async (req, res) => {
   }
 });
 
-// GET /api/vouchers/batches (auth)
 app.get('/vouchers/batches', authRequired, async (req, res) => {
   try {
     const snap = await db.collection('voucher_batches').orderBy('created_at', 'desc').limit(50).get();
-    res.json(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    res.json(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/vouchers/batch/:id (auth)
 app.get('/vouchers/batch/:id', authRequired, async (req, res) => {
   try {
     const bDoc = await db.collection('voucher_batches').doc(req.params.id).get();
     const vSnap = await db.collection('vouchers').where('batch_id', '==', req.params.id).get();
     res.json({
       batch:    bDoc.exists ? { id: bDoc.id, ...bDoc.data() } : null,
-      vouchers: vSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+      vouchers: vSnap.docs.map((d) => ({ id: d.id, ...d.data() })),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/vouchers/sell (auth)
 app.post('/vouchers/sell', authRequired, async (req, res) => {
   try {
     const { voucher_id, payment_method = 'efectivo', buyer_note = '' } = req.body;
     const vRef = db.collection('vouchers').doc(String(voucher_id).toUpperCase());
-    const vDoc = await vRef.get();
 
-    if (!vDoc.exists || vDoc.data().status !== 'available') {
+    const soldData = await db.runTransaction(async (tx) => {
+      const vDoc = await tx.get(vRef);
+      if (!vDoc.exists || vDoc.data().status !== 'available') {
+        throw new Error('UNAVAILABLE');
+      }
+      const vData = vDoc.data();
+      const nowIso = new Date().toISOString();
+      tx.update(vRef, {
+        status:         'sold',
+        sold_at:        nowIso,
+        sold_by:        req.admin.username,
+        payment_method,
+        buyer_note,
+      });
+      const saleRef = db.collection('sales').doc();
+      tx.set(saleRef, {
+        voucher_code:   vData.code,
+        plan_name:      vData.plan_name,
+        amount:         vData.price || 0,
+        payment_method,
+        seller:         req.admin.username,
+        created_at:     nowIso,
+      });
+      return vData;
+    });
+
+    res.json({ message: 'Venta registrada con éxito', code: soldData.code, amount: soldData.price });
+  } catch (err) {
+    if (err.message === 'UNAVAILABLE') {
       return res.status(400).json({ error: 'Ficha no disponible para venta' });
     }
-
-    const vData = vDoc.data();
-    await vRef.update({
-      status:         'sold',
-      sold_at:        new Date().toISOString(),
-      sold_by:        req.admin.username,
-      payment_method,
-      buyer_note,
-    });
-
-    await db.collection('sales').add({
-      voucher_code:   vData.code,
-      plan_name:      vData.plan_name,
-      amount:         vData.price || 0,
-      payment_method,
-      seller:         req.admin.username,
-      created_at:     new Date().toISOString(),
-    });
-
-    res.json({ message: 'Venta registrada con éxito', code: vData.code, amount: vData.price });
-  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST /api/vouchers/activate (público — Portal Cautivo)
+// POST /api/vouchers/activate — Transaccional anti-TOCTOU
 app.post('/vouchers/activate', async (req, res) => {
   try {
     const { code } = req.body;
@@ -405,49 +406,61 @@ app.post('/vouchers/activate', async (req, res) => {
 
     const cleanCode = String(code).toUpperCase().trim();
     const vRef = db.collection('vouchers').doc(cleanCode);
-    const vDoc = await vRef.get();
 
-    if (!vDoc.exists) {
-      return res.status(404).json({ error: 'Código inválido o no encontrado' });
-    }
+    const claim = await db.runTransaction(async (tx) => {
+      const vDoc = await tx.get(vRef);
+      if (!vDoc.exists) throw new Error('NOT_FOUND');
+      const v = vDoc.data();
+      if (v.status !== 'available' && v.status !== 'sold') {
+        throw new Error(`ALREADY_USED:${v.status}`);
+      }
 
-    const v = vDoc.data();
-    if (v.status !== 'available' && v.status !== 'sold') {
-      return res.status(400).json({ error: `La ficha ya se encuentra: ${v.status}` });
-    }
+      const durMs = parseDurationMs(v.duration);
+      const finalExpiryMs = Math.min(Date.now() + durMs, getBogotaMidnightMs());
+      const expiresAt = new Date(finalExpiryMs).toISOString();
+      const nowIso = new Date().toISOString();
 
-    // 1. Crear usuario en MikroTik
-    await mikrotik.createHotspotUser(v.code, v.code, {
-      limitUptime: v.duration,
-      rateLimit:   v.speed_limit,
+      tx.update(vRef, {
+        status:       'active',
+        is_sold:      true,
+        sold_at:      v.sold_at || nowIso,
+        activated_at: nowIso,
+        expires_at:   expiresAt,
+      });
+
+      return { v, expiresAt, prevStatus: v.status };
     });
 
-    // 2. Calcular expiración
-    const durMs = parseDurationMs(v.duration);
-    const expiresAt = new Date(Date.now() + durMs).toISOString();
-
-    // 3. Actualizar en Firestore
-    await vRef.update({
-      status:       'active',
-      activated_at: new Date().toISOString(),
-      expires_at:   expiresAt,
-    });
+    try {
+      await mikrotik.createHotspotUser(claim.v.code, claim.v.code, {
+        limitUptime: claim.v.duration,
+        rateLimit:   claim.v.speed_limit,
+      });
+    } catch (mkErr) {
+      await vRef.update({ status: claim.prevStatus, activated_at: null, expires_at: null });
+      throw mkErr;
+    }
 
     res.json({
       message:    '¡Ficha activada con éxito! Ya puedes navegar.',
-      code:       v.code,
-      plan:       v.plan_name,
-      duration:   v.duration,
-      speed:      v.speed_limit,
-      expires_at: expiresAt,
+      code:       claim.v.code,
+      plan:       claim.v.plan_name,
+      duration:   claim.v.duration,
+      speed:      claim.v.speed_limit,
+      expires_at: claim.expiresAt,
     });
   } catch (err) {
+    if (err.message === 'NOT_FOUND') {
+      return res.status(404).json({ error: 'Código inválido o no encontrado' });
+    }
+    if (err.message && err.message.startsWith('ALREADY_USED:')) {
+      return res.status(400).json({ error: `La ficha ya se encuentra: ${err.message.split(':')[1]}` });
+    }
     console.error('Error al activar ficha:', err);
     res.status(500).json({ error: 'No se pudo activar la ficha. Intente de nuevo.' });
   }
 });
 
-// GET /api/vouchers/check/:code (público)
 app.get('/vouchers/check/:code', async (req, res) => {
   try {
     const code = req.params.code.toUpperCase().trim();
@@ -466,11 +479,7 @@ app.get('/vouchers/check/:code', async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════════
-//  AUTENTICACIÓN ADMIN
-// ═══════════════════════════════════════════════════════════════
-
-// POST /api/auth/login
+// POST /api/auth/login — Sin credenciales por defecto hardcodeadas
 app.post('/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
@@ -478,43 +487,30 @@ app.post('/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Usuario y contraseña requeridos' });
     }
 
-    // Comprobar contra Firestore o contra credenciales por defecto
-    let isValid = false;
-    let adminData = { username: username.trim(), role: 'superadmin', full_name: 'Administrador' };
-
     const adminDoc = await db.collection('admins').doc(username.trim().toLowerCase()).get();
-    if (adminDoc.exists) {
-      const data = adminDoc.data();
-      if (bcrypt.compareSync(password, data.password)) {
-        isValid = true;
-        adminData = { username: data.username, role: data.role, full_name: data.full_name || '' };
-      }
-    } else if (username.trim() === DEFAULT_USER && password === DEFAULT_PASS) {
-      isValid = true;
-    }
-
-    if (!isValid) {
+    if (!adminDoc.exists) {
       return res.status(401).json({ error: 'Credenciales inválidas' });
     }
 
-    const token = jwt.sign(adminData, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+    const data = adminDoc.data();
+    if (!data.password || !bcrypt.compareSync(password, data.password)) {
+      return res.status(401).json({ error: 'Credenciales inválidas' });
+    }
+
+    const adminData = { username: data.username, role: data.role || 'admin', full_name: data.full_name || '' };
+    const token = jwt.sign(adminData, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN, algorithm: 'HS256' });
     res.json({ token, admin: adminData });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// GET /api/auth/me
 app.get('/auth/me', authRequired, (req, res) => {
   res.json({ admin: req.admin });
 });
 
-// Exportar como Cloud Function HTTP 'api'
 exports.api = functions.https.onRequest(app);
 
-// ═══════════════════════════════════════════════════════════════
-//  TAREA PROGRAMADA: LIMPIEZA DE FICHAS VENCIDAS (Cada 15 min)
-// ═══════════════════════════════════════════════════════════════
 exports.cleanupExpiredVouchers = functions.pubsub.schedule('every 15 minutes').onRun(async () => {
   const nowIso = new Date().toISOString();
   const snap = await db.collection('vouchers')

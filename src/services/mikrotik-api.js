@@ -11,28 +11,8 @@
 
 const https = require('https');
 const http  = require('http');
-const os    = require('os');
 const config = require('../config');
-
-// ── Resolver interfaz de red local coincidente (evita interferencia de VPNs como Tailscale)
-function getMatchingLocalIp(targetHost) {
-  if (process.env.LOCAL_IP) return process.env.LOCAL_IP;
-  try {
-    const interfaces = os.networkInterfaces();
-    const parts = targetHost.split('.');
-    if (parts.length === 4) {
-      const prefix = parts.slice(0, 3).join('.') + '.';
-      for (const name of Object.keys(interfaces)) {
-        for (const iface of interfaces[name]) {
-          if (iface.family === 'IPv4' && !iface.internal && iface.address.startsWith(prefix)) {
-            return iface.address;
-          }
-        }
-      }
-    }
-  } catch (_) {}
-  return undefined;
-}
+const { getMatchingLocalIp } = require('../utils/helpers');
 
 // ── Error tipado para MikroTik ────────────────────────────────
 class MikrotikError extends Error {

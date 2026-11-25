@@ -441,7 +441,7 @@ html, body {
   /* ── Leer parámetros de URL ──────────────────────────── */
   var params  = new URLSearchParams(location.search);
   var batchId = params.get('batch');
-  var token   = localStorage.getItem('fichas_token') || (location.hostname === 'localhost' ? 'dev-token' : null);
+  var token   = localStorage.getItem('fichas_token');
 
   if (!batchId) {
     document.getElementById('loadingMsg').textContent =
@@ -449,10 +449,32 @@ html, body {
     return;
   }
 
-  if (!token) {
-    document.getElementById('loadingMsg').textContent =
-      '❌ No estás autenticado. Inicia sesión primero.';
-    return;
+  // Esperar a que Firebase Auth restaure la sesión real del administrador
+  if (typeof firebase !== 'undefined' && firebase.auth) {
+    var unsubscribe = firebase.auth().onAuthStateChanged(function(user) {
+      if (unsubscribe) unsubscribe();
+      if (!user) {
+        localStorage.removeItem('fichas_token');
+        document.getElementById('loadingMsg').textContent =
+          '❌ Sesión expirada o no autenticada. Inicia sesión primero.';
+        return;
+      }
+      user.getIdToken().then(function(idToken) {
+        token = idToken;
+        localStorage.setItem('fichas_token', idToken);
+        loadBatchData();
+      }).catch(function() {
+        document.getElementById('loadingMsg').textContent =
+          '❌ No se pudo verificar tu sesión de administrador.';
+      });
+    });
+  } else {
+    if (!token) {
+      document.getElementById('loadingMsg').textContent =
+        '❌ No estás autenticado. Inicia sesión primero.';
+      return;
+    }
+    loadBatchData();
   }
 
   function loadBatchData() {
@@ -482,16 +504,6 @@ html, body {
       updateBizName();
       renderTickets(_curStatus);
     });
-  }
-
-  // Esperar a que Firebase Auth restaure la sesión del administrador
-  if (typeof firebase !== 'undefined' && firebase.auth) {
-    var unsubscribe = firebase.auth().onAuthStateChanged(function(user) {
-      if (unsubscribe) unsubscribe();
-      loadBatchData();
-    });
-  } else {
-    loadBatchData();
   }
 
   /* ── Helpers de petición HTTP y Firestore con Fallback ───────────── */
@@ -537,15 +549,15 @@ html, body {
       : _allVouchers;
 
     var wrap = document.getElementById('ticketsWrap');
-    wrap.innerHTML = '';
+    wrap.textContent = '';
 
     var bi = _bizName || 'WiFi ROYOTA';
     var total = list.length;
     var paperVal = document.getElementById('selPaper').value;
 
     var perSheet = 0;
-    if (paperVal === 'letter' || paperVal === 'a4') perSheet = 48; // 6 cols × 8 filas = 48 fichas/hoja
-    else if (paperVal === 'letter-4' || paperVal === 'a4-4') perSheet = 24; // 4 cols × 6 filas = 24 fichas/hoja
+    if (paperVal === 'letter' || paperVal === 'a4') perSheet = 48;
+    else if (paperVal === 'letter-4' || paperVal === 'a4-4') perSheet = 24;
 
     var sheetsCount = perSheet > 0 ? Math.ceil(total / perSheet) : 1;
     var sheetsText = perSheet > 0 ? ' (' + sheetsCount + (sheetsCount === 1 ? ' hoja)' : ' hojas)') : '';
@@ -555,7 +567,10 @@ html, body {
       (_batchInfo ? ' — ' + (_batchInfo.plan_name || '') : '');
 
     if (!total) {
-      wrap.innerHTML = '<p style="padding:20px;font-family:sans-serif;color:#667">Sin fichas con estado: ' + (statusFilter||'todos') + '</p>';
+      var emptyMsg = document.createElement('p');
+      emptyMsg.style.cssText = 'padding:20px;font-family:sans-serif;color:#667';
+      emptyMsg.textContent = 'Sin fichas con estado: ' + (statusFilter || 'todos');
+      wrap.appendChild(emptyMsg);
       return;
     }
 

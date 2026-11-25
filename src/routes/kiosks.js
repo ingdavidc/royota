@@ -12,7 +12,8 @@ const { getLiveKiosks, invalidateKiosksCache } = require('../services/whatsapp-b
 
 const router = Router();
 
-// GET /api/kiosks — Listar kioskos (Público: para portal cautivo, bot y admin)
+// GET /api/kiosks — Listar kioskos activos (Público: portal cautivo y bot)
+// ?all=true reservado para admins autenticados
 router.get('/', async (req, res) => {
   const all = req.query.all === 'true';
   if (!all) {
@@ -31,24 +32,8 @@ router.get('/', async (req, res) => {
   res.json(kiosks);
 });
 
-// GET /api/kiosks/sync-beacon — Beacon anti-CSP para sincronización inmediata
-router.get('/sync-beacon', async (req, res) => {
-  try {
-    invalidateKiosksCache();
-    await getLiveKiosks();
-  } catch (_) {}
-  const gif = Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64');
-  res.writeHead(200, {
-    'Content-Type': 'image/gif',
-    'Content-Length': gif.length,
-    'Cache-Control': 'no-cache, no-store, must-revalidate',
-    'Access-Control-Allow-Origin': '*'
-  });
-  res.end(gif);
-});
-
-// POST /api/kiosks/sync — Sincronización explícita desde panel
-router.post('/sync', async (req, res) => {
+// POST /api/kiosks/sync — Sincronización explícita desde panel (Autenticado)
+router.post('/sync', authRequired, async (req, res) => {
   try {
     invalidateKiosksCache();
     const live = await getLiveKiosks();
@@ -69,7 +54,7 @@ router.post('/', authRequired, (req, res) => {
   const result = db.prepare(`
     INSERT INTO kiosks (name, location, contact, notes, sort_order)
     VALUES (?, ?, ?, ?, ?)
-  `).run(name.trim(), location.trim(), contact.trim(), notes.trim(), parseInt(sort_order, 10) || 0);
+  `).run(String(name).trim(), String(location).trim(), String(contact).trim(), String(notes).trim(), parseInt(sort_order, 10) || 0);
 
   invalidateKiosksCache();
   const kiosk = db.prepare('SELECT * FROM kiosks WHERE id = ?').get(result.lastInsertRowid);
@@ -80,6 +65,9 @@ router.post('/', authRequired, (req, res) => {
 router.put('/:id', authRequired, (req, res) => {
   const { name, location, contact = '', notes = '', sort_order = 0, is_active = 1 } = req.body;
   const { id } = req.params;
+  if (!name || !location) {
+    return res.status(400).json({ error: 'Nombre y ubicación son obligatorios' });
+  }
 
   const db = getDb();
   const existing = db.prepare('SELECT id FROM kiosks WHERE id = ?').get(id);
@@ -92,10 +80,10 @@ router.put('/:id', authRequired, (req, res) => {
     SET name = ?, location = ?, contact = ?, notes = ?, sort_order = ?, is_active = ?
     WHERE id = ?
   `).run(
-    name.trim(),
-    location.trim(),
-    contact.trim(),
-    notes.trim(),
+    String(name).trim(),
+    String(location).trim(),
+    String(contact).trim(),
+    String(notes).trim(),
     parseInt(sort_order, 10) || 0,
     is_active ? 1 : 0,
     id

@@ -2,16 +2,13 @@
  * src/routes/settings.js
  * ─────────────────────────────────────────────────────────────
  * Gestión de ajustes del portal cautivo y negocio.
- *
- * GET /api/settings/public → Ajustes visibles para el portal cautivo
- * GET /api/settings        → Todos los ajustes (requiere auth)
- * PUT /api/settings        → Actualizar ajustes (requiere auth)
  */
 'use strict';
 
 const { Router } = require('express');
 const { getSettings, setSettings } = require('../database');
 const { authRequired } = require('../middleware/auth');
+const { firestoreFetch, toFirestoreFields } = require('../services/firestore-client');
 const config = require('../config');
 
 const router = Router();
@@ -45,31 +42,28 @@ router.get('/', authRequired, (req, res) => {
   });
 });
 
-// Sincronizar ajustes hacia Cloud Firestore para actualizar en tiempo real el portal cautivo
 async function syncSettingsToFirestore(settings) {
   try {
-    const fields = {};
-    if (settings.business_name !== undefined)          fields.business_name          = { stringValue: String(settings.business_name) };
-    if (settings.business_slogan !== undefined)        fields.business_slogan        = { stringValue: String(settings.business_slogan) };
-    if (settings.whatsapp_number !== undefined)        fields.whatsapp_number        = { stringValue: String(settings.whatsapp_number) };
-    if (settings.payment_phone !== undefined)          fields.payment_phone          = { stringValue: String(settings.payment_phone) };
-    if (settings.online_purchase_active !== undefined) fields.online_purchase_active = { stringValue: String(settings.online_purchase_active) };
-    if (settings.whatsapp_message !== undefined)       fields.whatsapp_message       = { stringValue: String(settings.whatsapp_message) };
-    if (settings.info_active !== undefined)            fields.info_active            = { stringValue: String(settings.info_active) };
-    if (settings.info_badge !== undefined)             fields.info_badge             = { stringValue: String(settings.info_badge) };
-    if (settings.info_title !== undefined)             fields.info_title             = { stringValue: String(settings.info_title) };
-    if (settings.info_content !== undefined)           fields.info_content           = { stringValue: String(settings.info_content) };
+    const clean = {};
+    if (settings.business_name !== undefined)          clean.business_name          = String(settings.business_name);
+    if (settings.business_slogan !== undefined)        clean.business_slogan        = String(settings.business_slogan);
+    if (settings.whatsapp_number !== undefined)        clean.whatsapp_number        = String(settings.whatsapp_number);
+    if (settings.payment_phone !== undefined)          clean.payment_phone          = String(settings.payment_phone);
+    if (settings.online_purchase_active !== undefined) clean.online_purchase_active = String(settings.online_purchase_active);
+    if (settings.whatsapp_message !== undefined)       clean.whatsapp_message       = String(settings.whatsapp_message);
+    if (settings.info_active !== undefined)            clean.info_active            = String(settings.info_active);
+    if (settings.info_badge !== undefined)             clean.info_badge             = String(settings.info_badge);
+    if (settings.info_title !== undefined)             clean.info_title             = String(settings.info_title);
+    if (settings.info_content !== undefined)           clean.info_content           = String(settings.info_content);
 
-    const keys = Object.keys(fields);
+    const keys = Object.keys(clean);
     if (!keys.length) return;
 
     const updatePaths = keys.map(f => `updateMask.fieldPaths=${f}`).join('&');
-    const url = `https://firestore.googleapis.com/v1/projects/fichas-royota/databases/(default)/documents/settings/general?${updatePaths}`;
-
-    await fetch(url, {
+    await firestoreFetch(`/settings/general?${updatePaths}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fields })
+      body: JSON.stringify({ fields: toFirestoreFields(clean) }),
     });
   } catch (err) {
     console.warn('[Settings-Firestore] Error al sincronizar ajustes a Firestore:', err.message);
@@ -92,20 +86,18 @@ router.put('/', authRequired, (req, res) => {
   } = req.body;
 
   const toUpdate = {};
-  if (business_name !== undefined)          toUpdate.business_name          = business_name.trim();
-  if (business_slogan !== undefined)        toUpdate.business_slogan        = business_slogan.trim();
-  if (whatsapp_number !== undefined)        toUpdate.whatsapp_number        = whatsapp_number.replace(/[^\d+]/g, '');
-  if (payment_phone !== undefined)          toUpdate.payment_phone          = payment_phone.replace(/[^\d+]/g, '');
+  if (business_name !== undefined)          toUpdate.business_name          = String(business_name).trim();
+  if (business_slogan !== undefined)        toUpdate.business_slogan        = String(business_slogan).trim();
+  if (whatsapp_number !== undefined)        toUpdate.whatsapp_number        = String(whatsapp_number).replace(/[^\d+]/g, '');
+  if (payment_phone !== undefined)          toUpdate.payment_phone          = String(payment_phone).replace(/[^\d+]/g, '');
   if (online_purchase_active !== undefined) toUpdate.online_purchase_active = online_purchase_active ? '1' : '0';
-  if (whatsapp_message !== undefined)       toUpdate.whatsapp_message       = whatsapp_message.trim();
+  if (whatsapp_message !== undefined)       toUpdate.whatsapp_message       = String(whatsapp_message).trim();
   if (info_active !== undefined)            toUpdate.info_active            = info_active ? '1' : '0';
-  if (info_badge !== undefined)             toUpdate.info_badge             = info_badge.trim();
-  if (info_title !== undefined)             toUpdate.info_title             = info_title.trim();
-  if (info_content !== undefined)           toUpdate.info_content           = info_content;
+  if (info_badge !== undefined)             toUpdate.info_badge             = String(info_badge).trim();
+  if (info_title !== undefined)             toUpdate.info_title             = String(info_title).trim();
+  if (info_content !== undefined)           toUpdate.info_content           = String(info_content);
 
   const updated = setSettings(toUpdate);
-
-  // Sincronizar en tiempo real a Google Firestore (para actualizar portal cautivo al instante)
   syncSettingsToFirestore(toUpdate);
 
   res.json({ message: 'Configuración guardada con éxito', settings: updated });
