@@ -13,6 +13,7 @@ const mikrotik   = require('../services/mikrotik-api');
 const { getDb, getSettings, setSettings } = require('../database');
 const { firestoreFetch, toFirestoreFields } = require('../services/firestore-client');
 const { recordTelemetry, getLatestTelemetry, getTelemetrySnapshot } = require('../services/mikrotik-telemetry');
+const hardening = require('../services/mikrotik-hardening');
 const { timingSafeEqualStr } = require('../utils/helpers');
 
 const router = Router();
@@ -20,6 +21,8 @@ const router = Router();
 let _profilesNeedSync = true;
 let _auditArmed = false;
 let _auditLastDispatchedMs = 0;
+let _hardeningAction = null; // 'apply' | 'confirm' | 'rollback' | null
+let _hardeningLastDispatchedMs = 0;
 
 // Rastrea IDs ya entregados al router en espera de ACK (evita re-inyección repetida en ventanas de 3s)
 const _inFlightSync = {
@@ -479,6 +482,51 @@ router.post('/audit-trigger', authRequired, (req, res) => {
   res.json({ ok: true, message: 'Auditoría one-shot armada para el próximo pulso único del router.' });
 });
 
+// POST /api/mikrotik/hardening-trigger — Desplegar hardening controlado con auto-rollback 3 min
+router.post('/hardening-trigger', authRequired, async (req, res) => {
+  _hardeningAction = 'apply';
+  _hardeningLastDispatchedMs = 0;
+  const state = await hardening.saveHardeningState('armed', 'Despliegue controlado armado; esperando próximo pulso Cloud Sync.');
+  res.json({ ok: true, ...state });
+});
+
+// POST /api/mikrotik/hardening-confirm — Confirmar hardening validado y desarmar guardia auto-rollback
+router.post('/hardening-confirm', authRequired, async (req, res) => {
+  _hardeningAction = 'confirm';
+  _hardeningLastDispatchedMs = 0;
+  const state = await hardening.saveHardeningState('confirm_armed', 'Confirmación armada para desactivar guardia auto-rollback.');
+  res.json({ ok: true, ...state });
+});
+
+// POST /api/mikrotik/hardening-rollback — Forzar rollback remoto inmediato en el próximo pulso
+router.post('/hardening-rollback', authRequired, async (req, res) => {
+  _hardeningAction = 'rollback';
+  _hardeningLastDispatchedMs = 0;
+  const state = await hardening.saveHardeningState('rollback_armed', 'Rollback remoto armado para el próximo pulso.');
+  res.json({ ok: true, ...state });
+});
+
+// GET /api/mikrotik/hardening-status — Consultar estado de hardening/auto-rollback
+router.get('/hardening-status', authRequired, async (req, res) => {
+  const state = await hardening.getHardeningState();
+  res.json({ ok: true, pendingAction: _hardeningAction, ...state });
+});
+
+// GET /api/mikrotik/hardening-ack — Confirmación del router tras aplicar/confirmar/revertir hardening
+router.get('/hardening-ack', async (req, res) => {
+  if (!verifySyncToken(req)) {
+    return res.status(403).send('# unauthorized\n');
+  }
+  const stage = String(req.query.stage || '').trim();
+  if (!hardening.VALID_HARDENING_STAGES.has(stage)) {
+    return res.status(400).send('# invalid stage\n');
+  }
+  await hardening.saveHardeningState(stage, `Router reportó stage=${stage} vía HTTPS.`);
+  console.log(`[MikroTik-Hardening] ✅ ACK recibido del router: stage=${stage}`);
+  res.setHeader('Content-Type', 'text/plain');
+  res.send(`# hardening-ack ${stage}\n`);
+});
+
 // GET /api/mikrotik/sync/ack — Confirmación del router tras aplicar sync.rsc
 router.get('/sync/ack', (req, res) => {
   if (!verifySyncToken(req)) {
@@ -546,9 +594,31 @@ router.get('/sync/vouchers.rsc', (req, res) => {
   const db = getDb();
   let rscCommands = '';
 
-  // 1. Colector de auditoría Opción A (solo si fue armado manualmente, máximo 1 envío)
+  // 1. Despliegue/confirmación/rollback one-shot de hardening controlado (prioritario, 1 disparo)
+  let dispatchedHardening = false;
   try {
-    if (_auditArmed && (Date.now() - _auditLastDispatchedMs) > 120_000) {
+    if (_hardeningAction && (Date.now() - _hardeningLastDispatchedMs) > 15_000) {
+      const action = _hardeningAction;
+      _hardeningAction = null;
+      _hardeningLastDispatchedMs = Date.now();
+      dispatchedHardening = true;
+      if (action === 'apply') {
+        rscCommands += hardening.buildOneShotHardeningRsc(config.mikrotik.syncToken) + '\n';
+        hardening.saveHardeningState('dispatched', 'Script de hardening con guardia 3-min enviado al router.').catch(() => {});
+      } else if (action === 'confirm') {
+        rscCommands += hardening.buildOneShotHardeningConfirmRsc(config.mikrotik.syncToken) + '\n';
+      } else if (action === 'rollback') {
+        rscCommands += hardening.buildOneShotHardeningRollbackRsc(config.mikrotik.syncToken) + '\n';
+      }
+      console.log(`[MikroTik-Hardening] 📡 Script one-shot (${action}) enviado al router.`);
+    }
+  } catch (err) {
+    console.warn('[MikroTik-Hardening] Aviso preparando script:', err.message);
+  }
+
+  // 2. Colector de auditoría Opción A (solo si fue armado manualmente, máximo 1 envío)
+  try {
+    if (!dispatchedHardening && _auditArmed && (Date.now() - _auditLastDispatchedMs) > 120_000) {
       _auditArmed = false;
       _auditLastDispatchedMs = Date.now();
       rscCommands += buildOneShotAuditRsc(config.mikrotik.syncToken) + '\n';
