@@ -40,6 +40,10 @@ function httpApiFetch(method, url, body) {
       xhr.setRequestHeader('Authorization', 'Bearer ' + tok);
       xhr.onreadystatechange = function() {
         if (xhr.readyState !== 4) return;
+        if (xhr.status === 0) {
+          reject({ error: 'Bloqueado por política CSP o error de red hacia backend', status: 0 });
+          return;
+        }
         var d;
         try { d = JSON.parse(xhr.responseText); } catch(_) { d = {}; }
         if (xhr.status === 401) {
@@ -877,6 +881,32 @@ function loadMikrotikSection() {
   loadSyncLog();
 }
 
+function renderMikrotikOfflineCard(r, detailText) {
+  var box = document.getElementById('mkStatus');
+  if (!box) return;
+  box.textContent = '';
+
+  var lastSeenStr = (r && r.lastSeen) ? fmtDate(r.lastSeen) : 'Sin registro';
+  var ageMin = (r && r.lastSeen) ? Math.max(0, Math.round((Date.now() - new Date(r.lastSeen).getTime()) / 60000)) : null;
+  var title = ageMin !== null
+    ? ('❌ Sin pulso Cloud Sync (último reporte: ' + lastSeenStr + ' · hace ' + ageMin + ' min)')
+    : '❌ Sin conexión con router MikroTik';
+
+  box.appendChild(el('span', { className: 'mk-status-err' }, title));
+  if (detailText) {
+    box.appendChild(el('div', { style: 'margin-top:6px; font-size:12.5px; color:var(--muted);' }, detailText));
+  }
+
+  if (r && (r.version || r.uptime)) {
+    var grid = el('div', { className: 'mk-info-grid' });
+    grid.appendChild(mkCardEl('Última versión vista', r.version || '—'));
+    grid.appendChild(mkCardEl('Último uptime', r.uptime || '—'));
+    grid.appendChild(mkCardEl('Último CPU', (r.cpuLoad !== undefined && r.cpuLoad !== null ? r.cpuLoad : '—') + '%'));
+    grid.appendChild(mkCardEl('Última RAM libre', fmtBytes(r.freeMemory)));
+    box.appendChild(grid);
+  }
+}
+
 function testMikrotik() {
   var box = document.getElementById('mkStatus');
   if (!box) return;
@@ -884,16 +914,20 @@ function testMikrotik() {
   box.appendChild(el('span', { style: 'color:var(--muted)' }, '⏳ Verificando enlace con router y nube…'));
 
   var handled = false;
+  var lastFirestoreTelem = null;
 
   if (window.firebaseDb && window.firebaseDb.onMikrotikStatusChange) {
     if (_mkRealtimeUnsub) _mkRealtimeUnsub();
     _mkRealtimeUnsub = window.firebaseDb.onMikrotikStatusChange(function(r) {
       if (!r) return;
+      lastFirestoreTelem = r;
       var lastSeenMs = r.lastSeen ? new Date(r.lastSeen).getTime() : 0;
       var isAlive = (Date.now() - lastSeenMs) < 120000;
       if (isAlive && r.status === 'online') {
         handled = true;
         renderMikrotikCard(r);
+      } else if (!handled) {
+        renderMikrotikOfflineCard(r, 'Sin comunicación desde el router en el Balneario hacia Render.');
       }
     });
   }
@@ -903,16 +937,17 @@ function testMikrotik() {
       handled = true;
       renderMikrotikCard(r);
     } else if (!handled) {
-      box.textContent = '';
-      box.appendChild(el('span', { className: 'mk-status-err' }, '❌ ' + (r.error || 'Sin conexión')));
+      renderMikrotikOfflineCard(lastFirestoreTelem || r, r.error || 'Sin conexión');
     }
   }).catch(function(e) {
     setTimeout(function() {
       if (!handled) {
-        box.textContent = '';
-        box.appendChild(el('span', { className: 'mk-status-err' }, '❌ ' + ((e && e.error) || 'Sin conexión')));
+        var msg = (e && e.status === 0)
+          ? 'Aviso navegador: Cloudflare CSP bloquea consulta directa al backend Render (la telemetría en vivo arriba proviene de Firestore).'
+          : ((e && e.error) || 'Sin conexión');
+        renderMikrotikOfflineCard(lastFirestoreTelem, msg);
       }
-    }, 2500);
+    }, 1200);
   });
 }
 

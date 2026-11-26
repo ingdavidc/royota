@@ -58,7 +58,7 @@ async function _runCleanup() {
     for (const v of expired) {
       const t0 = Date.now();
       try {
-        if (v.mikrotik_synced) {
+        if (v.mikrotik_synced && !config.mikrotik.cloudSyncOnly) {
           await mikrotik.kickActiveUser(v.code);
           const mkUser = await mikrotik.findHotspotUser(v.code);
           if (mkUser?.['.id']) {

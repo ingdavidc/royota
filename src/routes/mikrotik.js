@@ -11,7 +11,7 @@ const config     = require('../config');
 const { authRequired } = require('../middleware/auth');
 const mikrotik   = require('../services/mikrotik-api');
 const { getDb, getSettings, setSettings } = require('../database');
-const { firestoreFetch, toFirestoreFields } = require('../services/firestore-client');
+const { firestoreFetch, toFirestoreFields, decodeFirestoreValue } = require('../services/firestore-client');
 const { timingSafeEqualStr } = require('../utils/helpers');
 
 const router = Router();
@@ -28,6 +28,7 @@ let _routerTelemetry = {
 
 let _profilesNeedSync = true;
 let _lastFirestoreSync = 0;
+let _auditArmed = false;
 let _auditLastDispatchedMs = 0;
 
 // Rastrea IDs ya entregados al router en espera de ACK (evita re-inyección repetida en ventanas de 3s)
@@ -106,23 +107,65 @@ async function syncTelemetryToFirestore(telem) {
   }
 }
 
+async function getFirestoreTelemetryFallback() {
+  try {
+    const res = await firestoreFetch('/telemetry/mikrotik');
+    if (!res.ok) return null;
+    const doc = await res.json();
+    if (!doc || !doc.fields) return null;
+    return {
+      lastSeen:    decodeFirestoreValue(doc.fields.lastSeen) || null,
+      version:     decodeFirestoreValue(doc.fields.version) || 'RouterOS v7',
+      uptime:      decodeFirestoreValue(doc.fields.uptime) || '—',
+      cpuLoad:     decodeFirestoreValue(doc.fields.cpuLoad),
+      freeMemory:  decodeFirestoreValue(doc.fields.freeMemory),
+      totalMemory: decodeFirestoreValue(doc.fields.totalMemory),
+    };
+  } catch (_) {
+    return null;
+  }
+}
+
 // GET /api/mikrotik/test — Estado de conectividad (Admin autenticado)
 router.get('/test', authRequired, async (req, res) => {
   const now = Date.now();
-  const lastSeenMs = _routerTelemetry.lastSeen ? new Date(_routerTelemetry.lastSeen).getTime() : 0;
-  const isRouterAlive = (now - lastSeenMs) < 60_000;
+  let telem = _routerTelemetry;
+  if (!telem.lastSeen) {
+    const fb = await getFirestoreTelemetryFallback();
+    if (fb && fb.lastSeen) telem = fb;
+  }
+
+  const lastSeenMs = telem.lastSeen ? new Date(telem.lastSeen).getTime() : 0;
+  const ageMs = lastSeenMs ? Math.max(0, now - lastSeenMs) : Infinity;
+  const isRouterAlive = ageMs < 90_000;
 
   if (isRouterAlive) {
+    const cleanVer = String(telem.version || 'RouterOS v7').replace(/\s*\(Enlace Nube Activo\)\s*$/i, '');
     return res.json({
       ok: true,
       routerboard: true,
-      version: _routerTelemetry.version + ' (Enlace Nube Activo)',
-      uptime: _routerTelemetry.uptime || 'Activo',
-      cpuLoad: _routerTelemetry.cpuLoad !== null ? _routerTelemetry.cpuLoad : 2,
-      freeMemory: _routerTelemetry.freeMemory || 524288000,
-      totalMemory: _routerTelemetry.totalMemory || 1073741824,
+      version: `${cleanVer} (Enlace Nube Activo)`,
+      uptime: telem.uptime || 'Activo',
+      cpuLoad: telem.cpuLoad !== null && telem.cpuLoad !== undefined ? telem.cpuLoad : 2,
+      freeMemory: telem.freeMemory || 524288000,
+      totalMemory: telem.totalMemory || 1073741824,
       syncMode: 'Cloud Sync Autónomo 24/7 (ONT / MikroTik)',
-      lastSeen: _routerTelemetry.lastSeen,
+      lastSeen: telem.lastSeen,
+    });
+  }
+
+  if (config.mikrotik.cloudSyncOnly) {
+    const offlineMins = Number.isFinite(ageMs) ? Math.floor(ageMs / 60_000) : null;
+    const lastSeenInfo = telem.lastSeen
+      ? `Último pulso Cloud Sync hace ${offlineMins} min (${telem.lastSeen})`
+      : 'Sin pulso Cloud Sync registrado aún';
+    return res.status(502).json({
+      ok: false,
+      cloudSyncOnly: true,
+      lastSeen: telem.lastSeen || null,
+      version: telem.version || null,
+      uptime: telem.uptime || null,
+      error: `Router sin conexión Cloud Sync (${lastSeenInfo}). Conexión directa no disponible detrás de CGNAT del ISP.`,
     });
   }
 
@@ -132,6 +175,9 @@ router.get('/test', authRequired, async (req, res) => {
 
 // GET /api/mikrotik/profiles — Listar perfiles Hotspot
 router.get('/profiles', authRequired, async (req, res) => {
+  if (config.mikrotik.cloudSyncOnly) {
+    return res.status(502).json({ error: 'Consulta directa REST no disponible en modo Cloud Sync (CGNAT)' });
+  }
   try {
     const profiles = await mikrotik.listProfiles();
     res.json(Array.isArray(profiles) ? profiles : []);
@@ -142,6 +188,9 @@ router.get('/profiles', authRequired, async (req, res) => {
 
 // GET /api/mikrotik/users — Usuarios Hotspot en el router
 router.get('/users', authRequired, async (req, res) => {
+  if (config.mikrotik.cloudSyncOnly) {
+    return res.status(502).json({ error: 'Consulta directa REST no disponible en modo Cloud Sync (CGNAT)' });
+  }
   try {
     res.json(await mikrotik.listHotspotUsers());
   } catch (err) {
@@ -151,6 +200,9 @@ router.get('/users', authRequired, async (req, res) => {
 
 // GET /api/mikrotik/active — Sesiones activas (Admin autenticado)
 router.get('/active', authRequired, async (req, res) => {
+  if (config.mikrotik.cloudSyncOnly) {
+    return res.status(502).json({ error: 'Consulta directa REST no disponible en modo Cloud Sync (CGNAT)' });
+  }
   try {
     res.json(await mikrotik.listActiveUsers());
   } catch (err) {
@@ -215,10 +267,12 @@ router.post('/bindings', authRequired, async (req, res) => {
         mikrotik_synced = 0
     `).run(cleanMac, cleanComment, cleanType, cleanAddress);
 
-    try {
-      await mikrotik.createIpBinding(cleanMac, cleanComment, cleanType, cleanAddress);
-      db.prepare('UPDATE ip_bindings SET mikrotik_synced = 1 WHERE mac_address = ?').run(cleanMac);
-    } catch (_) {}
+    if (!config.mikrotik.cloudSyncOnly) {
+      try {
+        await mikrotik.createIpBinding(cleanMac, cleanComment, cleanType, cleanAddress);
+        db.prepare('UPDATE ip_bindings SET mikrotik_synced = 1 WHERE mac_address = ?').run(cleanMac);
+      } catch (_) {}
+    }
 
     res.json({ ok: true, mac: cleanMac, comment: cleanComment, type: cleanType, address: cleanAddress });
   } catch (err) {
@@ -235,7 +289,9 @@ router.delete('/bindings/:mac', authRequired, async (req, res) => {
   try {
     db.prepare('DELETE FROM ip_bindings WHERE mac_address = ? COLLATE NOCASE').run(cleanMac);
     db.prepare('INSERT INTO pending_removals (mac_address) VALUES (?)').run(cleanMac);
-    try { await mikrotik.removeIpBinding(cleanMac); } catch (_) {}
+    if (!config.mikrotik.cloudSyncOnly) {
+      try { await mikrotik.removeIpBinding(cleanMac); } catch (_) {}
+    }
     res.json({ ok: true, removed: cleanMac });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -369,10 +425,10 @@ router.post('/sync/plan-sync', authRequired, (req, res) => {
 
 // ── OPCIÓN A: COLECTOR AUTOMÁTICO DE AUDITORÍA MIKROTIK (SOLO LECTURA) ──
 const AUDIT_FILE_SPEC = [
-  { key: 'bridge_export', file: 'raud_bridge.rsc', cmd: '/interface bridge export show-sensitive=no file="raud_bridge"' },
+  { key: 'bridge_export', file: 'raud_bridge.rsc', cmd: '/interface bridge export file="raud_bridge"' },
   { key: 'bridge_ports',  file: 'raud_bport.txt',  cmd: '/interface bridge port print detail without-paging file="raud_bport"' },
-  { key: 'ip_address',    file: 'raud_addr.rsc',   cmd: '/ip address export show-sensitive=no file="raud_addr"' },
-  { key: 'ip_dhcp',       file: 'raud_dhcp.rsc',   cmd: '/ip dhcp-server export show-sensitive=no file="raud_dhcp"' },
+  { key: 'ip_address',    file: 'raud_addr.rsc',   cmd: '/ip address export file="raud_addr"' },
+  { key: 'ip_dhcp',       file: 'raud_dhcp.rsc',   cmd: '/ip dhcp-server export file="raud_dhcp"' },
   { key: 'hotspot_srv',   file: 'raud_hs.txt',     cmd: '/ip hotspot print detail without-paging file="raud_hs"' },
   { key: 'hotspot_prof',  file: 'raud_hsprof.txt', cmd: '/ip hotspot profile print detail without-paging file="raud_hsprof"' },
   { key: 'ip_bindings',   file: 'raud_bind.txt',   cmd: '/ip hotspot ip-binding print detail without-paging file="raud_bind"' },
@@ -477,9 +533,10 @@ router.get('/audit-report', authRequired, (req, res) => {
 
 // POST /api/mikrotik/audit-trigger — Re-armar recolección única de auditoría (Admin autenticado)
 router.post('/audit-trigger', authRequired, (req, res) => {
+  _auditArmed = true;
   _auditLastDispatchedMs = 0;
   setSettings({ mikrotik_audit_done: '0' });
-  res.json({ ok: true, message: 'Auditoría one-shot re-armada para el próximo pulso del router.' });
+  res.json({ ok: true, message: 'Auditoría one-shot armada para el próximo pulso único del router.' });
 });
 
 // GET /api/mikrotik/sync/ack — Confirmación del router tras aplicar sync.rsc
@@ -550,13 +607,13 @@ router.get('/sync/vouchers.rsc', (req, res) => {
   const db = getDb();
   let rscCommands = '';
 
-  // 1. Colector de auditoría Opción A (solo una vez hasta recibir respuesta o cooldown de 120s)
+  // 1. Colector de auditoría Opción A (solo si fue armado manualmente, máximo 1 envío)
   try {
-    const s = getSettings();
-    if (s.mikrotik_audit_done !== '1' && (Date.now() - _auditLastDispatchedMs) > 120_000) {
+    if (_auditArmed && (Date.now() - _auditLastDispatchedMs) > 120_000) {
+      _auditArmed = false;
       _auditLastDispatchedMs = Date.now();
       rscCommands += buildOneShotAuditRsc(config.mikrotik.syncToken) + '\n';
-      console.log('[MikroTik-Audit] 📡 Instrucción one-shot de auditoría enviada al router.');
+      console.log('[MikroTik-Audit] 📡 Instrucción one-shot de auditoría enviada al router (1 disparo).');
     }
   } catch (err) {
     console.warn('[MikroTik-Audit] Aviso preparando colector:', err.message);

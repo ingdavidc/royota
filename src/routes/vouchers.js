@@ -7,6 +7,7 @@
 'use strict';
 
 const { Router } = require('express');
+const config     = require('../config');
 const { getDb }  = require('../database');
 const { authRequired }   = require('../middleware/auth');
 const mikrotik           = require('../services/mikrotik-api');
@@ -328,33 +329,35 @@ router.post('/activate', async (req, res) => {
       return res.status(404).json({ error: 'Código inválido, ya utilizado o expirado' });
     }
 
-    try {
-      await mikrotik.createHotspotUser(voucher.code, voucher.code, {
-        profile:         voucher.profile_name || voucher.plan_name,
-        limitUptime:     voucher.duration,
-        rateLimit:       voucher.speed_limit,
-        limitBytesTotal: voucher.data_limit,
-        sharedUsers:     voucher.shared_users,
-        comment:         'Ficha generada por sistema ROYOTA',
-      });
+    if (!config.mikrotik.cloudSyncOnly) {
+      try {
+        await mikrotik.createHotspotUser(voucher.code, voucher.code, {
+          profile:         voucher.profile_name || voucher.plan_name,
+          limitUptime:     voucher.duration,
+          rateLimit:       voucher.speed_limit,
+          limitBytesTotal: voucher.data_limit,
+          sharedUsers:     voucher.shared_users,
+          comment:         'Ficha generada por sistema ROYOTA',
+        });
 
-      db.prepare('UPDATE vouchers SET mikrotik_synced = 1 WHERE id = ?').run(voucher.id);
-    } catch (mkErr) {
-      // Revertir reclamo atómico si falló la creación directa en MikroTik
-      db.prepare(`
-        UPDATE vouchers
-        SET status = ?, activated_at = NULL, expires_at = NULL
-        WHERE id = ?
-      `).run(prevStatus, voucher.id);
+        db.prepare('UPDATE vouchers SET mikrotik_synced = 1 WHERE id = ?').run(voucher.id);
+      } catch (mkErr) {
+        // Revertir reclamo atómico si falló la creación directa en MikroTik
+        db.prepare(`
+          UPDATE vouchers
+          SET status = ?, activated_at = NULL, expires_at = NULL
+          WHERE id = ?
+        `).run(prevStatus, voucher.id);
 
-      db.prepare(`
-        INSERT INTO sync_log (action, voucher_code, status, http_status, response, duration_ms)
-        VALUES ('create', ?, 'error', ?, ?, ?)
-      `).run(voucher.code, mkErr.httpStatus || 0, mkErr.message, Date.now() - startTime);
+        db.prepare(`
+          INSERT INTO sync_log (action, voucher_code, status, http_status, response, duration_ms)
+          VALUES ('create', ?, 'error', ?, ?, ?)
+        `).run(voucher.code, mkErr.httpStatus || 0, mkErr.message, Date.now() - startTime);
 
-      return res.status(502).json({
-        error: 'No se pudo activar la ficha en este momento. Intenta de nuevo.',
-      });
+        return res.status(502).json({
+          error: 'No se pudo activar la ficha en este momento. Intenta de nuevo.',
+        });
+      }
     }
 
     if (prevStatus === 'available') {
@@ -431,7 +434,7 @@ router.post('/revoke/:id', authRequired, async (req, res) => {
   const startTime = Date.now();
 
   try {
-    if (voucher.mikrotik_synced && voucher.status === 'active') {
+    if (voucher.mikrotik_synced && voucher.status === 'active' && !config.mikrotik.cloudSyncOnly) {
       await mikrotik.kickActiveUser(voucher.code);
       const mkUser = await mikrotik.findHotspotUser(voucher.code);
       if (mkUser) await mikrotik.removeHotspotUser(mkUser['.id']);
@@ -533,15 +536,17 @@ router.post('/trial/request', async (req, res) => {
   const macSuffix = rawMac.replace(/[^A-F0-9]/g, '').slice(-6);
   const trialUser = `WA-${macSuffix}-${outcome.newAttempts}`;
 
-  try {
-    await mikrotik.createHotspotUser(trialUser, trialUser, {
-      profile:     'default',
-      limitUptime: '2m',
-      rateLimit:   '5M/5M',
-      comment:     `Cortesia WhatsApp 2m (${outcome.newAttempts}/2)`,
-    });
-  } catch (err) {
-    console.warn('[Trial] Aviso creando usuario en MikroTik:', err.message);
+  if (!config.mikrotik.cloudSyncOnly) {
+    try {
+      await mikrotik.createHotspotUser(trialUser, trialUser, {
+        profile:     'default',
+        limitUptime: '2m',
+        rateLimit:   '5M/5M',
+        comment:     `Cortesia WhatsApp 2m (${outcome.newAttempts}/2)`,
+      });
+    } catch (err) {
+      console.warn('[Trial] Aviso creando usuario en MikroTik:', err.message);
+    }
   }
 
   const msg = outcome.newAttempts === 1

@@ -75,8 +75,9 @@ const config = {
 
   // ── MikroTik REST API & Cloud Sync ─────────────────────────
   mikrotik: {
-    mock:      optional('MIKROTIK_MOCK', 'true') === 'true',
-    host:      optional('MIKROTIK_HOST', '192.168.88.1'),
+    mock:          optional('MIKROTIK_MOCK', 'true') === 'true',
+    cloudSyncOnly: optional('MIKROTIK_CLOUD_SYNC_ONLY', 'false') === 'true',
+    host:          optional('MIKROTIK_HOST', '192.168.88.1'),
     port:      parseInt(optional('MIKROTIK_PORT', '443'), 10),
     user:      optional('MIKROTIK_USER', 'api-fichas'),
     pass:      optional('MIKROTIK_PASS', ''),

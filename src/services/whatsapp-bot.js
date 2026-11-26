@@ -753,7 +753,7 @@ async function processPaymentReceipt(sock, msg, senderJid) {
 
     // Provisionar en el MikroTik del Balneario (REST directo o Cloud Sync)
     try {
-      if (!config.mikrotik.mock) {
+      if (!config.mikrotik.mock && !config.mikrotik.cloudSyncOnly) {
         const mikrotik = require('./mikrotik-api');
         await mikrotik.createHotspotUser(voucher.code, voucher.code, {
           profile: matchedPlan.profile_name || 'default',
