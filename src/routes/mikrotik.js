@@ -11,23 +11,13 @@ const config     = require('../config');
 const { authRequired } = require('../middleware/auth');
 const mikrotik   = require('../services/mikrotik-api');
 const { getDb, getSettings, setSettings } = require('../database');
-const { firestoreFetch, toFirestoreFields, decodeFirestoreValue } = require('../services/firestore-client');
+const { firestoreFetch, toFirestoreFields } = require('../services/firestore-client');
+const { recordTelemetry, getLatestTelemetry, getTelemetrySnapshot } = require('../services/mikrotik-telemetry');
 const { timingSafeEqualStr } = require('../utils/helpers');
 
 const router = Router();
 
-let _routerTelemetry = {
-  lastSeen: null,
-  version: null,
-  uptime: null,
-  cpuLoad: null,
-  freeMemory: null,
-  totalMemory: null,
-  ip: null,
-};
-
 let _profilesNeedSync = true;
-let _lastFirestoreSync = 0;
 let _auditArmed = false;
 let _auditLastDispatchedMs = 0;
 
@@ -80,60 +70,10 @@ function verifySyncToken(req) {
   return timingSafeEqualStr(provided, expected);
 }
 
-async function syncTelemetryToFirestore(telem) {
-  const now = Date.now();
-  if (now - _lastFirestoreSync < 20_000) return;
-  _lastFirestoreSync = now;
-
-  try {
-    await firestoreFetch('/telemetry/mikrotik', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        fields: toFirestoreFields({
-          status: 'online',
-          version: telem.version ? `${telem.version} (Enlace Nube Activo)` : 'RouterOS v7.25.1 (Enlace Nube Activo)',
-          uptime: telem.uptime || 'Activo',
-          cpuLoad: telem.cpuLoad !== null && telem.cpuLoad !== undefined ? Number(telem.cpuLoad) : 3,
-          freeMemory: Number(telem.freeMemory || 524288000),
-          totalMemory: Number(telem.totalMemory || 1073741824),
-          syncMode: 'Cloud Sync Autónomo 24/7 (ONT / MikroTik)',
-          lastSeen: telem.lastSeen || new Date().toISOString(),
-        }),
-      }),
-    });
-  } catch (err) {
-    console.warn('[Telemetry-Firestore] Error al sincronizar a Firestore:', err.message);
-  }
-}
-
-async function getFirestoreTelemetryFallback() {
-  try {
-    const res = await firestoreFetch('/telemetry/mikrotik');
-    if (!res.ok) return null;
-    const doc = await res.json();
-    if (!doc || !doc.fields) return null;
-    return {
-      lastSeen:    decodeFirestoreValue(doc.fields.lastSeen) || null,
-      version:     decodeFirestoreValue(doc.fields.version) || 'RouterOS v7',
-      uptime:      decodeFirestoreValue(doc.fields.uptime) || '—',
-      cpuLoad:     decodeFirestoreValue(doc.fields.cpuLoad),
-      freeMemory:  decodeFirestoreValue(doc.fields.freeMemory),
-      totalMemory: decodeFirestoreValue(doc.fields.totalMemory),
-    };
-  } catch (_) {
-    return null;
-  }
-}
-
 // GET /api/mikrotik/test — Estado de conectividad (Admin autenticado)
 router.get('/test', authRequired, async (req, res) => {
   const now = Date.now();
-  let telem = _routerTelemetry;
-  if (!telem.lastSeen) {
-    const fb = await getFirestoreTelemetryFallback();
-    if (fb && fb.lastSeen) telem = fb;
-  }
+  const telem = await getLatestTelemetry();
 
   const lastSeenMs = telem.lastSeen ? new Date(telem.lastSeen).getTime() : 0;
   const ageMs = lastSeenMs ? Math.max(0, now - lastSeenMs) : Infinity;
@@ -592,17 +532,16 @@ router.get('/sync/vouchers.rsc', (req, res) => {
   const cpu     = req.query.cpu     || req.query.c;
   const mem     = req.query.mem     || req.query.m;
 
-  _routerTelemetry = {
+  const prev = getTelemetrySnapshot();
+  recordTelemetry({
     lastSeen: new Date().toISOString(),
-    version: version ? `RouterOS ${sanitizeRouterOsStr(version, 'v7', 24)}` : (_routerTelemetry.version || 'RouterOS v7.25.1'),
-    uptime: uptime ? sanitizeRouterOsStr(uptime, 'Activo', 32) : (_routerTelemetry.uptime || 'Activo'),
-    cpuLoad: cpu !== undefined ? (parseInt(cpu, 10) || 0) : (_routerTelemetry.cpuLoad || 3),
-    freeMemory: mem !== undefined ? (parseInt(mem, 10) || 0) : (_routerTelemetry.freeMemory || 524288000),
+    version: version ? `RouterOS ${sanitizeRouterOsStr(version, 'v7', 24)}` : (prev.version || 'RouterOS v7.25.1'),
+    uptime: uptime ? sanitizeRouterOsStr(uptime, 'Activo', 32) : (prev.uptime || 'Activo'),
+    cpuLoad: cpu !== undefined ? (parseInt(cpu, 10) || 0) : (prev.cpuLoad || 3),
+    freeMemory: mem !== undefined ? (parseInt(mem, 10) || 0) : (prev.freeMemory || 524288000),
     totalMemory: 1073741824,
     ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
-  };
-
-  syncTelemetryToFirestore(_routerTelemetry);
+  });
 
   const db = getDb();
   let rscCommands = '';

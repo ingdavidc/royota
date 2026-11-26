@@ -93,6 +93,14 @@ const config = {
     cron: optional('CLEANUP_CRON', '*/5 * * * *'),
   },
 
+  // ── Watchdog de Caída del Sitio (Alertas WhatsApp) ─────────
+  watchdog: {
+    enabled:         optional('ALERT_ENABLED', 'true') === 'true',
+    alertPhone:      optional('ALERT_PHONE', '3174251419'),
+    offlineMinutes:  Math.max(1, parseInt(optional('ALERT_OFFLINE_MINUTES', '3'), 10) || 3),
+    checkIntervalMs: 30_000,
+  },
+
   // ── Admin por defecto ──────────────────────────────────────
   admin: {
     user: optional('ADMIN_USER', 'admin'),

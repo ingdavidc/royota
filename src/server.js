@@ -16,6 +16,7 @@ const config    = require('./config');
 const { getDb, getSettings } = require('./database');
 const { startCleanupScheduler } = require('./services/cleanup-scheduler');
 const { startWhatsAppBot } = require('./services/whatsapp-bot');
+const { startMikrotikWatchdog } = require('./services/mikrotik-watchdog');
 
 const app = express();
 
@@ -203,6 +204,7 @@ function start() {
 
   startCleanupScheduler();
   startWhatsAppBot();
+  startMikrotikWatchdog();
 
   app.listen(config.port, '0.0.0.0', () => {
     console.log(`
