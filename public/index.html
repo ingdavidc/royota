@@ -245,6 +245,85 @@
       border-color: rgba(0, 229, 255, 0.2) !important;
       background: rgba(6, 28, 36, 0.65) !important;
     }
+
+    /* ══ MODAL DE PAGO WOMPI / QR DINÁMICO ══ */
+    .wompi-modal {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      z-index: 99999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+    .wompi-modal[hidden] {
+      display: none !important;
+    }
+    .wompi-modal-backdrop {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(3, 16, 22, 0.85);
+      backdrop-filter: blur(5px);
+      -webkit-backdrop-filter: blur(5px);
+    }
+    .wompi-modal-card {
+      position: relative;
+      background: linear-gradient(160deg, #06242c 0%, #03141a 100%);
+      border: 1.5px solid rgba(0, 229, 255, 0.4);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 16px 45px rgba(0, 0, 0, 0.7);
+      overflow: hidden;
+      animation: wompiPop 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    @keyframes wompiPop {
+      from { opacity: 0; transform: scale(0.92); }
+      to { opacity: 1; transform: scale(1); }
+    }
+    .wompi-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 13px 16px;
+      background: rgba(0, 229, 255, 0.08);
+      border-bottom: 1px solid rgba(0, 229, 255, 0.2);
+    }
+    .wompi-close-btn {
+      background: transparent;
+      border: none;
+      color: #b2ebf2;
+      font-size: 26px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0 4px;
+    }
+    .wompi-modal-body {
+      padding: 16px;
+    }
+    .wompi-plan-summary {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(0, 229, 255, 0.06);
+      border: 1px solid rgba(0, 229, 255, 0.25);
+      border-radius: 12px;
+      padding: 10px 14px;
+      margin-bottom: 14px;
+    }
+    .wompi-spinner {
+      width: 36px;
+      height: 36px;
+      border: 3.5px solid rgba(0, 229, 255, 0.2);
+      border-top-color: #00e5ff;
+      border-radius: 50%;
+      margin: 0 auto;
+      animation: wompiSpin 0.85s linear infinite;
+    }
+    @keyframes wompiSpin {
+      to { transform: rotate(360deg); }
+    }
   </style>
   <!-- Firebase SDK Local (Sin bloqueo por CSP ni dependencias CDN) -->
   <script src="./js/firebase-app-compat.js"></script>
@@ -440,94 +519,116 @@
       </div>
     </details>
 
-    <!-- ══ TARJETA 4: Compra en Línea (Daviplata / Bre-B) — Acordeón Colapsable ══ -->
+    <!-- ══ TARJETA 4: Compra en Línea (QR / Nequi / Wompi) — Acordeón Colapsable ══ -->
     <details class="card portal-accordion" id="waSection">
       <summary>
         <div class="card-title-row" style="margin:0; width:100%; display:flex; justify-content:space-between; align-items:center;">
           <div style="display:flex; align-items:center; gap:10px;">
-            <span class="card-icon" aria-hidden="true">💳</span>
-            <h2 class="card-title" id="waSectionTitle" style="font-size:15px; margin:0;">Comprar Ficha en Línea (Daviplata / Bre-B)</h2>
+            <span class="card-icon" aria-hidden="true">⚡</span>
+            <h2 class="card-title" id="waSectionTitle" style="font-size:15px; margin:0;">Comprar Ficha en Línea (QR Dinámico / Nequi)</h2>
           </div>
           <span class="accordion-arrow" aria-hidden="true">▼</span>
         </div>
       </summary>
 
       <div style="margin-top:14px;">
-        <!-- Opciones y Datos de Pago Directo -->
-        <div class="payment-info-box">
-          <div class="payment-title">
-            <span>💳</span>
-            <span>Paga por Daviplata o Bre-B</span>
+        <!-- Opción Principal: Pago Automático con QR Wompi -->
+        <div style="background:linear-gradient(135deg, rgba(0, 180, 216, 0.16) 0%, rgba(6, 44, 48, 0.85) 100%); border:1.5px solid rgba(0, 229, 255, 0.45); border-radius:12px; padding:14px; margin-bottom:14px; text-align:center;">
+          <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:6px;">
+            <span style="font-size:18px;">⚡</span>
+            <strong style="color:#80e5ff; font-size:14.5px;">Pago Automático con QR o Nequi</strong>
           </div>
-          <div class="payment-row">
-            <span class="payment-num-label">Número / Llave:</span>
-            <div class="payment-number-wrap">
-              <strong class="payment-number" id="payPhoneDisplay">317 425 1419</strong>
-              <button type="button" id="btnCopyPhone" class="btn-copy-num" title="Copiar número de pago">📋 Copiar</button>
-            </div>
-          </div>
-          <div class="payment-sub">Acepta transferencias Daviplata y llaves Bre-B de cualquier entidad</div>
-        </div>
-
-        <!-- Vista Activa (2 Botones ordenados y secuenciales) -->
-        <div id="waActiveWrap">
-          <div class="action-buttons-grid">
-            <!-- BOTÓN 1: Realizar Pago (Minimiza y da 3 min) -->
-            <button type="button" id="btnActivarCortesia" class="btn-action-pay" style="display:flex; align-items:center; gap:12px; width:100%; padding:12px 14px; background:linear-gradient(135deg, #0077b6 0%, #0096c7 100%); color:#ffffff; border:none; border-radius:12px; cursor:pointer; text-align:left; box-shadow:0 4px 14px rgba(0,150,199,0.35); box-sizing:border-box;">
-              <span class="btn-step-badge" style="background:rgba(0,0,0,0.3); color:#ffffff; font-size:11px; font-weight:800; text-transform:uppercase; padding:5px 8px; border-radius:6px; white-space:nowrap;">Paso 1</span>
-              <div class="btn-action-text" style="display:flex; flex-direction:column; flex:1; min-width:0;">
-                <strong style="font-size:14px; color:#ffffff; line-height:1.25;">1. Realizar Pago (3 min libres)</strong>
-                <small style="font-size:11px; color:rgba(255,255,255,0.88); line-height:1.2; margin-top:2px;">Habilita 3 min de internet y abre navegador para transferir</small>
-              </div>
-            </button>
-
-            <!-- BOTÓN 2: Enviar Comprobante por WhatsApp -->
-            <a href="https://wa.me/573203778210" target="_blank" rel="noopener noreferrer" id="btnEnviarSoporteWa" class="btn-action-wa" role="button" style="display:flex; align-items:center; gap:12px; width:100%; padding:12px 14px; background:linear-gradient(135deg, #25d366 0%, #128c7e 100%); color:#ffffff !important; text-decoration:none !important; border:none; border-radius:12px; cursor:pointer; text-align:left; box-shadow:0 4px 14px rgba(37,211,102,0.35); box-sizing:border-box;">
-              <span class="btn-step-badge wa" style="background:rgba(0,0,0,0.3); color:#ffffff; font-size:11px; font-weight:800; text-transform:uppercase; padding:5px 8px; border-radius:6px; white-space:nowrap;">Paso 2</span>
-              <div class="btn-action-text" style="display:flex; flex-direction:column; flex:1; min-width:0;">
-                <strong style="font-size:14px; color:#ffffff; line-height:1.25;">2. Enviar Comprobante WhatsApp</strong>
-                <small style="font-size:11px; color:rgba(255,255,255,0.88); line-height:1.2; margin-top:2px;">Envía el pantallazo al bot para recibir tu código</small>
-              </div>
-            </a>
-          </div>
-
-          <!-- Iframe oculto para autenticar en MikroTik en segundo plano -->
-          <iframe name="login_target" id="loginTarget" style="display:none; width:0; height:0; border:0;" aria-hidden="true"></iframe>
-
-          <!-- Banner de Navegación Activa (Aparece tras presionar el Paso 1) -->
-          <div id="waCountdownBox" class="wa-active-banner" hidden>
-            <div class="active-banner-top">
-              <span class="pulse-dot"></span>
-              <strong>⚡ ¡3 minutos de internet activos!</strong>
-              <span class="timer-badge" id="waCountdownTimer">03:00</span>
-            </div>
-            <p class="active-banner-hint" id="waCountdownMsg">
-              Abre tu <strong>Daviplata</strong> o app bancaria y transfiere. Luego toca el <strong>Paso 2</strong> para enviar el comprobante.
-            </p>
-            <button type="button" id="btnMinimizarPortal" class="btn-exit-portal">
-              📱 Continuar en navegador / Salir del portal
-            </button>
-          </div>
-        </div>
-
-        <!-- Vista Bloqueada (2 intentos consumidos sin comprar ficha) -->
-        <div id="waBlockedWrap" hidden>
-          <div class="wa-blocked-title">
-            <span>🚫</span>
-            <span>Pases temporales de pago agotados hoy (2 de 2)</span>
-          </div>
-          <p class="wa-blocked-desc">
-            Has utilizado tus 2 pases temporales de hoy. Si ya transferiste, envía tu comprobante por WhatsApp al bot para recibir tu ficha o adquiérela en efectivo en casetas.
+          <p style="font-size:12px; color:#d7f7f4; margin:0 0 12px 0; line-height:1.45;">
+            Paga con QR Bancolombia, Nequi o PSE. Tu ficha se activará de inmediato en pantalla sin fotos ni esperas.
           </p>
-          <div style="display:flex; gap:8px; margin-top:8px;">
-            <a href="https://wa.me/573203778210" target="_blank" rel="noopener noreferrer" id="btnWaBlocked" class="btn-wa-blocked" style="flex:1; display:inline-flex; align-items:center; justify-content:center; padding:10px 12px; background:#25d366; color:#ffffff !important; text-decoration:none !important; font-weight:700; font-size:12px; border-radius:8px; text-align:center;">
-              💬 Enviar Comprobante WhatsApp
-            </a>
-            <button type="button" id="btnIrCasetas" class="wa-btn-casetas" style="flex:1;">
-              🏪 Casetas Físicas
-            </button>
-          </div>
+          <button type="button" id="btnAbrirWompiDirecto" style="display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:12px 14px; background:linear-gradient(135deg, #00e5ff 0%, #0096c7 100%); color:#041821; border:none; border-radius:10px; font-weight:800; font-size:14px; cursor:pointer; box-shadow:0 4px 14px rgba(0, 229, 255, 0.35);">
+            💳 Elegir Plan y Pagar con QR / Nequi
+          </button>
         </div>
+
+        <!-- Opción Alternativa: Transferencia Manual Daviplata / WhatsApp -->
+        <details style="background:rgba(4, 24, 33, 0.6); border:1px solid rgba(0, 229, 255, 0.18); border-radius:10px; padding:8px 12px;">
+          <summary style="font-size:12.5px; color:#80cbc4; cursor:pointer; font-weight:700;">
+            O transferir manualmente por Daviplata / Bre-B (WhatsApp) ▼
+          </summary>
+          <div style="margin-top:12px;">
+            <!-- Opciones y Datos de Pago Directo -->
+            <div class="payment-info-box">
+              <div class="payment-title">
+                <span>💳</span>
+                <span>Paga por Daviplata o Bre-B</span>
+              </div>
+              <div class="payment-row">
+                <span class="payment-num-label">Número / Llave:</span>
+                <div class="payment-number-wrap">
+                  <strong class="payment-number" id="payPhoneDisplay">317 425 1419</strong>
+                  <button type="button" id="btnCopyPhone" class="btn-copy-num" title="Copiar número de pago">📋 Copiar</button>
+                </div>
+              </div>
+              <div class="payment-sub">Acepta transferencias Daviplata y llaves Bre-B de cualquier entidad</div>
+            </div>
+
+            <!-- Vista Activa (2 Botones ordenados y secuenciales) -->
+            <div id="waActiveWrap">
+              <div class="action-buttons-grid">
+                <!-- BOTÓN 1: Realizar Pago (Minimiza y da 3 min) -->
+                <button type="button" id="btnActivarCortesia" class="btn-action-pay" style="display:flex; align-items:center; gap:12px; width:100%; padding:12px 14px; background:linear-gradient(135deg, #0077b6 0%, #0096c7 100%); color:#ffffff; border:none; border-radius:12px; cursor:pointer; text-align:left; box-shadow:0 4px 14px rgba(0,150,199,0.35); box-sizing:border-box;">
+                  <span class="btn-step-badge" style="background:rgba(0,0,0,0.3); color:#ffffff; font-size:11px; font-weight:800; text-transform:uppercase; padding:5px 8px; border-radius:6px; white-space:nowrap;">Paso 1</span>
+                  <div class="btn-action-text" style="display:flex; flex-direction:column; flex:1; min-width:0;">
+                    <strong style="font-size:14px; color:#ffffff; line-height:1.25;">1. Realizar Pago (3 min libres)</strong>
+                    <small style="font-size:11px; color:rgba(255,255,255,0.88); line-height:1.2; margin-top:2px;">Habilita 3 min de internet y abre navegador para transferir</small>
+                  </div>
+                </button>
+
+                <!-- BOTÓN 2: Enviar Comprobante por WhatsApp -->
+                <a href="https://wa.me/573203778210" target="_blank" rel="noopener noreferrer" id="btnEnviarSoporteWa" class="btn-action-wa" role="button" style="display:flex; align-items:center; gap:12px; width:100%; padding:12px 14px; background:linear-gradient(135deg, #25d366 0%, #128c7e 100%); color:#ffffff !important; text-decoration:none !important; border:none; border-radius:12px; cursor:pointer; text-align:left; box-shadow:0 4px 14px rgba(37,211,102,0.35); box-sizing:border-box;">
+                  <span class="btn-step-badge wa" style="background:rgba(0,0,0,0.3); color:#ffffff; font-size:11px; font-weight:800; text-transform:uppercase; padding:5px 8px; border-radius:6px; white-space:nowrap;">Paso 2</span>
+                  <div class="btn-action-text" style="display:flex; flex-direction:column; flex:1; min-width:0;">
+                    <strong style="font-size:14px; color:#ffffff; line-height:1.25;">2. Enviar Comprobante WhatsApp</strong>
+                    <small style="font-size:11px; color:rgba(255,255,255,0.88); line-height:1.2; margin-top:2px;">Envía el pantallazo al bot para recibir tu código</small>
+                  </div>
+                </a>
+              </div>
+
+              <!-- Iframe oculto para autenticar en MikroTik en segundo plano -->
+              <iframe name="login_target" id="loginTarget" style="display:none; width:0; height:0; border:0;" aria-hidden="true"></iframe>
+
+              <!-- Banner de Navegación Activa (Aparece tras presionar el Paso 1) -->
+              <div id="waCountdownBox" class="wa-active-banner" hidden>
+                <div class="active-banner-top">
+                  <span class="pulse-dot"></span>
+                  <strong>⚡ ¡3 minutos de internet activos!</strong>
+                  <span class="timer-badge" id="waCountdownTimer">03:00</span>
+                </div>
+                <p class="active-banner-hint" id="waCountdownMsg">
+                  Abre tu <strong>Daviplata</strong> o app bancaria y transfiere. Luego toca el <strong>Paso 2</strong> para enviar el comprobante.
+                </p>
+                <button type="button" id="btnMinimizarPortal" class="btn-exit-portal">
+                  📱 Continuar en navegador / Salir del portal
+                </button>
+              </div>
+            </div>
+
+            <!-- Vista Bloqueada (2 intentos consumidos sin comprar ficha) -->
+            <div id="waBlockedWrap" hidden>
+              <div class="wa-blocked-title">
+                <span>🚫</span>
+                <span>Pases temporales de pago agotados hoy (2 de 2)</span>
+              </div>
+              <p class="wa-blocked-desc">
+                Has utilizado tus 2 pases temporales de hoy. Si ya transferiste, envía tu comprobante por WhatsApp al bot para recibir tu ficha o adquiérela en efectivo en casetas.
+              </p>
+              <div style="display:flex; gap:8px; margin-top:8px;">
+                <a href="https://wa.me/573203778210" target="_blank" rel="noopener noreferrer" id="btnWaBlocked" class="btn-wa-blocked" style="flex:1; display:inline-flex; align-items:center; justify-content:center; padding:10px 12px; background:#25d366; color:#ffffff !important; text-decoration:none !important; font-weight:700; font-size:12px; border-radius:8px; text-align:center;">
+                  💬 Enviar Comprobante WhatsApp
+                </a>
+                <button type="button" id="btnIrCasetas" class="wa-btn-casetas" style="flex:1;">
+                  🏪 Casetas Físicas
+                </button>
+              </div>
+            </div>
+          </div>
+        </details>
       </div>
     </details>
 
@@ -556,6 +657,87 @@
     </footer>
 
   </main>
+
+  <!-- ══ MODAL DE PAGO EN LÍNEA WOMPI (QR DINÁMICO & NEQUI) ══ -->
+  <div id="wompiModal" class="wompi-modal" hidden>
+    <div class="wompi-modal-backdrop" id="wompiModalBackdrop"></div>
+    <div class="wompi-modal-card">
+      <div class="wompi-modal-header">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:20px;">💳</span>
+          <strong id="wompiModalTitle" style="font-size:16px; color:#ffffff;">Compra en Línea Wompi</strong>
+        </div>
+        <button type="button" id="btnWompiClose" class="wompi-close-btn" aria-label="Cerrar">&times;</button>
+      </div>
+
+      <div class="wompi-modal-body">
+        <!-- Resumen del Plan -->
+        <div class="wompi-plan-summary">
+          <div>
+            <div id="wompiPlanName" style="font-weight:800; font-size:15px; color:#80e5ff;">1 Hora Básico</div>
+            <small id="wompiPlanMeta" style="color:#b2ebf2; font-size:12px;">⏱ 1h · ⚡ 5M/2M</small>
+          </div>
+          <div id="wompiPlanPrice" style="font-size:18px; font-weight:800; color:#69f0ae;">$2.000</div>
+        </div>
+
+        <!-- Estado de carga / Spinner -->
+        <div id="wompiLoadingWrap" style="text-align:center; padding:22px 0;">
+          <div class="wompi-spinner"></div>
+          <p style="font-size:13px; color:#80cbc4; margin-top:12px;">Generando código QR dinámico de Wompi...</p>
+        </div>
+
+        <!-- Contenedor del QR y Botones de Pago -->
+        <div id="wompiQrWrap" hidden style="text-align:center;">
+          <p style="font-size:12px; color:#d7f7f4; margin:0 0 10px 0;">
+            Escanea desde tu app <strong>Nequi</strong>, <strong>Bancolombia</strong> o <strong>Bre-B</strong>:
+          </p>
+          <div style="background:#ffffff; padding:12px; border-radius:12px; display:inline-block; box-shadow:0 6px 18px rgba(0,0,0,0.4); margin-bottom:12px;">
+            <img id="wompiQrImg" src="" alt="QR Wompi" style="width:220px; height:220px; display:block; border-radius:6px;" />
+          </div>
+
+          <div style="display:flex; flex-direction:column; gap:8px; margin-top:6px;">
+            <!-- Botón para pagar directamente en este celular -->
+            <a id="btnWompiPayMobile" href="#" target="_blank" rel="noopener noreferrer" style="display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:12px 14px; background:linear-gradient(135deg, #00b4d8 0%, #0077b6 100%); color:#ffffff; text-decoration:none; font-weight:800; font-size:13.5px; border-radius:10px; box-sizing:border-box;">
+              📱 Pagar en este celular (Nequi / PSE / Bancolombia)
+            </a>
+
+            <!-- Botón de 3 minutos de cortesía si el cliente no tiene datos para abrir Nequi -->
+            <button type="button" id="btnWompiCortesia" style="width:100%; padding:9px 12px; background:rgba(0,229,255,0.1); border:1px solid rgba(0,229,255,0.3); color:#80e5ff; border-radius:9px; font-size:12px; font-weight:700; cursor:pointer;">
+              ⏳ ¿Sin datos móviles? Activar 3 min gratis para pagar
+            </button>
+          </div>
+
+          <!-- Indicador de Espera en Vivo -->
+          <div id="wompiWaitingStatus" style="display:flex; align-items:center; justify-content:center; gap:8px; margin-top:14px; font-size:13px; color:#80cbc4;">
+            <span class="pulse-dot" style="background:#00e5ff;"></span>
+            <span>Esperando confirmación del pago en Wompi...</span>
+          </div>
+
+          <!-- Botón de prueba (Solo en Sandbox) -->
+          <div id="wompiSandboxBox" hidden style="margin-top:12px; padding:10px; background:rgba(255,193,7,0.1); border:1px dashed #ffc107; border-radius:8px;">
+            <small style="color:#ffe082; display:block; margin-bottom:6px; font-weight:700;">🛠️ Modo Pruebas Activo (Sandbox)</small>
+            <button type="button" id="btnWompiSimulate" style="padding:7px 14px; background:#ffc107; color:#041821; border:none; border-radius:6px; font-weight:800; font-size:12px; cursor:pointer;">
+              🧪 Simular Pago Aprobado
+            </button>
+          </div>
+        </div>
+
+        <!-- Éxito: Ficha entregada -->
+        <div id="wompiSuccessWrap" hidden style="text-align:center; padding:16px 0;">
+          <span style="font-size:44px;">🎉</span>
+          <h3 style="color:#69f0ae; margin:8px 0 4px 0; font-size:18px;">¡Pago Aprobado con Éxito!</h3>
+          <p style="font-size:13px; color:#d7f7f4; margin:0 0 12px 0;">Tu ficha de acceso a internet es:</p>
+          <div id="wompiVoucherDisplay" style="font-size:24px; font-weight:900; letter-spacing:2px; color:#80e5ff; background:rgba(0,229,255,0.12); padding:12px; border-radius:10px; border:1px solid rgba(0,229,255,0.4); margin-bottom:14px; user-select:all;">
+            WSP-XXXXX
+          </div>
+          <button type="button" id="btnWompiAutoLogin" class="btn-primary" style="width:100%; padding:13px; font-size:15px; font-weight:800;">
+            🚀 Conectar a Internet Ahora
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
 
   <!-- ── Script del Portal Cautivo (Vanilla JS XMLHttpRequest) ── -->
   <script>
@@ -668,17 +850,24 @@
       return v !== '0' && v !== 0 && v !== false && v !== 'false';
     }
 
-    /* ── Función para pedir plan directamente ── */
-    window.pedirPlan = function(planName, formattedPrice) {
-      if (!isOnlinePurchaseActive()) {
-        if (kiosksSec) {
-          kiosksSec.open = true;
-          kiosksSec.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-        return;
+    /* ══════════════════════════════════════════════════════════════
+       INTEGRACIÓN OFICIAL WOMPI — QR DINÁMICO & NEQUI
+       ══════════════════════════════════════════════════════════════ */
+    var _wompiPollTimer = null;
+    var _currentOrderRef = null;
+
+    function closeWompiModal() {
+      if (_wompiPollTimer) {
+        clearInterval(_wompiPollTimer);
+        _wompiPollTimer = null;
       }
+      var m = document.getElementById('wompiModal');
+      if (m) m.setAttribute('hidden', '');
+    }
+
+    window.pedirPlanWhatsApp = function(planName, formattedPrice) {
       var biz = _settings && _settings.business_name ? _settings.business_name : 'Río Royota';
-      var planMsg = '¡Hola! Deseo comprar la ficha de internet de ' + planName + ' (' + formattedPrice + ') en ' + biz + '. Adjunto mi comprobante de pago:';
+      var planMsg = '¡Hola! Deseo comprar la ficha de internet de ' + (planName || '') + ' (' + (formattedPrice || '') + ') en ' + biz + '. Adjunto mi comprobante de pago:';
       _pendingWaMsg = planMsg;
       if (hasRouterMac && qsModo !== 'pagando') {
         if (waSec) waSec.open = true;
@@ -686,6 +875,157 @@
         return;
       }
       openWhatsAppSupport(planMsg);
+    };
+
+    window.openWompiPayment = function(planOrName, formattedPrice) {
+      if (!isOnlinePurchaseActive()) {
+        if (kiosksSec) {
+          kiosksSec.open = true;
+          kiosksSec.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        return;
+      }
+
+      var plan = null;
+      if (typeof planOrName === 'object' && planOrName !== null) {
+        plan = planOrName;
+      } else {
+        for (var i = 0; i < _cachedPlans.length; i++) {
+          if (_cachedPlans[i].name === planOrName) {
+            plan = _cachedPlans[i];
+            break;
+          }
+        }
+        if (!plan && _cachedPlans.length > 0) plan = _cachedPlans[0];
+      }
+
+      if (!plan) return;
+
+      var sym = (_settings && _settings.currencySymbol) || '$';
+      var priceStr = formattedPrice || (sym + Number(plan.price || 0).toLocaleString());
+
+      var modal = document.getElementById('wompiModal');
+      var nameElPlan = document.getElementById('wompiPlanName');
+      var metaElPlan = document.getElementById('wompiPlanMeta');
+      var priceElPlan = document.getElementById('wompiPlanPrice');
+      var loadingWrap = document.getElementById('wompiLoadingWrap');
+      var qrWrap = document.getElementById('wompiQrWrap');
+      var successWrap = document.getElementById('wompiSuccessWrap');
+      var qrImg = document.getElementById('wompiQrImg');
+      var payMobileBtn = document.getElementById('btnWompiPayMobile');
+      var sandboxBox = document.getElementById('wompiSandboxBox');
+
+      if (!modal) return;
+
+      if (nameElPlan) nameElPlan.textContent = plan.name || 'Plan de Internet';
+      if (metaElPlan) metaElPlan.textContent = '⏱ ' + (plan.duration || '') + ' · ⚡ ' + (plan.speed_limit || 'Alta velocidad');
+      if (priceElPlan) priceElPlan.textContent = priceStr;
+
+      if (loadingWrap) loadingWrap.removeAttribute('hidden');
+      if (qrWrap) qrWrap.setAttribute('hidden', '');
+      if (successWrap) successWrap.setAttribute('hidden', '');
+      modal.removeAttribute('hidden');
+
+      if (_wompiPollTimer) {
+        clearInterval(_wompiPollTimer);
+        _wompiPollTimer = null;
+      }
+
+      var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
+      var xhr = new XMLHttpRequest();
+      xhr.open('POST', apiBase + '/api/payments/wompi/create-order', true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      xhr.onreadystatechange = function() {
+        if (xhr.readyState !== 4) return;
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            var res = JSON.parse(xhr.responseText);
+            if (res.success && res.order) {
+              _currentOrderRef = res.order.reference;
+              if (qrImg) qrImg.src = res.order.qrDataUrl;
+              if (payMobileBtn) payMobileBtn.href = res.order.paymentUrl;
+
+              if (res.order.mode === 'sandbox') {
+                if (sandboxBox) sandboxBox.removeAttribute('hidden');
+              } else {
+                if (sandboxBox) sandboxBox.setAttribute('hidden', '');
+              }
+
+              if (loadingWrap) loadingWrap.setAttribute('hidden', '');
+              if (qrWrap) qrWrap.removeAttribute('hidden');
+
+              startWompiStatusPolling(_currentOrderRef);
+              return;
+            }
+          } catch (e) {
+            console.error('Error procesando respuesta Wompi:', e);
+          }
+        }
+
+        // Si falla la API de Wompi, fallback a WhatsApp
+        if (loadingWrap) loadingWrap.setAttribute('hidden', '');
+        alert('No se pudo generar el cobro automático con Wompi en este momento. Te redirigiremos a WhatsApp.');
+        closeWompiModal();
+        window.pedirPlanWhatsApp(plan.name, priceStr);
+      };
+      xhr.onerror = function() {
+        if (loadingWrap) loadingWrap.setAttribute('hidden', '');
+        alert('Error de conexión con el servidor. Te redirigiremos a WhatsApp.');
+        closeWompiModal();
+        window.pedirPlanWhatsApp(plan.name, priceStr);
+      };
+      xhr.send(JSON.stringify({
+        plan_id: plan.id,
+        client_mac: qsMac || '',
+      }));
+    };
+
+    function startWompiStatusPolling(reference) {
+      if (_wompiPollTimer) clearInterval(_wompiPollTimer);
+      var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
+
+      _wompiPollTimer = setInterval(function() {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', apiBase + '/api/payments/wompi/status/' + encodeURIComponent(reference), true);
+        xhr.onreadystatechange = function() {
+          if (xhr.readyState !== 4) return;
+          if (xhr.status === 200) {
+            try {
+              var data = JSON.parse(xhr.responseText);
+              if (data.status === 'APPROVED' && data.voucher_code) {
+                clearInterval(_wompiPollTimer);
+                _wompiPollTimer = null;
+                showWompiPaymentSuccess(data.voucher_code);
+              }
+            } catch (_) {}
+          }
+        };
+        xhr.send();
+      }, 2500);
+    }
+
+    function showWompiPaymentSuccess(voucherCode) {
+      var qrWrap = document.getElementById('wompiQrWrap');
+      var successWrap = document.getElementById('wompiSuccessWrap');
+      var voucherDisp = document.getElementById('wompiVoucherDisplay');
+      var pinIn = document.getElementById('codeInput');
+
+      if (qrWrap) qrWrap.setAttribute('hidden', '');
+      if (successWrap) successWrap.removeAttribute('hidden');
+      if (voucherDisp) voucherDisp.textContent = voucherCode;
+      if (pinIn) pinIn.value = voucherCode;
+
+      // Autologin MikroTik tras 1.2s para navegación inmediata
+      setTimeout(function() {
+        if (typeof submitMikrotikPayPassLogin === 'function') {
+          submitMikrotikPayPassLogin(voucherCode);
+        }
+      }, 1200);
+    }
+
+    /* ── Función para pedir plan directamente ── */
+    window.pedirPlan = function(planOrName, formattedPrice) {
+      window.openWompiPayment(planOrName, formattedPrice);
     };
 
     /* ── Helper AJAX con XMLHttpRequest para WebView cautivo ── */
@@ -780,9 +1120,9 @@
           itemDiv.className = isOnlineActive ? 'plan-item' : 'plan-item plan-item-static';
           itemDiv.style.cursor = isOnlineActive ? 'pointer' : 'default';
           if (isOnlineActive) {
-            itemDiv.title = 'Pedir ficha por WhatsApp';
+            itemDiv.title = 'Comprar en línea con QR o Nequi';
             itemDiv.addEventListener('click', function() {
-              window.pedirPlan(p.name, formattedPrice);
+              window.openWompiPayment(p, formattedPrice);
             });
           }
 
@@ -813,10 +1153,10 @@
             var buyBtn = document.createElement('button');
             buyBtn.type = 'button';
             buyBtn.className = 'plan-buy-btn';
-            buyBtn.textContent = 'Pedir 🪪';
+            buyBtn.textContent = 'Comprar ⚡';
             buyBtn.addEventListener('click', function(e) {
               e.stopPropagation();
-              window.pedirPlan(p.name, formattedPrice);
+              window.openWompiPayment(p, formattedPrice);
             });
             right.appendChild(buyBtn);
           }
@@ -1049,6 +1389,83 @@
     }
 
     initPagandoModeBanner();
+
+    // ── Eventos de Modal Wompi ──
+    var btnWClose = document.getElementById('btnWompiClose');
+    if (btnWClose) btnWClose.addEventListener('click', closeWompiModal);
+    var bdrop = document.getElementById('wompiModalBackdrop');
+    if (bdrop) bdrop.addEventListener('click', closeWompiModal);
+
+    var btnAbrirDirecto = document.getElementById('btnAbrirWompiDirecto');
+    if (btnAbrirDirecto) {
+      btnAbrirDirecto.addEventListener('click', function() {
+        var pSec = document.getElementById('plansSection');
+        if (pSec) {
+          pSec.open = true;
+          pSec.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        if (_cachedPlans && _cachedPlans.length > 0) {
+          window.openWompiPayment(_cachedPlans[0]);
+        }
+      });
+    }
+
+    var btnWSim = document.getElementById('btnWompiSimulate');
+    if (btnWSim) {
+      btnWSim.addEventListener('click', function() {
+        if (!_currentOrderRef) return;
+        btnWSim.disabled = true;
+        btnWSim.textContent = 'Simulando...';
+        var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
+        var xhr = new XMLHttpRequest();
+        xhr.open('POST', apiBase + '/api/payments/wompi/simulate-approval', true);
+        xhr.setRequestHeader('Content-Type', 'application/json');
+        xhr.onreadystatechange = function() {
+          if (xhr.readyState !== 4) return;
+          btnWSim.disabled = false;
+          btnWSim.textContent = '🧪 Simular Pago Aprobado';
+          if (xhr.status === 200) {
+            try {
+              var res = JSON.parse(xhr.responseText);
+              if (res.voucher_code) {
+                showWompiPaymentSuccess(res.voucher_code);
+              }
+            } catch (_) {}
+          }
+        };
+        xhr.send(JSON.stringify({ reference: _currentOrderRef }));
+      });
+    }
+
+    var btnWCort = document.getElementById('btnWompiCortesia');
+    if (btnWCort) {
+      btnWCort.addEventListener('click', function() {
+        triggerPaymentTrialFlow('Activación cortesía para pago Wompi');
+      });
+    }
+
+    var btnWAutoLog = document.getElementById('btnWompiAutoLogin');
+    if (btnWAutoLog) {
+      btnWAutoLog.addEventListener('click', function() {
+        var vDisp = document.getElementById('wompiVoucherDisplay');
+        var pinVal = vDisp ? vDisp.textContent.trim() : '';
+        if (pinVal && typeof submitMikrotikPayPassLogin === 'function') {
+          submitMikrotikPayPassLogin(pinVal);
+        }
+      });
+    }
+
+    // Retorno automático desde pasarela Wompi (?modo=wompi_retorno&ref=...)
+    var qsRef = getQueryParam('ref');
+    if (qsModo === 'wompi_retorno' && qsRef) {
+      var wModal = document.getElementById('wompiModal');
+      var wLoading = document.getElementById('wompiLoadingWrap');
+      if (wModal) {
+        wModal.removeAttribute('hidden');
+        if (wLoading) wLoading.removeAttribute('hidden');
+        startWompiStatusPolling(qsRef);
+      }
+    }
 
     /* ── 4. Estado y Restricción Diaria de Pase de Pago (3 min x 2 intentos) ── */
     var _waTrialState = {

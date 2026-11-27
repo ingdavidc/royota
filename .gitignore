@@ -16,3 +16,4 @@ functions/.env
 id_rsa*
 *firebase-adminsdk*.json
 service-account*.json
+scratch/

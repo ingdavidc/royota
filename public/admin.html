@@ -591,6 +591,16 @@
                 <label class="flabel">Mensaje automático de WhatsApp</label>
                 <textarea id="setWhatsappMessage" class="finput" rows="2" placeholder="Mensaje que el cliente enviará al tocar el botón de WhatsApp"></textarea>
               </div>
+              <div class="fg" style="margin-top: 14px; margin-bottom: 0;">
+                <label class="flabel">⚡ Pasarela Wompi — Modo de Operación</label>
+                <select id="setWompiMode" class="finput" style="cursor: pointer;">
+                  <option value="sandbox">🧪 Modo Pruebas (Sandbox - Sin dinero real)</option>
+                  <option value="production">🚀 Modo Producción (Cobros reales Nequi / Bancolombia / PSE)</option>
+                </select>
+                <span class="fhint">
+                  En <strong>Modo Pruebas</strong> puedes simular pagos y validar el QR sin mover dinero. Cambia a <strong>Producción</strong> cuando desees activar las ventas reales.
+                </span>
+              </div>
             </div>
 
             <!-- Alerta informativa cuando está OFF -->

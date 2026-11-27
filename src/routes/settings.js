@@ -22,6 +22,7 @@ router.get('/public', async (req, res) => {
     whatsapp_number:        s.whatsapp_number || '',
     payment_phone:          s.payment_phone || '3174251419',
     online_purchase_active: s.online_purchase_active !== '0' && s.online_purchase_active !== 0 && s.online_purchase_active !== false,
+    wompi_mode:             s.wompi_mode || config.wompi.mode || 'sandbox',
     whatsapp_message:       s.whatsapp_message || '',
     info_active:            s.info_active === '1' || s.info_active === true,
     info_badge:             s.info_badge || 'Avisos & Servicios',
@@ -78,6 +79,7 @@ router.put('/', authRequired, async (req, res) => {
     whatsapp_number,
     payment_phone,
     online_purchase_active,
+    wompi_mode,
     whatsapp_message,
     info_active,
     info_badge,
@@ -91,6 +93,7 @@ router.put('/', authRequired, async (req, res) => {
   if (whatsapp_number !== undefined)        toUpdate.whatsapp_number        = String(whatsapp_number).replace(/[^\d+]/g, '');
   if (payment_phone !== undefined)          toUpdate.payment_phone          = String(payment_phone).replace(/[^\d+]/g, '');
   if (online_purchase_active !== undefined) toUpdate.online_purchase_active = online_purchase_active ? '1' : '0';
+  if (wompi_mode !== undefined)             toUpdate.wompi_mode             = wompi_mode === 'production' ? 'production' : 'sandbox';
   if (whatsapp_message !== undefined)       toUpdate.whatsapp_message       = String(whatsapp_message).trim();
   if (info_active !== undefined)            toUpdate.info_active            = info_active ? '1' : '0';
   if (info_badge !== undefined)             toUpdate.info_badge             = String(info_badge).trim();

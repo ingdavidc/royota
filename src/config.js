@@ -117,6 +117,27 @@ const config = {
     daviplataPhone: optional('DAVIPLATA_PHONE', '3174251419'),
     brebKey:        optional('BREB_KEY', '3174251419'),
   },
+
+  // ── Wompi Pasarela (Pagos en línea y QR Dinámico) ───────────
+  wompi: {
+    mode: optional('WOMPI_MODE', 'sandbox'), // 'sandbox' | 'production'
+    sandbox: {
+      publicKey:       optional('WOMPI_SANDBOX_PUBLIC_KEY', 'pub_test_u2GlTvUapZlKCal8nsbBERMiRXdQiFIq'),
+      privateKey:      optional('WOMPI_SANDBOX_PRIVATE_KEY', 'prv_test_tjmevjilooQ8mbnqf1a3Vdk2Lmr1YTO4'),
+      eventsSecret:    optional('WOMPI_SANDBOX_EVENTS_SECRET', 'test_events_w1e6d6Y0nQG2MVimmn8litQwu32XMvVM'),
+      integritySecret: optional('WOMPI_SANDBOX_INTEGRITY_SECRET', 'test_integrity_n01mjNIUnLjSXo7nm4qigWe2vzG6tbji'),
+      apiUrl:          'https://sandbox.wompi.co/v1',
+      checkoutUrl:     'https://checkout.wompi.co',
+    },
+    production: {
+      publicKey:       optional('WOMPI_PROD_PUBLIC_KEY', 'pub_prod_Y9dK8ydKDs1ApXSgvV9VraLOgBELc1NdU'),
+      privateKey:      optional('WOMPI_PROD_PRIVATE_KEY', 'prv_prod_nbj6fwOfeBxMsSq0EtGo96MhqxdVybhk'),
+      eventsSecret:    optional('WOMPI_PROD_EVENTS_SECRET', 'prod_events_BKTGwrUdR113UP8gha53mjTRelfvGGwj'),
+      integritySecret: optional('WOMPI_PROD_INTEGRITY_SECRET', 'prod_integrity_VKKrMW5mBVucjWYJTMDqkDpiKprHyQJf'),
+      apiUrl:          'https://production.wompi.co/v1',
+      checkoutUrl:     'https://checkout.wompi.co',
+    },
+  },
 };
 
 module.exports = config;

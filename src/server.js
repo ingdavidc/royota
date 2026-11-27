@@ -39,12 +39,15 @@ app.use(helmet({
         "https://securetoken.googleapis.com",
         "https://royota-bot.onrender.com",
         "https://royota.dctelematica.com",
+        "https://sandbox.wompi.co",
+        "https://production.wompi.co",
+        "https://checkout.wompi.co",
       ],
       fontSrc:        ["'self'"],
       objectSrc:      ["'none'"],
       frameAncestors: ["'self'"],
       baseUri:        ["'self'"],
-      formAction:     ["'self'", "http://192.168.20.1", "https://royota.dctelematica.com"],
+      formAction:     ["'self'", "http://192.168.20.1", "https://royota.dctelematica.com", "https://checkout.wompi.co"],
     },
   },
   crossOriginEmbedderPolicy: false,
@@ -61,7 +64,7 @@ app.use(cors({
     return callback(new Error('Origen no permitido por política CORS'));
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Sync-Token'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Sync-Token', 'X-Event-Checksum'],
 }));
 
 // ── Unificación Arquitectónica: Redirigir accesos web al dominio oficial ──
@@ -166,6 +169,7 @@ app.use('/api/vouchers/trial',        trialLimiter);
 app.use('/api/mikrotik/bindings',     apiWriteLimiter);
 app.use('/api/mikrotik/sync/push-batch',   apiWriteLimiter);
 app.use('/api/mikrotik/sync/push-binding', apiWriteLimiter);
+app.use('/api/payments/wompi/create-order', voucherLimiter);
 
 // ── Rutas API ─────────────────────────────────────────────────
 app.use('/api/auth',       require('./routes/auth'));
@@ -173,6 +177,7 @@ app.use('/api/plans',      require('./routes/plans'));
 app.use('/api/vouchers',   require('./routes/vouchers'));
 app.use('/api/mikrotik',   require('./routes/mikrotik'));
 app.use('/api/settings',   require('./routes/settings'));
+app.use('/api/payments',   require('./routes/payments'));
 app.use('/api/whatsapp',   require('./routes/whatsapp'));
 app.use('/api/kiosks',     require('./routes/kiosks'));
 app.use('/api/complaints', require('./routes/complaints'));

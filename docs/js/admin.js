@@ -1066,12 +1066,14 @@ window.saveOnlinePurchaseCardNow = function() {
   var payPhone = document.getElementById('setPaymentPhone') ? document.getElementById('setPaymentPhone').value.trim() : '3174251419';
   var waNum = document.getElementById('setWhatsappNumber') ? document.getElementById('setWhatsappNumber').value.trim() : '';
   var waMsg = document.getElementById('setWhatsappMessage') ? document.getElementById('setWhatsappMessage').value : '';
+  var wompiMode = document.getElementById('setWompiMode') ? document.getElementById('setWompiMode').value : 'sandbox';
 
   var data = {
     online_purchase_active: isActive ? '1' : '0',
     payment_phone: payPhone,
     whatsapp_number: waNum,
-    whatsapp_message: waMsg
+    whatsapp_message: waMsg,
+    wompi_mode: wompiMode
   };
 
   var badge = document.getElementById('onlinePurchaseBadge');
@@ -1119,6 +1121,8 @@ function loadPortalSettings() {
     if (sloganEl)    sloganEl.value    = s.business_slogan || '';
     if (waEl)        waEl.value        = s.whatsapp_number || '';
     if (payPhoneEl)  payPhoneEl.value  = s.payment_phone || '3174251419';
+    var wompiModeEl = document.getElementById('setWompiMode');
+    if (wompiModeEl && s.wompi_mode) wompiModeEl.value = s.wompi_mode;
     if (onlinePayEl) {
       var isOnline = (s.online_purchase_active !== '0' && s.online_purchase_active !== 0 && s.online_purchase_active !== false && s.online_purchase_active !== 'false');
       onlinePayEl.checked = isOnline;
@@ -1148,6 +1152,7 @@ function savePortalSettings(e) {
     whatsapp_number:        document.getElementById('setWhatsappNumber').value,
     payment_phone:          paymentPhoneVal || '3174251419',
     online_purchase_active: onlinePayChecked ? '1' : '0',
+    wompi_mode:             document.getElementById('setWompiMode') ? document.getElementById('setWompiMode').value : 'sandbox',
     whatsapp_message:       document.getElementById('setWhatsappMessage').value,
     info_active:            document.getElementById('setInfoActive').checked ? '1' : '0',
     info_badge:             document.getElementById('setInfoBadge').value,
