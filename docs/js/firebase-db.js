@@ -872,8 +872,14 @@
     },
 
     // ── Estadísticas (Dashboard) ──────────────────────────────
+    _statsCache: { value: null, ts: 0 },
+    _lastMidnightCleanupMs: 0,
+
     getStats: function() {
       var self = this;
+      if (self._statsCache.value && (Date.now() - self._statsCache.ts) < 60000) {
+        return Promise.resolve(self._statsCache.value);
+      }
       var pCleanup = (typeof self.cleanupMidnightVouchers === 'function') ? self.cleanupMidnightVouchers() : Promise.resolve();
 
       return pCleanup.then(function() {
@@ -896,11 +902,13 @@
           sSnap.forEach(function(d) { salesList.push(d.data()); });
           var metrics = computeSalesMetrics(salesList);
 
-          return {
+          var result = {
             vouchers:  stats,
             revenue:   metrics.revenue,
             top_plans: metrics.top_plans,
           };
+          self._statsCache = { value: result, ts: Date.now() };
+          return result;
         });
       });
     },
@@ -908,6 +916,10 @@
     // ── Limpieza estricta de medianoche: fichas activas no pasan de las 12am ──
     cleanupMidnightVouchers: function() {
       if (!db) return Promise.resolve();
+      if (this._lastMidnightCleanupMs && (Date.now() - this._lastMidnightCleanupMs) < 15 * 60 * 1000) {
+        return Promise.resolve();
+      }
+      this._lastMidnightCleanupMs = Date.now();
       var now = new Date();
       var nowIso = now.toISOString();
       var todayBogotaStr = getBogotaDateStr(now);

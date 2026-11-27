@@ -7,6 +7,7 @@ const {
   firestoreFetch,
   toFirestoreFields,
   decodeFirestoreValue,
+  isFirestoreQuotaBackoffActive,
 } = require('./firestore-client');
 const {
   parseDurationMs,
@@ -25,7 +26,9 @@ const REGEX_SPEED = /^(\d+[kKmMgG]?)\/(\d+[kKmMgG]?)$/;
 const BOT_POOL_TARGET_PER_PLAN = 5;
 const PAY_POOL_TARGET = 6;
 const MAX_PENDING_OPS_PER_BATCH = 12;
-const QUEUE_STALE_POLL_MS = 60 * 1000;
+const QUEUE_STALE_POLL_MS = 10 * 60 * 1000;
+const POOL_RESTOCK_POLL_MS = 6 * 60 * 60 * 1000;
+const LIVE_CACHE_TTL_MS = 5 * 60 * 1000;
 const PAYMENT_PASS_TTL_MS = 3 * 60 * 1000;
 const TRIAL_MAX_ATTEMPTS_PER_DAY = 2;
 
@@ -161,12 +164,19 @@ function sanitizeFlatFields(obj) {
   return clean;
 }
 
+function makeFirestoreHttpError(opLabel, res, body) {
+  const err = new Error(`${opLabel} failed (${res.status}): ${String(body || '').slice(0, 180)}`);
+  err.status = res.status;
+  err.isQuotaExceeded = res.status === 429;
+  return err;
+}
+
 async function getDoc(relPath) {
   const res = await firestoreFetch(normalizeRelPath(relPath), { method: 'GET' });
   if (res.status === 404) return null;
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`Firestore GET ${relPath} failed (${res.status}): ${body.slice(0, 180)}`);
+    throw makeFirestoreHttpError(`Firestore GET ${relPath}`, res, body);
   }
   return decodeDoc(await res.json());
 }
@@ -202,7 +212,7 @@ async function setDoc(relPath, dataObj, options = {}) {
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`Firestore PATCH ${relPath} failed (${res.status}): ${body.slice(0, 180)}`);
+    throw makeFirestoreHttpError(`Firestore PATCH ${relPath}`, res, body);
   }
 
   return decodeDoc(await res.json());
@@ -222,7 +232,7 @@ async function createDoc(collectionPath, dataObj, docId = null) {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`Firestore POST ${collectionPath} failed (${res.status}): ${body.slice(0, 180)}`);
+    throw makeFirestoreHttpError(`Firestore POST ${collectionPath}`, res, body);
   }
   return decodeDoc(await res.json());
 }
@@ -232,7 +242,7 @@ async function deleteDoc(relPath) {
   if (res.status === 404) return false;
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`Firestore DELETE ${relPath} failed (${res.status}): ${body.slice(0, 180)}`);
+    throw makeFirestoreHttpError(`Firestore DELETE ${relPath}`, res, body);
   }
   return true;
 }
@@ -244,7 +254,7 @@ async function runQuery(structuredQuery) {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new Error(`Firestore runQuery failed (${res.status}): ${body.slice(0, 180)}`);
+    throw makeFirestoreHttpError('Firestore runQuery', res, body);
   }
   const rows = await res.json();
   if (!Array.isArray(rows)) return [];
@@ -263,7 +273,7 @@ async function listCollection(collectionPath, pageSize = 300) {
     const res = await firestoreFetch(`/${collectionPath}${qs}`, { method: 'GET' });
     if (!res.ok) {
       const body = await res.text().catch(() => '');
-      throw new Error(`Firestore LIST ${collectionPath} failed (${res.status}): ${body.slice(0, 180)}`);
+      throw makeFirestoreHttpError(`Firestore LIST ${collectionPath}`, res, body);
     }
     const json = await res.json();
     if (Array.isArray(json.documents)) {
@@ -315,11 +325,11 @@ function readSettingsFromSqlite(db) {
 
 async function getSettingsLive({ force = false, db = null } = {}) {
   const now = Date.now();
-  if (!force && _cache.settings.value && (now - _cache.settings.ts) < 5000) {
+  if (!force && _cache.settings.value && (now - _cache.settings.ts) < LIVE_CACHE_TTL_MS) {
     return _cache.settings.value;
   }
 
-  if (hasServiceAccount()) {
+  if (hasServiceAccount() && !isFirestoreQuotaBackoffActive()) {
     try {
       const doc = await getDoc('/settings/general');
       if (doc) {
@@ -329,7 +339,10 @@ async function getSettingsLive({ force = false, db = null } = {}) {
       }
     } catch (err) {
       console.error('[FirestoreStore] getSettingsLive fallback:', err.message);
+      if (_cache.settings.value) return _cache.settings.value;
     }
+  } else if (_cache.settings.value) {
+    return _cache.settings.value;
   }
 
   const fallback = db ? readSettingsFromSqlite(db) : normalizeSettingsMap({});
@@ -361,12 +374,12 @@ async function updateSettingsLive(patchObj, db = null) {
 
 async function getPlansLive({ force = false, includeInactive = false, db = null } = {}) {
   const now = Date.now();
-  if (!includeInactive && !force && _cache.plans.value && (now - _cache.plans.ts) < 10000) {
+  if (!includeInactive && !force && _cache.plans.value && (now - _cache.plans.ts) < LIVE_CACHE_TTL_MS) {
     return _cache.plans.value;
   }
 
   let plans = null;
-  if (hasServiceAccount()) {
+  if (hasServiceAccount() && !isFirestoreQuotaBackoffActive()) {
     try {
       const docs = includeInactive
         ? await listCollection('plans', 100)
@@ -403,7 +416,10 @@ async function getPlansLive({ force = false, includeInactive = false, db = null 
       return plans;
     } catch (err) {
       console.error('[FirestoreStore] getPlansLive fallback:', err.message);
+      if (!includeInactive && _cache.plans.value) return _cache.plans.value;
     }
+  } else if (!includeInactive && _cache.plans.value) {
+    return _cache.plans.value;
   }
 
   if (db) {
@@ -431,11 +447,11 @@ function findPlanForVoucher(plans, voucher) {
 
 async function getKiosksLive({ force = false, db = null } = {}) {
   const now = Date.now();
-  if (!force && _cache.kiosks.value && (now - _cache.kiosks.ts) < 15000) {
+  if (!force && _cache.kiosks.value && (now - _cache.kiosks.ts) < LIVE_CACHE_TTL_MS) {
     return _cache.kiosks.value;
   }
 
-  if (hasServiceAccount()) {
+  if (hasServiceAccount() && !isFirestoreQuotaBackoffActive()) {
     try {
       const docs = await runQuery({
         from: [{ collectionId: 'kiosks' }],
@@ -454,7 +470,10 @@ async function getKiosksLive({ force = false, db = null } = {}) {
       return list;
     } catch (err) {
       console.error('[FirestoreStore] getKiosksLive fallback:', err.message);
+      if (_cache.kiosks.value) return _cache.kiosks.value;
     }
+  } else if (_cache.kiosks.value) {
+    return _cache.kiosks.value;
   }
 
   if (db) {
@@ -495,17 +514,21 @@ async function enqueueMikrotikOp(opInput) {
 
   _queueState.ops.set(op.op_id, op);
 
-  if (hasServiceAccount()) {
-    await setDoc(`/mikrotik_queue/${encodeURIComponent(op.op_id)}`, {
-      ...op,
-      status: 'pending',
-    }, { merge: false });
+  if (hasServiceAccount() && !isFirestoreQuotaBackoffActive()) {
+    try {
+      await setDoc(`/mikrotik_queue/${encodeURIComponent(op.op_id)}`, {
+        ...op,
+        status: 'pending',
+      }, { merge: false });
+    } catch (err) {
+      console.warn('[FirestoreStore] enqueueMikrotikOp Firestore warn (cola en memoria activa):', err.message);
+    }
   }
   return op;
 }
 
 async function pullPendingQueueFromFirestore() {
-  if (!hasServiceAccount()) return;
+  if (!hasServiceAccount() || isFirestoreQuotaBackoffActive()) return;
   const docs = await runQuery({
     from: [{ collectionId: 'mikrotik_queue' }],
     where: {
@@ -527,17 +550,19 @@ async function pullPendingQueueFromFirestore() {
 async function getPendingMikrotikOps({ forceFirestore = false, db = null } = {}) {
   const now = Date.now();
   const stale = !_queueState.initialized || (now - _queueState.lastFirestorePullMs) >= QUEUE_STALE_POLL_MS;
-  if (hasServiceAccount() && (forceFirestore || stale)) {
+  if (hasServiceAccount() && !isFirestoreQuotaBackoffActive() && (forceFirestore || stale)) {
+    _queueState.initialized = true;
+    _queueState.lastFirestorePullMs = now;
     try {
       await pullPendingQueueFromFirestore();
-      _queueState.initialized = true;
     } catch (err) {
       console.error('[FirestoreStore] pullPendingQueue err:', err.message);
     }
   }
 
-  // Also ensure pools are checked periodically
-  if (hasServiceAccount() && (now - _queueState.lastPoolCheckMs) >= QUEUE_STALE_POLL_MS) {
+  // Verificar inventario pre-provisionado únicamente al arranque y cada 6h (los consumos ya reponen 1x1)
+  const poolDue = _queueState.lastPoolCheckMs === 0 || (now - _queueState.lastPoolCheckMs) >= POOL_RESTOCK_POLL_MS;
+  if (hasServiceAccount() && !isFirestoreQuotaBackoffActive() && poolDue) {
     _queueState.lastPoolCheckMs = now;
     ensurePoolsStocked({ db }).catch((err) => {
       console.error('[FirestoreStore] background pool stock err:', err.message);
@@ -915,15 +940,17 @@ function computeRemainingSeconds(expiresAtIso) {
   return diff > 0 ? diff : 0;
 }
 
-async function getVoucherSSOT(code, db = null) {
+async function getVoucherSSOT(code, db = null, { throwOnOutage = false } = {}) {
   const cleanCode = normalizeCode(code);
   if (!cleanCode) return null;
 
+  let firestoreErr = null;
   if (hasServiceAccount()) {
     try {
       const doc = await getDoc(`/vouchers/${encodeURIComponent(cleanCode)}`);
       if (doc) return doc;
     } catch (err) {
+      firestoreErr = err;
       console.error('[FirestoreStore] getVoucherSSOT err:', err.message);
     }
   }
@@ -947,6 +974,13 @@ async function getVoucherSSOT(code, db = null) {
     }
   }
 
+  if (firestoreErr && throwOnOutage) {
+    const outage = new Error('Base de datos temporalmente no disponible');
+    outage.status = 503;
+    outage.isQuotaExceeded = Boolean(firestoreErr.isQuotaExceeded);
+    throw outage;
+  }
+
   return null;
 }
 
@@ -958,12 +992,14 @@ async function activateVoucherSSOT({ code, mac = null, db = null } = {}) {
   const cleanMac = mac ? normalizeMac(mac) : null;
 
   // Attempt up to 2 tries on Firestore precondition races
+  let firestoreOutageErr = null;
   if (hasServiceAccount()) {
     for (let attempt = 0; attempt < 2; attempt++) {
       let v = null;
       try {
         v = await getDoc(`/vouchers/${encodeURIComponent(cleanCode)}`);
       } catch (err) {
+        firestoreOutageErr = err;
         console.error('[FirestoreStore] activate read err:', err.message);
         break; // fallback to SQLite only on Firestore outage
       }
@@ -1008,9 +1044,12 @@ async function activateVoucherSSOT({ code, mac = null, db = null } = {}) {
       const price = Number(v.price ?? matchedPlan?.price ?? 0);
       const sharedUsers = Number(v.shared_users ?? matchedPlan?.shared_users ?? 1);
       const profileName = resolveEffectiveProfileName({
+        name: planName,
         profile_name: v.profile_name || matchedPlan?.profile_name || 'default',
         speed_limit: speedLimit,
       });
+
+      const needsMikrotikSync = v.mikrotik_synced !== true && v.mikrotik_synced !== 1;
 
       if (v.status === 'active') {
         if (isVoucherExpiredSSOT(v)) {
@@ -1023,7 +1062,23 @@ async function activateVoucherSSOT({ code, mac = null, db = null } = {}) {
           return { ok: false, status: 400, error: 'Esta ficha ya ha expirado.' };
         }
 
-        // Valid active session -> allow clean re-login without double-billing
+        // Valid active session -> ensure user exists on MikroTik if never ACKed, and allow re-login
+        if (needsMikrotikSync) {
+          await enqueueMikrotikOp({
+            op_id: `CREATE_${cleanCode}`,
+            action: 'create_user',
+            code: cleanCode,
+            profile_name: profileName,
+            speed_limit: speedLimit,
+            duration,
+            shared_users: sharedUsers,
+            comment: 'Ficha Portal Reingreso',
+            plan_id: String(v.plan_id || ''),
+            plan_name: planName,
+            created_at: new Date().toISOString(),
+          }).catch(() => {});
+        }
+
         const remainingSeconds = computeRemainingSeconds(v.expires_at);
         if (cleanMac) {
           unblockWaTrialSSOT({ mac: cleanMac, db }).catch(() => {});
@@ -1031,6 +1086,7 @@ async function activateVoucherSSOT({ code, mac = null, db = null } = {}) {
         return {
           ok: true,
           reused: true,
+          queuedForMikrotik: needsMikrotikSync,
           voucher: {
             code: cleanCode,
             status: 'active',
@@ -1102,7 +1158,7 @@ async function activateVoucherSSOT({ code, mac = null, db = null } = {}) {
         await unblockWaTrialSSOT({ mac: cleanMac, db }).catch(() => {});
       }
 
-      if (v.mikrotik_synced === false || v.mikrotik_synced === 0) {
+      if (needsMikrotikSync) {
         await enqueueMikrotikOp({
           op_id: `CREATE_${cleanCode}`,
           action: 'create_user',
@@ -1133,6 +1189,7 @@ async function activateVoucherSSOT({ code, mac = null, db = null } = {}) {
       return {
         ok: true,
         reused: false,
+        queuedForMikrotik: needsMikrotikSync,
         voucher: {
           code: cleanCode,
           status: 'active',
@@ -1150,7 +1207,12 @@ async function activateVoucherSSOT({ code, mac = null, db = null } = {}) {
 
   // SQLite-only fallback
   if (!db) {
-    return { ok: false, status: 503, error: 'Servicio temporalmente no disponible.' };
+    return {
+      ok: false,
+      status: 503,
+      errorCode: 'FIRESTORE_UNAVAILABLE',
+      error: 'Servicio temporalmente no disponible.',
+    };
   }
 
   const row = db.prepare(`
@@ -1162,6 +1224,14 @@ async function activateVoucherSSOT({ code, mac = null, db = null } = {}) {
   `).get(cleanCode);
 
   if (!row) {
+    if (firestoreOutageErr) {
+      return {
+        ok: false,
+        status: 503,
+        errorCode: 'FIRESTORE_UNAVAILABLE',
+        error: 'Base de datos temporalmente saturada. Intentando validación directa con el router...',
+      };
+    }
     return { ok: false, status: 404, error: 'Ficha no encontrada. Verifica el código e intenta nuevamente.' };
   }
   if (row.status === 'revoked') {
@@ -1234,7 +1304,7 @@ async function activateVoucherSSOT({ code, mac = null, db = null } = {}) {
   };
 }
 
-async function expireStaleVouchersSSOT(db = null) {
+async function expireStaleVouchersSSOT(db = null, { skipFirestore = false } = {}) {
   const now = new Date();
   const nowIso = now.toISOString();
   const expiredCodes = [];
@@ -1271,7 +1341,7 @@ async function expireStaleVouchersSSOT(db = null) {
     }
   }
 
-  if (hasServiceAccount()) {
+  if (hasServiceAccount() && !skipFirestore && !isFirestoreQuotaBackoffActive()) {
     try {
       const activeDocs = await runQuery({
         from: [{ collectionId: 'vouchers' }],

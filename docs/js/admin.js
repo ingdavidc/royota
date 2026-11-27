@@ -498,14 +498,15 @@ function startAdminRealtimeListeners() {
         loadVouchers(_vPage);
       }
 
-      // Refrescar disponibles sin saturar lecturas si hubo cambio posterior al arranque
-      if (hadPrevious) {
+      // Refrescar disponibles con límite estricto (máx. cada 2 min) para evitar consumo excesivo en Firestore
+      if (hadPrevious && (!window._lastStatsRefreshMs || (Date.now() - window._lastStatsRefreshMs) > 120000)) {
         clearTimeout(_availRefreshTimer);
         _availRefreshTimer = setTimeout(function() {
+          window._lastStatsRefreshMs = Date.now();
           apiFetch('GET', '/api/vouchers/stats').then(function(s) {
             if (s && s.vouchers) setText('st-available', s.vouchers.available);
           }).catch(function(){});
-        }, 3000);
+        }, 5000);
       }
     });
   }

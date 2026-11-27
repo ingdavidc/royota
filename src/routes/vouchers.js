@@ -319,6 +319,7 @@ router.post('/activate', async (req, res) => {
     if (!result.ok) {
       return res.status(result.status || 400).json({
         error: result.error || 'Código inválido, ya utilizado o expirado',
+        ...(result.errorCode ? { errorCode: result.errorCode } : {}),
       });
     }
 
@@ -346,14 +347,16 @@ router.post('/activate', async (req, res) => {
     } catch (_) {}
 
     return res.json({
-      message:          result.reused ? 'Sesión activa restaurada. ¡Bienvenido de nuevo!' : '¡Ficha activada! Ya puedes navegar.',
-      code:             v.code,
-      plan:             v.plan_name,
-      duration:         v.duration,
-      speed:            v.speed_limit,
-      expires_at:       v.expires_at,
-      remainingSeconds: v.remainingSeconds,
-      reused:           Boolean(result.reused),
+      message:           result.reused ? 'Sesión activa restaurada. ¡Bienvenido de nuevo!' : '¡Ficha activada! Ya puedes navegar.',
+      code:              v.code,
+      plan:              v.plan_name,
+      duration:          v.duration,
+      speed:             v.speed_limit,
+      expires_at:        v.expires_at,
+      remainingSeconds:  v.remainingSeconds,
+      reused:            Boolean(result.reused),
+      queuedForMikrotik: Boolean(result.queuedForMikrotik),
+      retryWaitMs:       result.queuedForMikrotik ? 5500 : 500,
     });
   } finally {
     _activatingCodes.delete(cleanCode);
@@ -366,7 +369,15 @@ router.get('/check/:code', async (req, res) => {
   if (!REGEX_CODE.test(cleanCode)) {
     return res.status(400).json({ error: 'Formato de código inválido' });
   }
-  const v = await getVoucherSSOT(cleanCode, getDb());
+  let v = null;
+  try {
+    v = await getVoucherSSOT(cleanCode, getDb(), { throwOnOutage: true });
+  } catch (err) {
+    return res.status(err.status || 503).json({
+      error: err.message || 'Base de datos temporalmente no disponible',
+      errorCode: 'FIRESTORE_UNAVAILABLE',
+    });
+  }
   if (!v) return res.status(404).json({ error: 'Código no encontrado' });
 
   res.json({

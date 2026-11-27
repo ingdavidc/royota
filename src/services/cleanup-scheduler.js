@@ -10,9 +10,11 @@ const cron     = require('node-cron');
 const config   = require('../config');
 const { getDb } = require('../database');
 const mikrotik = require('./mikrotik-api');
+const { isFirestoreQuotaBackoffActive } = require('./firestore-client');
 
 let _task = null;
 let _isCleaning = false;
+let _lastFirestoreExpireMs = 0;
 
 function startCleanupScheduler() {
   if (_task) return;
@@ -42,7 +44,14 @@ async function _runCleanup() {
     const startTime = Date.now();
 
     const { isVoucherExpiredSSOT, expireStaleVouchersSSOT } = require('./firestore-store');
-    await expireStaleVouchersSSOT(db);
+    const nowMs = Date.now();
+    const shouldCheckFirestore = !isFirestoreQuotaBackoffActive() && (nowMs - _lastFirestoreExpireMs >= 30 * 60 * 1000);
+    if (shouldCheckFirestore) {
+      _lastFirestoreExpireMs = nowMs;
+      await expireStaleVouchersSSOT(db, { skipFirestore: false });
+    } else {
+      await expireStaleVouchersSSOT(db, { skipFirestore: true });
+    }
 
     const expired = db.prepare(`
       SELECT id, code, activated_at, expires_at, status, mikrotik_synced

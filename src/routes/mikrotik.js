@@ -409,20 +409,29 @@ router.post('/sync/plan-sync', authRequired, async (req, res) => {
 
 // ── OPCIÓN A: COLECTOR AUTOMÁTICO DE AUDITORÍA MIKROTIK (SOLO LECTURA) ──
 const AUDIT_FILE_SPEC = [
-  { key: 'bridge_export', file: 'raud_bridge.rsc', cmd: '/interface bridge export file="raud_bridge"' },
-  { key: 'bridge_ports',  file: 'raud_bport.txt',  cmd: '/interface bridge port print detail without-paging file="raud_bport"' },
-  { key: 'ip_address',    file: 'raud_addr.rsc',   cmd: '/ip address export file="raud_addr"' },
-  { key: 'ip_dhcp',       file: 'raud_dhcp.rsc',   cmd: '/ip dhcp-server export file="raud_dhcp"' },
-  { key: 'hotspot_srv',   file: 'raud_hs.txt',     cmd: '/ip hotspot print detail without-paging file="raud_hs"' },
-  { key: 'hotspot_prof',  file: 'raud_hsprof.txt', cmd: '/ip hotspot profile print detail without-paging file="raud_hsprof"' },
-  { key: 'ip_bindings',   file: 'raud_bind.txt',   cmd: '/ip hotspot ip-binding print detail without-paging file="raud_bind"' },
-  { key: 'walled_garden', file: 'raud_wg.txt',     cmd: '/ip hotspot walled-garden print without-paging file="raud_wg"' },
-  { key: 'walled_ip',     file: 'raud_wgip.txt',   cmd: '/ip hotspot walled-garden ip print without-paging file="raud_wgip"' },
-  { key: 'firewall_flt',  file: 'raud_fw.txt',     cmd: '/ip firewall filter print all without-paging file="raud_fw"' },
-  { key: 'firewall_nat',  file: 'raud_nat.txt',    cmd: '/ip firewall nat print without-paging file="raud_nat"' },
-  { key: 'ip_service',    file: 'raud_svc.txt',    cmd: '/ip service print without-paging file="raud_svc"' },
-  { key: 'ipv6_settings', file: 'raud_ipv6.txt',   cmd: '/ipv6 settings print file="raud_ipv6"' },
-  { key: 'scheduler',     file: 'raud_sched.txt',  cmd: '/system scheduler print detail without-paging file="raud_sched"' },
+  { key: 'bridge_export', file: 'raud_bridge.rsc',  cmd: '/interface bridge export file="raud_bridge"' },
+  { key: 'bridge_ports',  file: 'raud_bport.txt',   cmd: '/interface bridge port print detail without-paging file="raud_bport"' },
+  { key: 'ip_address',    file: 'raud_addr.rsc',    cmd: '/ip address export file="raud_addr"' },
+  { key: 'ip_dhcp',       file: 'raud_dhcp.rsc',    cmd: '/ip dhcp-server export file="raud_dhcp"' },
+  { key: 'hotspot_srv',   file: 'raud_hs.txt',      cmd: '/ip hotspot print detail without-paging file="raud_hs"' },
+  { key: 'hotspot_prof',  file: 'raud_hsprof.txt',  cmd: '/ip hotspot profile print detail without-paging file="raud_hsprof"' },
+  { key: 'hs_user_prof',  file: 'raud_hsuprof.txt', cmd: '/ip hotspot user profile print without-paging file="raud_hsuprof"' },
+  { key: 'hs_active',     file: 'raud_hsact.txt',   cmd: '/ip hotspot active print detail without-paging file="raud_hsact"' },
+  { key: 'hs_hosts',      file: 'raud_hshost.txt',  cmd: '/ip hotspot host print without-paging file="raud_hshost"' },
+  { key: 'hs_users',      file: 'raud_hsu.txt',     cmd: '/ip hotspot user print terse without-paging file="raud_hsu"' },
+  { key: 'hs_user_bk',    file: 'raud_hsubk.txt',   cmd: '/ip hotspot user print detail without-paging where name="BK535P" file="raud_hsubk"' },
+  { key: 'ip_bindings',   file: 'raud_bind.txt',    cmd: '/ip hotspot ip-binding print detail without-paging file="raud_bind"' },
+  { key: 'walled_garden', file: 'raud_wg.txt',      cmd: '/ip hotspot walled-garden print without-paging file="raud_wg"' },
+  { key: 'walled_ip',     file: 'raud_wgip.txt',    cmd: '/ip hotspot walled-garden ip print without-paging file="raud_wgip"' },
+  { key: 'firewall_flt',  file: 'raud_fw.txt',      cmd: '/ip firewall filter print all without-paging file="raud_fw"' },
+  { key: 'firewall_nat',  file: 'raud_nat.txt',     cmd: '/ip firewall nat print without-paging file="raud_nat"' },
+  { key: 'ip_service',    file: 'raud_svc.txt',     cmd: '/ip service print without-paging file="raud_svc"' },
+  { key: 'ip_dns',        file: 'raud_dns.txt',     cmd: '/ip dns print file="raud_dns"' },
+  { key: 'ip_route',      file: 'raud_route.txt',   cmd: '/ip route print without-paging file="raud_route"' },
+  { key: 'ip_pool',       file: 'raud_pool.txt',    cmd: '/ip pool print detail without-paging file="raud_pool"' },
+  { key: 'ipv6_settings', file: 'raud_ipv6.txt',    cmd: '/ipv6 settings print file="raud_ipv6"' },
+  { key: 'scheduler',     file: 'raud_sched.txt',   cmd: '/system scheduler print detail without-paging file="raud_sched"' },
+  { key: 'router_log',    file: 'raud_log.txt',     cmd: '/log print without-paging where topics~"hotspot|error" file="raud_log"' },
 ];
 
 function buildOneShotAuditRsc(token) {
@@ -434,7 +443,7 @@ function buildOneShotAuditRsc(token) {
   for (const spec of AUDIT_FILE_SPEC) {
     lines.push(`  :do { ${spec.cmd} } on-error={}`);
   }
-  lines.push('  :delay 1500ms');
+  lines.push('  :delay 2000ms');
   const fileList = AUDIT_FILE_SPEC.map((s) => `"${s.file}"`).join(';');
   lines.push(`  :foreach fname in={${fileList}} do={`);
   lines.push('    :local f [/file find name=$fname]');

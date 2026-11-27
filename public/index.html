@@ -2319,7 +2319,8 @@
     }
 
     /* ── Autologin a MikroTik RouterOS tras validar ficha ── */
-    function submitMikrotikLogin(voucherCode, customMsg, redirectMain) {
+    function submitMikrotikLogin(voucherCode, customMsg, redirectMain, delayMs) {
+      var waitMs = (typeof delayMs === 'number' && delayMs >= 0) ? delayMs : (redirectMain ? 1000 : 300);
       showStatus(customMsg || '¡Ficha activada! Conectando tu dispositivo a la red WiFi…', 'ok');
       setTimeout(function() {
         var postForm = document.createElement('form');
@@ -2350,7 +2351,7 @@
 
         document.body.appendChild(postForm);
         postForm.submit();
-      }, redirectMain ? 1000 : 300);
+      }, waitMs);
     }
 
     /* ── 7. Activación de Ficha (SSOT Backend Render -> Firestore; sin falsos logins) ── */
@@ -2395,7 +2396,11 @@
           btn.disabled    = false;
           btn.textContent = '⚡ Conectar al Internet';
           input.value     = '';
-          showStatus(data.message || '¡Ficha activada con éxito!', 'ok');
+          var waitRouterMs = (typeof data.retryWaitMs === 'number') ? data.retryWaitMs : 1000;
+          var okBanner = data.queuedForMikrotik
+            ? '⏳ Sincronizando tu ficha con el router (5 seg)…'
+            : (data.message || '¡Ficha activada con éxito!');
+          showStatus(okBanner, 'ok');
 
           setText('cPlan',     data.plan);
           setText('cDuration', data.duration);
@@ -2403,11 +2408,15 @@
           setText('cExpires',  data.expires_at ? fmtDate(data.expires_at) : '—');
           info.removeAttribute('hidden');
 
-          submitMikrotikLogin(code, data.message || null, true);
+          submitMikrotikLogin(code, okBanner, true, waitRouterMs);
         } else if (xhr.status >= 400 && xhr.status < 500) {
           btn.disabled    = false;
           btn.textContent = '⚡ Conectar al Internet';
           showStatus((data && data.error) ? data.error : 'Código no válido, expirado o ya utilizado.', 'error');
+        } else if (xhr.status === 503 && hasRouterMac && /^[A-Z0-9_-]{3,24}$/.test(code)) {
+          btn.disabled    = false;
+          btn.textContent = '⚡ Conectar al Internet';
+          submitMikrotikLogin(code, '⚡ Validando ficha directamente con el router WiFi…', true, 300);
         } else {
           handleTransientFailure();
         }

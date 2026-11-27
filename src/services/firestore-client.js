@@ -17,6 +17,19 @@ let _parsedAttempted = false;
 let _warnedNoSa = false;
 let _cachedToken = null;
 let _tokenExpiresAt = 0;
+let _quotaBackoffUntilMs = 0;
+
+function isFirestoreQuotaBackoffActive() {
+  return Date.now() < _quotaBackoffUntilMs;
+}
+
+function tripFirestoreQuotaBackoff(durationMs = 5 * 60 * 1000) {
+  const nextUntil = Date.now() + durationMs;
+  if (nextUntil > _quotaBackoffUntilMs) {
+    _quotaBackoffUntilMs = nextUntil;
+    console.warn(`[FirestoreClient] ⏸️ Cuota 429 detectada; pausando tareas en segundo plano por ${Math.round(durationMs / 1000)}s.`);
+  }
+}
 
 function getServiceAccount() {
   if (_parsedAttempted) return _serviceAccount;
@@ -122,7 +135,11 @@ async function firestoreFetch(relPath, options = {}) {
     console.warn('[FirestoreClient] Falló obtención de token OAuth2:', err.message);
   }
 
-  return fetch(url, { ...options, headers });
+  const res = await fetch(url, { ...options, headers });
+  if (res.status === 429) {
+    tripFirestoreQuotaBackoff(5 * 60 * 1000);
+  }
+  return res;
 }
 
 /**
@@ -168,4 +185,6 @@ module.exports = {
   firestoreFetch,
   toFirestoreFields,
   decodeFirestoreValue,
+  isFirestoreQuotaBackoffActive,
+  tripFirestoreQuotaBackoff,
 };

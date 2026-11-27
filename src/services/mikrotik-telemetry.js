@@ -6,7 +6,7 @@
  */
 'use strict';
 
-const { firestoreFetch, toFirestoreFields, decodeFirestoreValue } = require('./firestore-client');
+const { firestoreFetch, toFirestoreFields, decodeFirestoreValue, isFirestoreQuotaBackoffActive } = require('./firestore-client');
 
 let _routerTelemetry = {
   lastSeen: null,
@@ -21,11 +21,12 @@ let _routerTelemetry = {
 let _lastFirestoreSync = 0;
 
 /**
- * Sincroniza la telemetría hacia Firestore con throttling (máximo cada 20s).
+ * Sincroniza la telemetría hacia Firestore con throttling (máximo cada 120s).
  */
 async function syncTelemetryToFirestore(telem) {
+  if (isFirestoreQuotaBackoffActive()) return;
   const now = Date.now();
-  if (now - _lastFirestoreSync < 20_000) return;
+  if (now - _lastFirestoreSync < 120_000) return;
   _lastFirestoreSync = now;
 
   try {

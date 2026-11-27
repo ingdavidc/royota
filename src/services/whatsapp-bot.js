@@ -31,7 +31,7 @@ const config = require('../config');
 const { getDb } = require('../database');
 const { getBogotaDateStr } = require('../utils/helpers');
 const { analyzeReceipt } = require('./gemini-vision');
-const { firestoreFetch, toFirestoreFields } = require('./firestore-client');
+const { firestoreFetch, toFirestoreFields, isFirestoreQuotaBackoffActive } = require('./firestore-client');
 const {
   getSettingsLive,
   getPlansLive,
@@ -1219,16 +1219,34 @@ async function restartBot() {
 let _outboxPollingInterval = null;
 
 async function checkWhatsAppOutbox() {
-  if (!_sock || _state.status !== 'connected') return;
+  if (!_sock || _state.status !== 'connected' || isFirestoreQuotaBackoffActive()) return;
 
   try {
-    const res = await firestoreFetch('/whatsapp_outbox?pageSize=15');
+    const res = await firestoreFetch(':runQuery', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        structuredQuery: {
+          from: [{ collectionId: 'whatsapp_outbox' }],
+          where: {
+            fieldFilter: {
+              field: { fieldPath: 'sent' },
+              op: 'EQUAL',
+              value: { booleanValue: false },
+            },
+          },
+          limit: 15,
+        },
+      }),
+    });
     if (!res.ok) return;
 
-    const data = await res.json();
-    if (!data.documents || !data.documents.length) return;
+    const rows = await res.json();
+    if (!Array.isArray(rows) || !rows.length) return;
 
-    for (const doc of data.documents) {
+    for (const row of rows) {
+      const doc = row && row.document;
+      if (!doc || !doc.name) continue;
       const f = doc.fields || {};
       const sent = f.sent ? f.sent.booleanValue : false;
       if (sent) continue;
@@ -1285,7 +1303,7 @@ async function checkWhatsAppOutbox() {
 function startOutboxPolling() {
   if (_outboxPollingInterval) clearInterval(_outboxPollingInterval);
   checkWhatsAppOutbox();
-  _outboxPollingInterval = setInterval(checkWhatsAppOutbox, 3500);
+  _outboxPollingInterval = setInterval(checkWhatsAppOutbox, 30_000);
 }
 
 async function sendDirectWhatsAppMessage(phoneOrJid, messageText) {
