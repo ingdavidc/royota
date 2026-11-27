@@ -120,7 +120,7 @@ const config = {
 
   // ── Wompi Pasarela (Pagos en línea y QR Dinámico) ───────────
   wompi: {
-    mode: optional('WOMPI_MODE', 'sandbox'), // 'sandbox' | 'production'
+    mode: optional('WOMPI_MODE', 'production'), // 'sandbox' | 'production'
     sandbox: {
       publicKey:       optional('WOMPI_SANDBOX_PUBLIC_KEY', 'pub_test_u2GlTvUapZlKCal8nsbBERMiRXdQiFIq'),
       privateKey:      optional('WOMPI_SANDBOX_PRIVATE_KEY', 'prv_test_tjmevjilooQ8mbnqf1a3Vdk2Lmr1YTO4'),
@@ -130,7 +130,7 @@ const config = {
       checkoutUrl:     'https://checkout.wompi.co',
     },
     production: {
-      publicKey:       optional('WOMPI_PROD_PUBLIC_KEY', 'pub_prod_Y9dK8ydKDs1ApXSgvV9VraLOgBELc1NdU'),
+      publicKey:       optional('WOMPI_PROD_PUBLIC_KEY', 'pub_prod_Y9dK8ydKDs1ApXSgV9VraLOgBELc1NdU'),
       privateKey:      optional('WOMPI_PROD_PRIVATE_KEY', 'prv_prod_nbj6fwOfeBxMsSq0EtGo96MhqxdVybhk'),
       eventsSecret:    optional('WOMPI_PROD_EVENTS_SECRET', 'prod_events_BKTGwrUdR113UP8gha53mjTRelfvGGwj'),
       integritySecret: optional('WOMPI_PROD_INTEGRITY_SECRET', 'prod_integrity_VKKrMW5mBVucjWYJTMDqkDpiKprHyQJf'),

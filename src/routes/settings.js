@@ -22,7 +22,7 @@ router.get('/public', async (req, res) => {
     whatsapp_number:        s.whatsapp_number || '',
     payment_phone:          s.payment_phone || '3174251419',
     online_purchase_active: s.online_purchase_active !== '0' && s.online_purchase_active !== 0 && s.online_purchase_active !== false,
-    wompi_mode:             s.wompi_mode || config.wompi.mode || 'sandbox',
+    wompi_mode:             s.wompi_mode || config.wompi.mode || 'production',
     whatsapp_message:       s.whatsapp_message || '',
     info_active:            s.info_active === '1' || s.info_active === true,
     info_badge:             s.info_badge || 'Avisos & Servicios',

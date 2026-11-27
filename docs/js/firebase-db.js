@@ -21,6 +21,7 @@
     whatsapp_number:        '573174251419',
     payment_phone:          '3174251419',
     online_purchase_active: true,
+    wompi_mode:             'production',
     whatsapp_message:       '¡Hola! Estoy en Río Royota y deseo comprar una ficha de internet WiFi.',
     info_active:            true,
     info_badge:             'Avisos & Servicios del Balneario',

@@ -4,7 +4,7 @@
  * Servicio de pasarela Wompi para Balneario Río Royota:
  * - Generación de Links de Pago y QR dinámico interoperable (Nequi / Bancolombia / PSE).
  * - Verificación criptográfica de Webhooks (SHA-256).
- * - Consulta de transacciones y conciliación contra Firestore SSOT.
+ * - Búsqueda por reference o payment_link_id y reconciliación directa con Wompi API.
  */
 'use strict';
 
@@ -12,34 +12,39 @@ const crypto = require('crypto');
 const https = require('https');
 const QRCode = require('qrcode');
 const config = require('../config');
-const { getSettingsLive } = require('./firestore-store');
+const { hasServiceAccount } = require('./firestore-client');
 const {
-  hasServiceAccount,
+  getSettingsLive,
   getDoc,
   setDoc,
   createDoc,
-} = require('./firestore-client');
+  runQuery,
+} = require('./firestore-store');
 
-// Caché en memoria para órdenes activas (soporta fallos de red / modo local)
+// Cachés en memoria para órdenes activas y throttling de reconciliación
 const _ordersMemory = new Map();
+const _ordersByLinkIdMemory = new Map();
+const _lastReconcileCheckMs = new Map();
 
 /**
- * Obtiene la configuración efectiva de Wompi (Sandbox vs Producción)
- * Leyendo de Firestore settings si existe la propiedad 'wompi_mode'.
+ * Obtiene la configuración efectiva de Wompi (Producción vs Sandbox).
+ * Lee de Firestore settings ('wompi_mode') salvo que se fuerce `overrideMode`.
  */
 async function getEffectiveWompiConfig(overrideMode = null) {
-  let mode = overrideMode || config.wompi.mode || 'sandbox';
+  let mode = overrideMode || config.wompi.mode || 'production';
 
-  try {
-    const liveSettings = await getSettingsLive();
-    if (liveSettings && (liveSettings.wompi_mode === 'production' || liveSettings.wompi_mode === 'sandbox')) {
-      mode = liveSettings.wompi_mode;
+  if (!overrideMode) {
+    try {
+      const liveSettings = await getSettingsLive();
+      if (liveSettings && (liveSettings.wompi_mode === 'production' || liveSettings.wompi_mode === 'sandbox')) {
+        mode = liveSettings.wompi_mode;
+      }
+    } catch (_e) {
+      // Si falla la lectura en vivo, usa el modo por defecto de config
     }
-  } catch (_e) {
-    // Si falla la lectura en vivo, usa el modo por defecto de config
   }
 
-  const creds = mode === 'production' ? config.wompi.production : config.wompi.sandbox;
+  const creds = mode === 'sandbox' ? config.wompi.sandbox : config.wompi.production;
 
   return {
     mode,
@@ -108,6 +113,14 @@ function generatePaymentReference(planId) {
   return `RYT-P${planId}-${ts}-${rand}`;
 }
 
+function cacheOrder(orderDoc) {
+  if (!orderDoc || !orderDoc.reference) return;
+  _ordersMemory.set(orderDoc.reference, orderDoc);
+  if (orderDoc.link_id) {
+    _ordersByLinkIdMemory.set(String(orderDoc.link_id), orderDoc.reference);
+  }
+}
+
 /**
  * Crea un Link de Pago de un solo uso en Wompi y genera el QR Dinámico.
  */
@@ -133,7 +146,7 @@ async function createPaymentOrder({
     collect_shipping: false,
     currency: 'COP',
     amount_in_cents: amountInCents,
-    sku: `PLAN_${plan.id}`,
+    sku: `PLAN_${String(plan.id).slice(0, 30)}`,
     redirect_url: redirectUrl || `https://royota.dctelematica.com/?modo=wompi_retorno&ref=${encodeURIComponent(reference)}`,
   };
 
@@ -174,7 +187,7 @@ async function createPaymentOrder({
     plan_name: String(plan.name),
     amount: Number(plan.price),
     amount_in_cents: amountInCents,
-    status: 'PENDING', // PENDING | APPROVED | DECLINED | VOIDED
+    status: 'PENDING', // PENDING | APPROVED | DECLINED | VOIDED | ERROR
     payment_url: paymentUrl,
     qr_data_url: qrDataUrl,
     client_phone: clientPhone || '',
@@ -186,8 +199,7 @@ async function createPaymentOrder({
     updated_at: nowIso,
   };
 
-  // Guardar en memoria
-  _ordersMemory.set(reference, orderDoc);
+  cacheOrder(orderDoc);
 
   // Guardar en Firestore SSOT si está disponible
   if (hasServiceAccount()) {
@@ -216,12 +228,11 @@ async function createPaymentOrder({
 async function getPaymentOrder(reference) {
   if (!reference) return null;
 
-  // 1. Buscar en Firestore si está disponible
   if (hasServiceAccount()) {
     try {
       const doc = await getDoc(`/payment_orders/${encodeURIComponent(reference)}`);
       if (doc) {
-        _ordersMemory.set(reference, doc);
+        cacheOrder(doc);
         return doc;
       }
     } catch (_e) {
@@ -229,8 +240,82 @@ async function getPaymentOrder(reference) {
     }
   }
 
-  // 2. Fallback a memoria
   return _ordersMemory.get(reference) || null;
+}
+
+/**
+ * Busca una orden usando el `link_id` generado por Wompi (ej. `abc123` o `test_7SyVDv`).
+ */
+async function getPaymentOrderByLinkId(linkId) {
+  if (!linkId) return null;
+  const cleanLinkId = String(linkId).trim();
+
+  const cachedRef = _ordersByLinkIdMemory.get(cleanLinkId);
+  if (cachedRef) {
+    const order = await getPaymentOrder(cachedRef);
+    if (order) return order;
+  }
+
+  if (hasServiceAccount()) {
+    try {
+      const docs = await runQuery({
+        from: [{ collectionId: 'payment_orders' }],
+        where: {
+          fieldFilter: {
+            field: { fieldPath: 'link_id' },
+            op: 'EQUAL',
+            value: { stringValue: cleanLinkId },
+          },
+        },
+        limit: 1,
+      });
+      if (docs && docs.length > 0) {
+        const order = docs[0];
+        cacheOrder(order);
+        return order;
+      }
+    } catch (err) {
+      console.warn('[WompiService] getPaymentOrderByLinkId Firestore warn:', err.message);
+    }
+  }
+
+  // Último respaldo recorriendo órdenes en memoria
+  for (const order of _ordersMemory.values()) {
+    if (String(order.link_id || '') === cleanLinkId) {
+      return order;
+    }
+  }
+  return null;
+}
+
+/**
+ * Encuentra la orden asociada a una transacción de Wompi por `reference` o `payment_link_id`.
+ * (Nota: Los Payment Links de Wompi generan referencias propias `<linkId>_<ts>_<rand>`).
+ */
+async function findOrderForTransaction(transaction) {
+  if (!transaction) return null;
+
+  if (transaction.reference) {
+    const direct = await getPaymentOrder(transaction.reference);
+    if (direct) return direct;
+  }
+
+  if (transaction.payment_link_id) {
+    const byLink = await getPaymentOrderByLinkId(transaction.payment_link_id);
+    if (byLink) return byLink;
+  }
+
+  if (transaction.reference && String(transaction.reference).includes('_')) {
+    const parts = String(transaction.reference).split('_');
+    const candidates = [parts[0]];
+    if (parts.length >= 2) candidates.push(`${parts[0]}_${parts[1]}`);
+    for (const candidate of candidates) {
+      const byPrefix = await getPaymentOrderByLinkId(candidate);
+      if (byPrefix) return byPrefix;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -244,7 +329,7 @@ async function updatePaymentOrder(reference, updates = {}) {
     updated_at: new Date().toISOString(),
   };
 
-  _ordersMemory.set(reference, updated);
+  cacheOrder(updated);
 
   if (hasServiceAccount()) {
     try {
@@ -258,15 +343,86 @@ async function updatePaymentOrder(reference, updates = {}) {
 }
 
 /**
+ * Consulta directamente la API de Wompi para reconciliar una orden aún PENDING
+ * (respaldo activo si el webhook tarda o si el cliente vuelve por redirect_url con ?id=...).
+ */
+async function reconcilePendingOrderFromWompi(order, txIdHint = null) {
+  if (!order || order.status !== 'PENDING') return null;
+
+  const cleanTxHint = txIdHint ? String(txIdHint).trim() : '';
+  const now = Date.now();
+  const lastCheck = _lastReconcileCheckMs.get(order.reference) || 0;
+
+  // Sin txIdHint explícito, consultar Wompi máximo cada 5s por orden para no saturar API
+  if (!cleanTxHint && (now - lastCheck) < 5000) {
+    return null;
+  }
+  _lastReconcileCheckMs.set(order.reference, now);
+
+  try {
+    const wompiConf = await getEffectiveWompiConfig(order.wompi_mode || null);
+
+    // 1. Si tenemos el ID exacto de transacción (?id=... en redirect_url de Wompi)
+    if (cleanTxHint) {
+      const resp = await httpsRequest(`${wompiConf.apiUrl}/transactions/${encodeURIComponent(cleanTxHint)}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${wompiConf.privateKey}` },
+      });
+      const tx = resp.data?.data;
+      if (resp.statusCode === 200 && tx) {
+        const matchesOrder =
+          (order.link_id && String(tx.payment_link_id || '') === String(order.link_id)) ||
+          (tx.reference && String(tx.reference) === String(order.reference)) ||
+          (order.link_id && String(tx.reference || '').startsWith(`${order.link_id}_`));
+        if (matchesOrder) return tx;
+      }
+    }
+
+    // 2. Consultar transacciones recientes en el rango de hoy/ayer y cruzar por payment_link_id
+    if (!order.link_id) return null;
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+    const queryUrl = `${wompiConf.apiUrl}/transactions?from_date=${yesterday}&until_date=${tomorrow}&page=1&page_size=25&payment_link_id=${encodeURIComponent(order.link_id)}`;
+
+    const listResp = await httpsRequest(queryUrl, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${wompiConf.privateKey}` },
+    });
+
+    if (listResp.statusCode !== 200 || !Array.isArray(listResp.data?.data)) {
+      return null;
+    }
+
+    const matching = listResp.data.data.filter(
+      (tx) =>
+        String(tx.payment_link_id || '') === String(order.link_id) ||
+        String(tx.reference || '') === String(order.reference) ||
+        String(tx.reference || '').startsWith(`${order.link_id}_`)
+    );
+
+    if (!matching.length) return null;
+
+    // Priorizar APPROVED si existe alguno aprobado para este link
+    const approved = matching.find((tx) => tx.status === 'APPROVED');
+    if (approved) return approved;
+
+    return matching.find((tx) => tx.status && tx.status !== 'PENDING') || matching[0];
+  } catch (err) {
+    console.warn('[WompiService] Reconciliación activa warn:', err.message);
+    return null;
+  }
+}
+
+/**
  * Valida la firma criptográfica (checksum SHA-256) de los Webhooks de Wompi.
  * Concatenación: properties_values + timestamp + events_secret.
  */
-function verifyWebhookChecksum(body, customEventsSecret = null) {
+function verifyWebhookChecksum(body, customEventsSecret = null, headerChecksum = null) {
   if (!body || !body.signature || !body.data) return false;
 
   const { signature, timestamp } = body;
   const properties = signature.properties;
-  const receivedChecksum = String(signature.checksum || '').toLowerCase();
+  const receivedChecksum = String(signature.checksum || headerChecksum || '').toLowerCase();
 
   if (!Array.isArray(properties) || !properties.length || !receivedChecksum) {
     return false;
@@ -283,22 +439,28 @@ function verifyWebhookChecksum(body, customEventsSecret = null) {
     concatenated += (cur !== undefined && cur !== null) ? String(cur) : '';
   }
 
-  // Concatenar el timestamp (signature.timestamp o body.timestamp)
-  const ts = signature.timestamp !== undefined ? signature.timestamp : (timestamp !== undefined ? timestamp : '');
-  concatenated += String(ts);
+  // Timestamps candidatos según versión de evento Wompi
+  const tsCandidates = [];
+  if (signature.timestamp !== undefined && signature.timestamp !== null) tsCandidates.push(String(signature.timestamp));
+  if (timestamp !== undefined && timestamp !== null && !tsCandidates.includes(String(timestamp))) {
+    tsCandidates.push(String(timestamp));
+  }
+  if (!tsCandidates.length) tsCandidates.push('');
 
-  // Secretos a evaluar (permitir el secreto configurado en Sandbox y Producción)
+  // Secretos a evaluar (custom, Producción y Sandbox)
   const secretsToTry = [];
   if (customEventsSecret) secretsToTry.push(customEventsSecret);
-  secretsToTry.push(config.wompi.sandbox.eventsSecret);
   secretsToTry.push(config.wompi.production.eventsSecret);
+  secretsToTry.push(config.wompi.sandbox.eventsSecret);
 
-  for (const secret of secretsToTry) {
-    if (!secret) continue;
-    const testString = `${concatenated}${secret}`;
-    const hash = crypto.createHash('sha256').update(testString).digest('hex').toLowerCase();
-    if (hash === receivedChecksum) {
-      return true;
+  for (const ts of tsCandidates) {
+    for (const secret of secretsToTry) {
+      if (!secret) continue;
+      const testString = `${concatenated}${ts}${secret}`;
+      const hash = crypto.createHash('sha256').update(testString).digest('hex').toLowerCase();
+      if (hash === receivedChecksum) {
+        return true;
+      }
     }
   }
 
@@ -309,7 +471,10 @@ module.exports = {
   getEffectiveWompiConfig,
   createPaymentOrder,
   getPaymentOrder,
+  getPaymentOrderByLinkId,
+  findOrderForTransaction,
   updatePaymentOrder,
+  reconcilePendingOrderFromWompi,
   verifyWebhookChecksum,
   generatePaymentReference,
 };

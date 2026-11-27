@@ -405,7 +405,7 @@
     };
   </script>
   <script src="./js/config.js?v=8"></script>
-  <script src="./js/firebase-db.js?v=8"></script>
+  <script src="./js/firebase-db.js?v=9"></script>
   <!-- Favicon SVG ecológico y acuático -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
 </head>
@@ -875,6 +875,7 @@
       whatsapp_number:        '573203778210',
       payment_phone:          '3174251419',
       online_purchase_active: true,
+      wompi_mode:             'production',
       whatsapp_message:       '\u00a1Hola! Estoy en R\u00edo Royota y deseo comprar una ficha de internet WiFi.',
       info_active:            true,
       info_badge:       'Avisos & Servicios del Balneario',
@@ -1184,13 +1185,17 @@
       }));
     };
 
-    function startWompiStatusPolling(reference) {
+    function startWompiStatusPolling(reference, txIdHint) {
       stopWompiPolling();
       var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
 
-      _wompiPollTimer = setInterval(function() {
+      function pollOnce() {
+        var url = apiBase + '/api/payments/wompi/status/' + encodeURIComponent(reference);
+        if (txIdHint) {
+          url += '?tx_id=' + encodeURIComponent(txIdHint);
+        }
         var xhr = new XMLHttpRequest();
-        xhr.open('GET', apiBase + '/api/payments/wompi/status/' + encodeURIComponent(reference), true);
+        xhr.open('GET', url, true);
         xhr.onreadystatechange = function() {
           if (xhr.readyState !== 4) return;
           if (xhr.status === 200) {
@@ -1199,12 +1204,29 @@
               if (data.status === 'APPROVED' && data.voucher_code) {
                 stopWompiPolling();
                 showWompiPaymentSuccess(data.voucher_code);
+              } else if (data.status === 'DECLINED' || data.status === 'ERROR' || data.status === 'VOIDED') {
+                stopWompiPolling();
+                var errW = document.getElementById('wompiErrorWrap');
+                var errM = document.getElementById('wompiErrorMsg');
+                var qrW  = document.getElementById('wompiQrWrap');
+                var ldW  = document.getElementById('wompiLoadingWrap');
+                if (ldW) ldW.setAttribute('hidden', '');
+                if (qrW) qrW.setAttribute('hidden', '');
+                if (errM) {
+                  errM.textContent = 'El pago fue rechazado o cancelado (' + data.status + '). Puedes reintentar, cambiar de plan o elegir otro medio de pago.';
+                }
+                if (errW) errW.removeAttribute('hidden');
               }
             } catch (_) {}
           }
         };
         xhr.send();
-      }, 2500);
+      }
+
+      if (txIdHint) {
+        pollOnce();
+      }
+      _wompiPollTimer = setInterval(pollOnce, 2500);
     }
 
     function activatePaidVoucher(voucherCode) {
@@ -1721,8 +1743,9 @@
       });
     }
 
-    // Retorno automático desde pasarela Wompi (?modo=wompi_retorno&ref=...)
+    // Retorno automático desde pasarela Wompi (?modo=wompi_retorno&ref=...&id=...)
     var qsRef = getQueryParam('ref');
+    var qsWompiTxId = getQueryParam('id');
     if (qsModo === 'wompi_retorno' && qsRef) {
       var wModal = document.getElementById('wompiModal');
       var wLoading = document.getElementById('wompiLoadingWrap');
@@ -1730,7 +1753,7 @@
         hideAllWompiViews();
         if (wLoading) wLoading.removeAttribute('hidden');
         wModal.removeAttribute('hidden');
-        startWompiStatusPolling(qsRef);
+        startWompiStatusPolling(qsRef, qsWompiTxId);
       }
     }
 

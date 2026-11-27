@@ -298,6 +298,7 @@ function normalizeSettingsMap(raw) {
     payment_phone: String(s.payment_phone || config.whatsapp.paymentPhone || '3174251419'),
     payment_holder_name: String(s.payment_holder_name || ''),
     online_purchase_active: String(s.online_purchase_active !== undefined ? s.online_purchase_active : '1'),
+    wompi_mode: s.wompi_mode === 'sandbox' ? 'sandbox' : (s.wompi_mode === 'production' ? 'production' : (config.wompi?.mode || 'production')),
     info_active: String(s.info_active !== undefined ? s.info_active : '1'),
     info_badge: String(s.info_badge || 'Avisos & Servicios del Balneario'),
     info_title: String(s.info_title || '¡Bienvenidos al Río Royota!'),
