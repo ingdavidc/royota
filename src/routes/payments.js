@@ -41,14 +41,18 @@ router.get('/wompi/config', async (_req, res) => {
 // POST /api/payments/wompi/create-order — Iniciar compra con Link / QR
 router.post('/wompi/create-order', async (req, res) => {
   try {
-    const { plan_id, client_phone = '', client_mac = '' } = req.body;
+    const { plan_id, plan_name = '', client_phone = '', client_mac = '' } = req.body;
 
-    if (!plan_id) {
-      return res.status(400).json({ error: 'plan_id es requerido' });
+    if (!plan_id && !plan_name) {
+      return res.status(400).json({ error: 'plan_id o plan_name es requerido' });
     }
 
     const plans = await getPlansLive({ db: getDb() });
-    const plan = plans.find((p) => String(p.id) === String(plan_id));
+    let plan = plan_id ? plans.find((p) => String(p.id) === String(plan_id)) : null;
+    if (!plan && plan_name) {
+      const normalized = String(plan_name).trim().toLowerCase();
+      plan = plans.find((p) => String(p.name || '').trim().toLowerCase() === normalized);
+    }
 
     if (!plan) {
       return res.status(404).json({ error: 'Plan no encontrado o no disponible' });
