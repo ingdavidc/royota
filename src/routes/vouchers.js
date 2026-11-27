@@ -12,12 +12,21 @@ const { getDb }  = require('../database');
 const { authRequired }   = require('../middleware/auth');
 const mikrotik           = require('../services/mikrotik-api');
 const { generateBatch, listBatches, getBatchVouchers, CHARSETS } = require('../services/voucher-generator');
-const { parseDurationMs, getBogotaDateStr, getBogotaMidnightMs } = require('../utils/helpers');
+const { getBogotaDateStr } = require('../utils/helpers');
+const {
+  REGEX_CODE,
+  REGEX_MAC,
+  activateVoucherSSOT,
+  getVoucherSSOT,
+  getWaTrialStatusSSOT,
+  requestTempPaymentPassSSOT,
+  setDoc,
+  enqueueMikrotikOp,
+} = require('../services/firestore-store');
+const { hasServiceAccount } = require('../services/firestore-client');
 
 const router = Router();
 const _activatingCodes = new Set();
-const REGEX_MAC = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/;
-const REGEX_CODE = /^[A-Z0-9][A-Z0-9_-]{2,23}$/;
 
 // ── GENERAR LOTE DE FICHAS ────────────────────────────────────
 router.post('/generate', authRequired, async (req, res) => {
@@ -149,10 +158,14 @@ router.get('/stats', authRequired, (req, res) => {
     SELECT status, COUNT(*) AS count FROM vouchers GROUP BY status
   `).all().reduce((acc, r) => ({ ...acc, [r.status]: r.count }), {});
 
+  const bogotaDate = getBogotaDateStr();
+  const bogotaStartUtc = new Date(`${bogotaDate}T05:00:00.000Z`).toISOString().replace('T', ' ').slice(0, 19);
+  const bogotaEndUtc = new Date(new Date(`${bogotaDate}T05:00:00.000Z`).getTime() + 86400000 - 1).toISOString().replace('T', ' ').slice(0, 19);
+
   const revenueToday = db.prepare(`
     SELECT COALESCE(SUM(amount), 0) AS total
-    FROM sales WHERE date(created_at) = date('now')
-  `).get().total;
+    FROM sales WHERE created_at >= ? AND created_at <= ?
+  `).get(bogotaStartUtc, bogotaEndUtc).total;
 
   const revenueMonth = db.prepare(`
     SELECT COALESCE(SUM(amount), 0) AS total
@@ -292,111 +305,50 @@ router.post('/activate', async (req, res) => {
   const db = getDb();
 
   try {
-    // Reserva atómica previa antes de llamar al router para eliminar condición TOCTOU
-    let voucher = null;
-    let prevStatus = null;
-    let expiresAt = null;
-
-    const claimTx = db.transaction(() => {
-      const row = db.prepare(`
-        SELECT v.*, p.duration, p.speed_limit, p.name AS plan_name,
-               p.data_limit, p.shared_users, p.profile_name, p.price
-        FROM vouchers v
-        JOIN plans p ON v.plan_id = p.id
-        WHERE v.code = ? AND v.status IN ('available', 'sold')
-      `).get(cleanCode);
-
-      if (!row) return false;
-
-      const durMs = parseDurationMs(row.duration);
-      const finalExpiryMs = Math.min(Date.now() + durMs, getBogotaMidnightMs());
-      expiresAt = new Date(finalExpiryMs).toISOString();
-      prevStatus = row.status;
-
-      const upd = db.prepare(`
-        UPDATE vouchers
-        SET status = 'active', sold_at = COALESCE(sold_at, datetime('now')),
-            activated_at = datetime('now'), expires_at = ?
-        WHERE id = ? AND status IN ('available', 'sold')
-      `).run(expiresAt, row.id);
-
-      if (upd.changes !== 1) return false;
-      voucher = row;
-      return true;
+    const result = await activateVoucherSSOT({
+      code: cleanCode,
+      mac: req.body?.mac,
+      db,
     });
 
-    if (!claimTx() || !voucher) {
-      return res.status(404).json({ error: 'Código inválido, ya utilizado o expirado' });
+    if (!result.ok) {
+      return res.status(result.status || 400).json({
+        error: result.error || 'Código inválido, ya utilizado o expirado',
+      });
     }
 
-    if (!config.mikrotik.cloudSyncOnly) {
+    const v = result.voucher;
+
+    if (!result.reused && !config.mikrotik.cloudSyncOnly) {
       try {
-        await mikrotik.createHotspotUser(voucher.code, voucher.code, {
-          profile:         voucher.profile_name || voucher.plan_name,
-          limitUptime:     voucher.duration,
-          rateLimit:       voucher.speed_limit,
-          limitBytesTotal: voucher.data_limit,
-          sharedUsers:     voucher.shared_users,
+        await mikrotik.createHotspotUser(v.code, v.code, {
+          profile:         v.profile_name || v.plan_name,
+          limitUptime:     v.duration,
+          rateLimit:       v.speed_limit,
+          sharedUsers:     1,
           comment:         'Ficha generada por sistema ROYOTA',
         });
-
-        db.prepare('UPDATE vouchers SET mikrotik_synced = 1 WHERE id = ?').run(voucher.id);
       } catch (mkErr) {
-        // Revertir reclamo atómico si falló la creación directa en MikroTik
-        db.prepare(`
-          UPDATE vouchers
-          SET status = ?, activated_at = NULL, expires_at = NULL
-          WHERE id = ?
-        `).run(prevStatus, voucher.id);
-
-        db.prepare(`
-          INSERT INTO sync_log (action, voucher_code, status, http_status, response, duration_ms)
-          VALUES ('create', ?, 'error', ?, ?, ?)
-        `).run(voucher.code, mkErr.httpStatus || 0, mkErr.message, Date.now() - startTime);
-
-        return res.status(502).json({
-          error: 'No se pudo activar la ficha en este momento. Intenta de nuevo.',
-        });
+        console.warn('[Activate] Aviso push directo MikroTik (usará Cloud Sync):', mkErr.message);
       }
     }
 
-    if (prevStatus === 'available') {
-      try {
-        db.prepare(`
-          INSERT INTO sales (voucher_id, plan_id, amount, payment_method, notes)
-          VALUES (?, ?, ?, 'activacion_portal', 'Auto-facturación por activación en portal')
-        `).run(voucher.id, voucher.plan_id, voucher.price || 0);
-      } catch (errSale) {
-        console.warn('[Vouchers] Aviso registrando auto-facturación:', errSale.message);
-      }
-    }
-
-    // Solo desbloquear wa_trials si la MAC enviada tiene formato válido tras activación real
-    if (req.body.mac) {
-      const cleanMac = String(req.body.mac).trim().toUpperCase().replace(/-/g, ':');
-      if (REGEX_MAC.test(cleanMac)) {
-        try {
-          db.prepare(`
-            UPDATE wa_trials
-            SET blocked = 0, unblocked = 1, attempts = 0, updated_at = datetime('now')
-            WHERE mac = ?
-          `).run(cleanMac);
-        } catch (_) {}
-      }
-    }
-
-    db.prepare(`
-      INSERT INTO sync_log (action, voucher_code, status, http_status, response, duration_ms)
-      VALUES ('create', ?, 'success', 201, 'Usuario creado en MikroTik', ?)
-    `).run(voucher.code, Date.now() - startTime);
+    try {
+      db.prepare(`
+        INSERT INTO sync_log (action, voucher_code, status, http_status, response, duration_ms)
+        VALUES ('create', ?, 'success', 200, ?, ?)
+      `).run(v.code, result.reused ? 'Reingreso sesión activa' : 'Ficha activada SSOT', Date.now() - startTime);
+    } catch (_) {}
 
     return res.json({
-      message:    '¡Ficha activada! Ya puedes navegar.',
-      code:       voucher.code,
-      plan:       voucher.plan_name,
-      duration:   voucher.duration,
-      speed:      voucher.speed_limit,
-      expires_at: expiresAt,
+      message:          result.reused ? 'Sesión activa restaurada. ¡Bienvenido de nuevo!' : '¡Ficha activada! Ya puedes navegar.',
+      code:             v.code,
+      plan:             v.plan_name,
+      duration:         v.duration,
+      speed:            v.speed_limit,
+      expires_at:       v.expires_at,
+      remainingSeconds: v.remainingSeconds,
+      reused:           Boolean(result.reused),
     });
   } finally {
     _activatingCodes.delete(cleanCode);
@@ -404,27 +356,34 @@ router.post('/activate', async (req, res) => {
 });
 
 // ── VERIFICAR ESTADO DE FICHA (portal, sin auth) ──────────────
-router.get('/check/:code', (req, res) => {
+router.get('/check/:code', async (req, res) => {
   const cleanCode = String(req.params.code || '').toUpperCase().trim();
   if (!REGEX_CODE.test(cleanCode)) {
     return res.status(400).json({ error: 'Formato de código inválido' });
   }
-  const db = getDb();
-  const v = db.prepare(`
-    SELECT v.code, v.status, v.activated_at, v.expires_at,
-           p.name AS plan_name, p.duration, p.speed_limit
-    FROM vouchers v JOIN plans p ON v.plan_id = p.id
-    WHERE v.code = ?
-  `).get(cleanCode);
-
+  const v = await getVoucherSSOT(cleanCode, getDb());
   if (!v) return res.status(404).json({ error: 'Código no encontrado' });
-  res.json(v);
+
+  res.json({
+    code: v.code,
+    status: v.status,
+    activated_at: v.activated_at || null,
+    expires_at: v.expires_at || null,
+    plan_name: v.plan_name || '',
+    duration: v.duration || '',
+    speed_limit: v.speed_limit || '',
+  });
 });
 
 // ── REVOCAR FICHA ─────────────────────────────────────────────
 router.post('/revoke/:id', authRequired, async (req, res) => {
   const db      = getDb();
-  const voucher = db.prepare('SELECT * FROM vouchers WHERE id = ?').get(req.params.id);
+  const paramId = String(req.params.id || '').trim();
+  let voucher   = db.prepare('SELECT * FROM vouchers WHERE id = ? OR code = ?').get(paramId, paramId.toUpperCase());
+
+  if (!voucher && hasServiceAccount()) {
+    voucher = await getVoucherSSOT(paramId.toUpperCase(), null);
+  }
 
   if (!voucher) return res.status(404).json({ error: 'Ficha no encontrada' });
   if (['expired', 'revoked'].includes(voucher.status)) {
@@ -440,7 +399,21 @@ router.post('/revoke/:id', authRequired, async (req, res) => {
       if (mkUser) await mikrotik.removeHotspotUser(mkUser['.id']);
     }
 
-    db.prepare("UPDATE vouchers SET status = 'revoked' WHERE id = ?").run(voucher.id);
+    if (voucher.id) {
+      db.prepare("UPDATE vouchers SET status = 'revoked' WHERE id = ?").run(voucher.id);
+    }
+
+    if (hasServiceAccount()) {
+      await setDoc(`/vouchers/${encodeURIComponent(voucher.code)}`, {
+        status: 'revoked',
+        revoked_at: new Date().toISOString(),
+      }).catch(() => {});
+      await enqueueMikrotikOp({
+        op_id: `REMOVE_${voucher.code}`,
+        action: 'remove_user',
+        code: voucher.code,
+      }).catch(() => {});
+    }
 
     db.prepare(`
       INSERT INTO sync_log (action, voucher_code, status, response, duration_ms)
@@ -454,29 +427,21 @@ router.post('/revoke/:id', authRequired, async (req, res) => {
   }
 });
 
-// ── CORTESÍA WHATSAPP (2 minutos x 2 intentos diarios, MAC validada) ──
-router.get('/trial/status', (req, res) => {
-  const mac = String(req.query.mac || '').trim().toUpperCase().replace(/-/g, ':');
+// ── PASE TEMPORAL DE PAGO (3 min x 2 intentos/día, SSOT Firestore, reemplaza trial bypass) ─
+router.get('/trial/status', async (req, res) => {
+  const rawMac = String(req.query.mac || '').trim().toUpperCase().replace(/-/g, ':');
   const dateStr = getBogotaDateStr();
-  if (!REGEX_MAC.test(mac)) {
+  if (!REGEX_MAC.test(rawMac)) {
     return res.json({ date: dateStr, attempts: 0, blocked: false, remaining: 2, unblocked: false });
   }
-
-  const db = getDb();
-  const row = db.prepare('SELECT * FROM wa_trials WHERE mac = ? AND date_str = ?').get(mac, dateStr);
-
-  if (!row) {
-    return res.json({ mac, date: dateStr, attempts: 0, remaining: 2, blocked: false, unblocked: false });
-  }
-
-  const isBlocked = row.blocked === 1 && row.unblocked === 0;
+  const st = await getWaTrialStatusSSOT({ mac: rawMac, db: getDb() });
   res.json({
-    mac,
+    mac: rawMac,
     date: dateStr,
-    attempts: row.attempts,
-    remaining: Math.max(0, 2 - row.attempts),
-    blocked: isBlocked,
-    unblocked: row.unblocked === 1,
+    attempts: st.attempts,
+    remaining: st.remaining,
+    blocked: st.blocked,
+    unblocked: !st.blocked && st.attempts === 0,
   });
 });
 
@@ -484,82 +449,53 @@ router.post('/trial/request', async (req, res) => {
   const rawMac = String(req.body?.mac || '').trim().toUpperCase().replace(/-/g, ':');
   if (!REGEX_MAC.test(rawMac)) {
     return res.status(400).json({
-      error: 'Se requiere una dirección MAC válida del Hotspot para solicitar cortesía.',
+      error: 'Se requiere una dirección MAC válida del Hotspot para solicitar el pase de pago.',
     });
   }
 
-  const dateStr = getBogotaDateStr();
   const db = getDb();
+  const outcome = await requestTempPaymentPassSSOT({ mac: rawMac, db });
 
-  const trialTx = db.transaction(() => {
-    const existing = db.prepare('SELECT * FROM wa_trials WHERE mac = ? AND date_str = ?').get(rawMac, dateStr);
-
-    if (existing && existing.blocked === 1 && existing.unblocked === 0) {
-      return { blocked: true, attempts: existing.attempts };
-    }
-
-    const currentAttempts = existing ? existing.attempts : 0;
-    if (currentAttempts >= 2 && (!existing || existing.unblocked === 0)) {
-      db.prepare("UPDATE wa_trials SET blocked = 1, updated_at = datetime('now') WHERE id = ?").run(existing.id);
-      return { blocked: true, attempts: 2 };
-    }
-
-    const newAttempts = currentAttempts + 1;
-    const isBlocked = newAttempts >= 2 ? 1 : 0;
-
-    if (existing) {
-      db.prepare(`
-        UPDATE wa_trials
-        SET attempts = ?, blocked = ?, unblocked = 0, last_attempt_at = datetime('now'), updated_at = datetime('now')
-        WHERE id = ?
-      `).run(newAttempts, isBlocked, existing.id);
-    } else {
-      db.prepare(`
-        INSERT INTO wa_trials (mac, date_str, attempts, blocked, unblocked, last_attempt_at)
-        VALUES (?, ?, ?, ?, 0, datetime('now'))
-      `).run(rawMac, dateStr, newAttempts, isBlocked);
-    }
-
-    return { blocked: false, newAttempts, isBlocked };
-  });
-
-  const outcome = trialTx();
-  if (outcome.blocked) {
-    return res.status(403).json({
-      error: 'Has agotado tus 2 intentos gratuitos del día de hoy. Por favor adquiere una ficha física en las casetas autorizadas.',
-      blocked: true,
-      attempts: outcome.attempts,
-      remaining: 0,
+  if (!outcome.allowed) {
+    return res.status(outcome.status || 403).json({
+      error: outcome.error,
+      reason: outcome.reason,
+      blocked: outcome.reason === 'TRIAL_LIMIT_EXCEEDED',
+      attempts: outcome.attempts || 0,
+      remaining: outcome.remaining || 0,
     });
   }
-
-  const macSuffix = rawMac.replace(/[^A-F0-9]/g, '').slice(-6);
-  const trialUser = `WA-${macSuffix}-${outcome.newAttempts}`;
 
   if (!config.mikrotik.cloudSyncOnly) {
     try {
-      await mikrotik.createHotspotUser(trialUser, trialUser, {
-        profile:     'default',
-        limitUptime: '2m',
-        rateLimit:   '5M/5M',
-        comment:     `Cortesia WhatsApp 2m (${outcome.newAttempts}/2)`,
+      await mikrotik.createHotspotUser(outcome.tempCode, outcome.tempCode, {
+        profile:     'royota-pay',
+        limitUptime: '3m',
+        rateLimit:   '1M/1M',
+        comment:     `PAYPOOL ${outcome.tempCode}`,
       });
+      outcome.ready = true;
     } catch (err) {
-      console.warn('[Trial] Aviso creando usuario en MikroTik:', err.message);
+      console.warn('[Trial] Aviso creando pase temporal directo:', err.message);
     }
   }
 
-  const msg = outcome.newAttempts === 1
-    ? '¡2 minutos de navegación otorgados! Realiza tu transferencia y envía el comprobante por WhatsApp.'
-    : '¡Última oportunidad! Te quedan 2 minutos para completar tu pago y enviar el comprobante.';
+  const msg = outcome.attempts === 1
+    ? '¡Pase de pago por 3 minutos activado! Realiza tu transferencia y envía el comprobante por WhatsApp.'
+    : '¡Último pase de pago de hoy (3 minutos)! Completa tu pago y envía el comprobante por WhatsApp.';
 
   res.json({
     ok: true,
-    code: trialUser,
-    attempt: outcome.newAttempts,
-    remaining: Math.max(0, 2 - outcome.newAttempts),
-    blocked: outcome.isBlocked === 1,
-    duration: '2m',
+    code: outcome.tempCode,
+    password: outcome.tempCode,
+    ready: Boolean(outcome.ready),
+    retryWaitMs: outcome.ready ? 0 : 4000,
+    reused: Boolean(outcome.reused),
+    attempt: outcome.attempts,
+    remaining: outcome.remaining,
+    blocked: false,
+    duration: '3m',
+    expiresAt: outcome.expiresAt,
     message: msg,
   });
 });

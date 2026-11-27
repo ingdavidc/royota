@@ -15,6 +15,15 @@ const { firestoreFetch, toFirestoreFields } = require('../services/firestore-cli
 const { recordTelemetry, getLatestTelemetry, getTelemetrySnapshot } = require('../services/mikrotik-telemetry');
 const hardening = require('../services/mikrotik-hardening');
 const { timingSafeEqualStr } = require('../utils/helpers');
+const {
+  getPlansLive,
+  invalidatePlansCache,
+  resolveEffectiveProfileName,
+  enqueueMikrotikOp,
+  getPendingMikrotikOps,
+  ackMikrotikOps,
+  ensurePoolsStocked,
+} = require('../services/firestore-store');
 
 const router = Router();
 
@@ -23,12 +32,15 @@ let _auditArmed = false;
 let _auditLastDispatchedMs = 0;
 let _hardeningAction = null; // 'apply' | 'confirm' | 'rollback' | null
 let _hardeningLastDispatchedMs = 0;
+let _routerAlignArmed = false;
+let _routerAlignLastDispatchedMs = 0;
 
-// Rastrea IDs ya entregados al router en espera de ACK (evita re-inyección repetida en ventanas de 3s)
+// Rastrea IDs ya entregados al router en espera de ACK (evita re-inyección repetida en ventanas de 5s)
 const _inFlightSync = {
   vouchers: new Map(),
   bindings: new Map(),
   removals: new Map(),
+  queue:    new Map(),
 };
 
 function isInFlight(map, id) {
@@ -166,7 +178,7 @@ router.get('/sync-log', authRequired, (req, res) => {
 router.get('/sync/setup-script', authRequired, (req, res) => {
   const tokenPlaceholder = config.mikrotik.syncToken || '<CONFIGURAR_MIKROTIK_SYNC_TOKEN_EN_RENDER>';
   const apiUrl = process.env.RENDER_EXTERNAL_URL || 'https://royota-bot.onrender.com';
-  const scriptCmd = `/system script add name="sync-cloud-vouchers" policy=read,write,test source=":do {\\r\\n :local cpu [/system resource get cpu-load];\\r\\n :local up [/system resource get uptime];\\r\\n :local ver [/system resource get version];\\r\\n :local mem [/system resource get free-memory];\\r\\n /tool fetch url=\\"${apiUrl}/api/mikrotik/sync/vouchers.rsc?token=${tokenPlaceholder}&cpu=\\$cpu&uptime=\\$up&version=\\$ver&mem=\\$mem\\" dst-path=\\"sync.rsc\\" check-certificate=yes;\\r\\n :delay 500ms;\\r\\n :local f [/file find name=\\"sync.rsc\\"];\\r\\n :if (\\$f != \\"\\") do={\\r\\n :local fSize [/file get \\$f size];\\r\\n :if (\\$fSize > 40) do={\\r\\n /import file-name=\\"sync.rsc\\";\\r\\n };\\r\\n /file remove \\"sync.rsc\\";\\r\\n };\\r\\n} on-error={}"\n\n/system scheduler add interval=15s name="cloud-sync-scheduler" on-event="sync-cloud-vouchers" start-time=startup`;
+  const scriptCmd = `/system script add name="sync-cloud-vouchers" policy=read,write,test source=":global royotaSyncBusy; :if (\\$royotaSyncBusy != true) do={ :set royotaSyncBusy true; :do {\\r\\n :local cpu [/system resource get cpu-load];\\r\\n :local up [/system resource get uptime];\\r\\n :local ver [/system resource get version];\\r\\n :local mem [/system resource get free-memory];\\r\\n /tool fetch url=\\"${apiUrl}/api/mikrotik/sync/vouchers.rsc?token=${tokenPlaceholder}&cpu=\\$cpu&uptime=\\$up&version=\\$ver&mem=\\$mem\\" dst-path=\\"sync.rsc\\" check-certificate=no;\\r\\n :delay 500ms;\\r\\n :local f [/file find name=\\"sync.rsc\\"];\\r\\n :if (\\$f != \\"\\") do={\\r\\n :local fSize [/file get \\$f size];\\r\\n :if (\\$fSize > 40) do={\\r\\n /import file-name=\\"sync.rsc\\";\\r\\n };\\r\\n /file remove \\"sync.rsc\\";\\r\\n };\\r\\n} on-error={}; :set royotaSyncBusy false }"\n\n/system scheduler add interval=5s name="cloud-sync-scheduler" on-event="sync-cloud-vouchers" start-time=startup`;
   res.json({ script: scriptCmd, tokenConfigured: !!config.mikrotik.syncToken });
 });
 
@@ -242,7 +254,7 @@ router.delete('/bindings/:mac', authRequired, async (req, res) => {
 });
 
 // POST /api/mikrotik/sync/push-binding — Encolar IP Binding (Admin autenticado)
-router.post('/sync/push-binding', authRequired, (req, res) => {
+router.post('/sync/push-binding', authRequired, async (req, res) => {
   const { mac_address, comment, type, address } = req.body;
   if (!mac_address) return res.status(400).json({ error: 'MAC requerida' });
 
@@ -270,6 +282,16 @@ router.post('/sync/push-binding', authRequired, (req, res) => {
         is_active = 1,
         mikrotik_synced = 0
     `).run(cleanMac, cleanComment, cleanType, cleanAddress);
+
+    await enqueueMikrotikOp({
+      op_id: `BIND_${cleanMac.replace(/:/g, '')}`,
+      action: 'set_binding',
+      mac: cleanMac,
+      address: cleanAddress,
+      bind_type: cleanType,
+      comment: cleanComment,
+    }).catch(() => {});
+
     console.log(`[Cloud-Sync] 📺 IP Binding ${cleanMac} (${cleanComment}) encolado.`);
     res.json({ ok: true, mac: cleanMac });
   } catch (err) {
@@ -279,7 +301,7 @@ router.post('/sync/push-binding', authRequired, (req, res) => {
 });
 
 // POST /api/mikrotik/sync/push-batch — Encolar lote generado (Admin autenticado)
-router.post('/sync/push-batch', authRequired, (req, res) => {
+router.post('/sync/push-batch', authRequired, async (req, res) => {
   const { vouchers, plan } = req.body;
   if (!Array.isArray(vouchers) || !vouchers.length) {
     return res.status(400).json({ error: 'Lista de fichas requerida' });
@@ -314,17 +336,34 @@ router.post('/sync/push-batch', authRequired, (req, res) => {
       VALUES (?, ?, 'available', 0, datetime('now'))
     `);
 
+    const validCodes = [];
     const transaction = db.transaction((codes) => {
       for (const code of codes) {
         const clean = String(code).trim().toUpperCase();
         if (REGEX_CODE.test(clean)) {
           insertStmt.run(clean, resolvedPlanId);
+          validCodes.push(clean);
           insertCount++;
         }
       }
     });
 
     transaction(vouchers);
+    for (const cleanCode of validCodes.slice(0, 120)) {
+      await enqueueMikrotikOp({
+        op_id: `CREATE_${cleanCode}`,
+        action: 'create_user',
+        code: cleanCode,
+        profile_name: resolveEffectiveProfileName({ profile_name: plan?.profile_name || profileName, name: profileName, speed_limit: speedLimit }),
+        speed_limit: speedLimit,
+        duration,
+        shared_users: sharedUsers,
+        comment: 'Royota Cloud Lote',
+        plan_name: profileName,
+      }).catch(() => {});
+    }
+
+    invalidatePlansCache();
     _profilesNeedSync = true;
     console.log(`[Cloud-Sync] 💾 ${insertCount} fichas persistidas para sincronización.`);
   } catch (err) {
@@ -335,7 +374,7 @@ router.post('/sync/push-batch', authRequired, (req, res) => {
 });
 
 // POST /api/mikrotik/sync/plan-sync — Registrar/actualizar plan para sincronización en router (Admin autenticado)
-router.post('/sync/plan-sync', authRequired, (req, res) => {
+router.post('/sync/plan-sync', authRequired, async (req, res) => {
   const { name, duration, speed_limit, speed, price, shared_users, shared, is_active } = req.body;
   const cleanName = sanitizeRouterOsStr(name, '', 32);
   if (!cleanName || !REGEX_PROFILE.test(cleanName)) {
@@ -362,7 +401,9 @@ router.post('/sync/plan-sync', authRequired, (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(cleanName, dur, spd, prc, shr, activeFlag, cleanName);
   }
+  invalidatePlansCache();
   _profilesNeedSync = true;
+  ensurePoolsStocked({ force: true, db }).catch(() => {});
   res.json({ ok: true, plan: cleanName });
 });
 
@@ -528,14 +569,90 @@ router.get('/hardening-ack', async (req, res) => {
 });
 
 // GET /api/mikrotik/sync/ack — Confirmación del router tras aplicar sync.rsc
-router.get('/sync/ack', (req, res) => {
+const REGEX_OP_LIST   = /^[A-Za-z0-9_,-]{1,1800}$/;
+const REGEX_CODE_LIST = /^[A-Za-z0-9_,-]{1,1800}$/;
+
+function buildOneShotRouterAlignRsc(token) {
+  const baseUrl = process.env.RENDER_EXTERNAL_URL || 'https://royota-bot.onrender.com';
+  const wgHosts = [
+    { host: 'royota.dctelematica.com', comment: 'Royota Portal' },
+    { host: '*royota.dctelematica.com*', comment: 'Portal en Cloudflare' },
+    { host: 'royota-bot.onrender.com', comment: 'Royota Backend Render' },
+    { host: '*onrender.com*', comment: 'Render Cloud Sync' },
+    { host: '*firestore.googleapis.com*', comment: 'Firebase Firestore' },
+    { host: '*.googleapis.com', comment: 'Google APIs' },
+    { host: '*.gstatic.com', comment: 'Google Static' },
+    { host: '*.firebaseapp.com', comment: 'Firebase App' },
+    { host: '*.firebaseio.com', comment: 'Firebase DB' },
+    { host: 'wa.me', comment: 'WhatsApp Direct' },
+    { host: 'api.whatsapp.com', comment: 'WhatsApp API' },
+    { host: '*daviplata.com', comment: 'App Daviplata' },
+    { host: '*nequi.com.co', comment: 'App Nequi' },
+    { host: '*bancolombia.com', comment: 'App Bancolombia' },
+    { host: '*davivienda.com', comment: 'App Davivienda' },
+  ];
+
+  const lines = [
+    '# ROYOTA One-Shot Safe Router Alignment',
+    ':do {',
+    '  /ip hotspot user profile',
+    '  :if ([:len [find name="royota-pay"]] = 0) do={ add name="royota-pay" rate-limit="1M/1M" shared-users=1 keepalive-timeout=2m status-autorefresh=1m transparent-proxy=no } else={ set [find name="royota-pay"] rate-limit="1M/1M" shared-users=1 }',
+    '  :do { /ip hotspot profile set [find name="hsprof-royota"] login-by=cookie,http-chap,http-pap } on-error={}',
+    '  :do { /system scheduler set [find name="cloud-sync-scheduler"] interval=5s } on-error={}',
+    '  :do { /system scheduler set [find name="reset-midnight-royota"] on-event=":do { /ip hotspot active remove [find] } on-error={}; :do { /ip hotspot user remove [find uptime>0s] } on-error={}; :do { /ip hotspot user remove [find comment~\\"Cortesia\\"] } on-error={}; :do { /ip hotspot user remove [find comment~\\"WA-\\"] } on-error={}; :do { /ip hotspot user remove [find comment~\\"PAYPOOL\\" and uptime>0s] } on-error={}; :log info \\"ROYOTA: Limpieza de medianoche completada.\\"" } on-error={}',
+    '  :do { /ip hotspot walled-garden remove [find comment="Servidor en la Nube Render"] } on-error={}',
+    '  :do { /ip hotspot walled-garden remove [find comment="Backend Render"] } on-error={}',
+    '  :do { /ip hotspot walled-garden remove [find comment="Portal Web Oficial"] } on-error={}',
+    '  :do { /ip hotspot walled-garden remove [find comment="Firebase Cloud"] } on-error={}',
+    '  :do { /ip hotspot walled-garden remove [find comment="Backend API Render"] } on-error={}',
+    '  :do { /ip hotspot walled-garden remove [find comment="Portal Oficial Balneario Royota"] } on-error={}',
+    '  :do { /ip hotspot walled-garden remove [find comment="Dominio Cloudflare"] } on-error={}',
+    '  /ip hotspot walled-garden',
+  ];
+
+  for (const w of wgHosts) {
+    lines.push(`  :if ([:len [find dst-host="${w.host}"]] = 0) do={ add dst-host="${w.host}" action=allow comment="${w.comment}" }`);
+  }
+
+  lines.push(`  :do { /tool fetch url="${baseUrl}/api/mikrotik/sync/ack?token=${token}&align=1" check-certificate=no output=none } on-error={}`);
+  lines.push('} on-error={}');
+  return lines.join('\n') + '\n';
+}
+
+router.post('/sync/align-router', (req, res) => {
+  // Permite admin autenticado o token de sincronización para ejecución automatizada segura
+  let authorized = false;
+  if (verifySyncToken(req)) {
+    authorized = true;
+  } else {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      return authRequired(req, res, () => {
+        _routerAlignArmed = true;
+        _profilesNeedSync = true;
+        return res.json({ ok: true, message: 'Alineación one-shot de MikroTik armada para el próximo tick (<=5s).' });
+      });
+    }
+  }
+  if (!authorized) {
+    return res.status(401).json({ error: 'No autorizado' });
+  }
+  _routerAlignArmed = true;
+  _profilesNeedSync = true;
+  return res.json({ ok: true, message: 'Alineación one-shot de MikroTik armada para el próximo tick (<=5s).' });
+});
+
+router.get('/sync/ack', async (req, res) => {
   if (!verifySyncToken(req)) {
     return res.status(403).send('# unauthorized\n');
   }
   const db = getDb();
-  const vRaw = String(req.query.v || '').trim();
-  const bRaw = String(req.query.b || '').trim();
-  const rRaw = String(req.query.r || '').trim();
+  const vRaw  = String(req.query.v || '').trim();
+  const bRaw  = String(req.query.b || '').trim();
+  const rRaw  = String(req.query.r || '').trim();
+  const qRaw  = String(req.query.q || '').trim();
+  const vcRaw = String(req.query.vc || '').trim();
+  const pcRaw = String(req.query.pc || '').trim();
 
   try {
     if (REGEX_NUM_LIST.test(vRaw)) {
@@ -562,6 +679,21 @@ router.get('/sync/ack', (req, res) => {
         ids.forEach((id) => _inFlightSync.removals.delete(id));
       }
     }
+
+    const opIds = REGEX_OP_LIST.test(qRaw)
+      ? qRaw.split(',').map((s) => s.trim()).filter(Boolean)
+      : [];
+    const voucherCodes = REGEX_CODE_LIST.test(vcRaw)
+      ? vcRaw.split(',').map((s) => s.trim().toUpperCase()).filter((c) => REGEX_CODE.test(c))
+      : [];
+    const payPassCodes = REGEX_CODE_LIST.test(pcRaw)
+      ? pcRaw.split(',').map((s) => s.trim().toUpperCase()).filter((c) => REGEX_CODE.test(c))
+      : [];
+
+    if (opIds.length || voucherCodes.length || payPassCodes.length) {
+      opIds.forEach((id) => _inFlightSync.queue.delete(id));
+      await ackMikrotikOps({ opIds, voucherCodes, payPassCodes, db });
+    }
   } catch (err) {
     console.error('[Cloud-Sync ACK] Error:', err.message);
   }
@@ -570,7 +702,7 @@ router.get('/sync/ack', (req, res) => {
 });
 
 // GET /api/mikrotik/sync/vouchers.rsc — Descargado autónomamente por el MikroTik (Token requerido)
-router.get('/sync/vouchers.rsc', (req, res) => {
+router.get('/sync/vouchers.rsc', async (req, res) => {
   if (!verifySyncToken(req)) {
     return res.status(403).send('# Error: Acceso no autorizado a la cola de aprovisionamiento\n');
   }
@@ -616,9 +748,22 @@ router.get('/sync/vouchers.rsc', (req, res) => {
     console.warn('[MikroTik-Hardening] Aviso preparando script:', err.message);
   }
 
-  // 2. Colector de auditoría Opción A (solo si fue armado manualmente, máximo 1 envío)
+  // 2. Alineación one-shot o Colector de auditoría Opción A
+  let dispatchedControl = dispatchedHardening;
   try {
-    if (!dispatchedHardening && _auditArmed && (Date.now() - _auditLastDispatchedMs) > 120_000) {
+    if (!dispatchedControl && _routerAlignArmed && (Date.now() - _routerAlignLastDispatchedMs) > 15_000) {
+      _routerAlignArmed = false;
+      _routerAlignLastDispatchedMs = Date.now();
+      dispatchedControl = true;
+      rscCommands += buildOneShotRouterAlignRsc(config.mikrotik.syncToken) + '\n';
+      console.log('[MikroTik-Align] 📡 Script seguro de alineación enviado al router.');
+    }
+  } catch (err) {
+    console.warn('[MikroTik-Align] Aviso preparando alineación:', err.message);
+  }
+
+  try {
+    if (!dispatchedControl && _auditArmed && (Date.now() - _auditLastDispatchedMs) > 120_000) {
       _auditArmed = false;
       _auditLastDispatchedMs = Date.now();
       rscCommands += buildOneShotAuditRsc(config.mikrotik.syncToken) + '\n';
@@ -628,22 +773,22 @@ router.get('/sync/vouchers.rsc', (req, res) => {
     console.warn('[MikroTik-Audit] Aviso preparando colector:', err.message);
   }
 
-  // 2. Sincronizar perfiles Hotspot con validación estricta anti-inyección
+  // 3. Sincronizar perfiles Hotspot SIN parámetro comment= (RouterOS v7 prohíbe comment en profile)
   if (_profilesNeedSync) {
     try {
-      const activePlans = db.prepare('SELECT * FROM plans WHERE is_active = 1').all();
-      const validProfiles = activePlans.filter((p) =>
-        REGEX_PROFILE.test(String(p.name || '').trim()) &&
-        REGEX_SPEED.test(String(p.speed_limit || '5M/5M').trim())
-      );
-      if (validProfiles.length > 0) {
-        rscCommands += '/ip hotspot user profile\n';
-        validProfiles.forEach((p) => {
-          const cleanName = String(p.name).trim();
-          const speed = String(p.speed_limit || '5M/5M').trim();
-          const shared = Math.min(20, Math.max(1, parseInt(p.shared_users, 10) || 1));
-          rscCommands += `:if ([:len [find name="${cleanName}"]] = 0) do={ add name="${cleanName}" rate-limit="${speed}" shared-users=${shared} keepalive-timeout=2m status-autorefresh=1m transparent-proxy=no } else={ set [find name="${cleanName}"] rate-limit="${speed}" shared-users=${shared} }\n`;
-        });
+      const activePlans = await getPlansLive({ db });
+      const seenProfiles = new Set();
+      rscCommands += '/ip hotspot user profile\n';
+      rscCommands += ':if ([:len [find name="royota-pay"]] = 0) do={ add name="royota-pay" rate-limit="1M/1M" shared-users=1 keepalive-timeout=2m status-autorefresh=1m transparent-proxy=no } else={ set [find name="royota-pay"] rate-limit="1M/1M" shared-users=1 }\n';
+      seenProfiles.add('royota-pay');
+
+      for (const p of activePlans) {
+        const effName = resolveEffectiveProfileName(p);
+        const speed = String(p.speed_limit || '5M/5M').trim();
+        if (!effName || seenProfiles.has(effName) || !REGEX_PROFILE.test(effName) || !REGEX_SPEED.test(speed)) continue;
+        seenProfiles.add(effName);
+        const shared = Math.min(20, Math.max(1, parseInt(p.shared_users, 10) || 1));
+        rscCommands += `:if ([:len [find name="${effName}"]] = 0) do={ add name="${effName}" rate-limit="${speed}" shared-users=${shared} keepalive-timeout=2m status-autorefresh=1m transparent-proxy=no } else={ set [find name="${effName}"] rate-limit="${speed}" shared-users=${shared} }\n`;
       }
       _profilesNeedSync = false;
     } catch (pErr) {
@@ -651,11 +796,67 @@ router.get('/sync/vouchers.rsc', (req, res) => {
     }
   }
 
-  const ackVouchers = [];
-  const ackBindings = [];
-  const ackRemovals = [];
+  const ackVouchers  = [];
+  const ackBindings  = [];
+  const ackRemovals  = [];
+  const ackQueueIds  = [];
+  const ackVoucherCodes = [];
+  const ackPayCodes     = [];
+  const handledCodes    = new Set();
+  const handledMacs     = new Set();
 
-  // 3. Fichas pendientes (validadas antes de interpolar)
+  // 4. Cola persistente SSOT en Firestore (/mikrotik_queue: WSP- pool, PAYPOOL, lotes, revocaciones)
+  try {
+    const ops = (await getPendingMikrotikOps({ db })).filter((op) => !isInFlight(_inFlightSync.queue, op.op_id));
+    const userAddLines = [];
+    const userRemoveLines = [];
+    const bindingLines = [];
+
+    for (const op of ops) {
+      if (op.action === 'create_user' || op.action === 'create_pay_pass') {
+        const clean = String(op.code || '').trim().toUpperCase();
+        if (!REGEX_CODE.test(clean)) continue;
+        const profRaw = String(op.profile_name || '').trim();
+        const prof = op.action === 'create_pay_pass'
+          ? 'royota-pay'
+          : (REGEX_PROFILE.test(profRaw) ? profRaw : 'default');
+        const dur = (op.duration && REGEX_DURATION.test(op.duration)) ? op.duration : (op.action === 'create_pay_pass' ? '3m' : '1h');
+        const comm = sanitizeRouterOsStr(op.comment, op.action === 'create_pay_pass' ? `PAYPOOL ${clean}` : 'Royota Cloud', 48);
+        userAddLines.push(`:do { add name="${clean}" password="${clean}" profile="${prof}" limit-uptime="${dur}" comment="${comm}" } on-error={ :do { add name="${clean}" password="${clean}" profile="default" limit-uptime="${dur}" comment="${comm}" } on-error={} }`);
+        ackQueueIds.push(op.op_id);
+        if (op.action === 'create_pay_pass') ackPayCodes.push(clean);
+        else ackVoucherCodes.push(clean);
+        handledCodes.add(clean);
+        markInFlight(_inFlightSync.queue, op.op_id);
+      } else if (op.action === 'remove_user') {
+        const clean = String(op.code || '').trim().toUpperCase();
+        if (!REGEX_CODE.test(clean)) continue;
+        userRemoveLines.push(`:do { /ip hotspot active remove [find user="${clean}"] } on-error={}`);
+        userRemoveLines.push(`:do { /ip hotspot user remove [find name="${clean}"] } on-error={}`);
+        ackQueueIds.push(op.op_id);
+        markInFlight(_inFlightSync.queue, op.op_id);
+      } else if (op.action === 'set_binding') {
+        const cleanMac = normalizeMac(op.mac);
+        if (!REGEX_MAC.test(cleanMac)) continue;
+        const cleanType = ['bypassed', 'blocked', 'regular'].includes(op.bind_type) ? op.bind_type : 'bypassed';
+        const cleanAddr = (op.address && REGEX_IPV4.test(String(op.address).trim())) ? String(op.address).trim() : '';
+        const addrClause = cleanAddr ? ` address="${cleanAddr}"` : '';
+        const commClean = sanitizeRouterOsStr(op.comment, 'Dispositivo Exento', 64);
+        bindingLines.push(`:do { add mac-address="${cleanMac}" type=${cleanType}${addrClause} comment="${commClean}" server=all } on-error={ :do { set [find mac-address="${cleanMac}"] type=${cleanType}${addrClause} comment="${commClean}" } on-error={} }`);
+        ackQueueIds.push(op.op_id);
+        handledMacs.add(cleanMac);
+        markInFlight(_inFlightSync.queue, op.op_id);
+      }
+    }
+
+    if (userAddLines.length) rscCommands += '\n/ip hotspot user\n' + userAddLines.join('\n') + '\n';
+    if (userRemoveLines.length) rscCommands += '\n' + userRemoveLines.join('\n') + '\n';
+    if (bindingLines.length) rscCommands += '\n/ip hotspot ip-binding\n' + bindingLines.join('\n') + '\n';
+  } catch (qErr) {
+    console.error('[Cloud-Sync] Error procesando cola Firestore:', qErr.message);
+  }
+
+  // 5. Fallback fichas SQLite locales (para lotes locales aún no cubiertos por la cola)
   try {
     const unsynced = db.prepare(`
       SELECT v.id, v.code, p.name AS plan_name, p.profile_name, p.duration
@@ -663,17 +864,15 @@ router.get('/sync/vouchers.rsc', (req, res) => {
       LEFT JOIN plans p ON v.plan_id = p.id
       WHERE v.mikrotik_synced = 0
       ORDER BY v.id ASC
-      LIMIT 100
-    `).all().filter((v) => !isInFlight(_inFlightSync.vouchers, v.id));
+      LIMIT 40
+    `).all().filter((v) => !isInFlight(_inFlightSync.vouchers, v.id) && !handledCodes.has(String(v.code || '').trim().toUpperCase()));
 
     if (unsynced.length > 0) {
       const lines = [];
       unsynced.forEach((v) => {
         const clean = String(v.code || '').trim().toUpperCase();
         if (REGEX_CODE.test(clean)) {
-          const prof = (v.profile_name && REGEX_PROFILE.test(v.profile_name) && v.profile_name !== 'default')
-            ? v.profile_name
-            : ((v.plan_name && REGEX_PROFILE.test(v.plan_name)) ? v.plan_name : '1 Hora Basico');
+          const prof = resolveEffectiveProfileName({ profile_name: v.profile_name, name: v.plan_name });
           const dur = (v.duration && REGEX_DURATION.test(v.duration)) ? v.duration : '1h';
           lines.push(`:do { add name="${clean}" password="${clean}" profile="${prof}" limit-uptime="${dur}" comment="Royota Cloud" } on-error={ :do { add name="${clean}" password="${clean}" profile="default" limit-uptime="${dur}" comment="Royota Cloud" } on-error={} }`);
           ackVouchers.push(v.id);
@@ -688,14 +887,14 @@ router.get('/sync/vouchers.rsc', (req, res) => {
     console.error('[Cloud-Sync] Error procesando fichas pendientes:', err.message);
   }
 
-  // 4. IP Bindings pendientes (MAC, IPv4, type y comment estrictamente validados)
+  // 6. IP Bindings SQLite pendientes
   try {
     const unsyncedBindings = db.prepare(`
       SELECT id, mac_address, comment, type, address
       FROM ip_bindings
       WHERE mikrotik_synced = 0 AND is_active = 1
       LIMIT 20
-    `).all().filter((b) => !isInFlight(_inFlightSync.bindings, b.id));
+    `).all().filter((b) => !isInFlight(_inFlightSync.bindings, b.id) && !handledMacs.has(normalizeMac(b.mac_address)));
 
     if (unsyncedBindings.length > 0) {
       const lines = [];
@@ -719,7 +918,7 @@ router.get('/sync/vouchers.rsc', (req, res) => {
     console.error('[Cloud-Sync] Error procesando IP Bindings:', bErr.message);
   }
 
-  // 5. Eliminaciones pendientes (MAC validada estrictamente contra REGEX_MAC)
+  // 7. Eliminaciones MAC SQLite pendientes
   try {
     const removals = db.prepare('SELECT id, mac_address FROM pending_removals LIMIT 20')
       .all()
@@ -742,10 +941,19 @@ router.get('/sync/vouchers.rsc', (req, res) => {
     console.error('[Cloud-Sync] Error procesando eliminaciones pendientes:', rErr.message);
   }
 
-  // 6. Enviar ACK al final solo si el router aplicó los comandos
-  if (ackVouchers.length || ackBindings.length || ackRemovals.length) {
+  // 8. Enviar ACK combinado
+  if (ackVouchers.length || ackBindings.length || ackRemovals.length || ackQueueIds.length) {
     const baseUrl = process.env.RENDER_EXTERNAL_URL || 'https://royota-bot.onrender.com';
-    const ackUrl = `${baseUrl}/api/mikrotik/sync/ack?token=${config.mikrotik.syncToken}&v=${ackVouchers.join(',')}&b=${ackBindings.join(',')}&r=${ackRemovals.join(',')}`;
+    const qs = [
+      `token=${config.mikrotik.syncToken}`,
+      ackVouchers.length ? `v=${ackVouchers.join(',')}` : '',
+      ackBindings.length ? `b=${ackBindings.join(',')}` : '',
+      ackRemovals.length ? `r=${ackRemovals.join(',')}` : '',
+      ackQueueIds.length ? `q=${ackQueueIds.join(',')}` : '',
+      ackVoucherCodes.length ? `vc=${ackVoucherCodes.join(',')}` : '',
+      ackPayCodes.length ? `pc=${ackPayCodes.join(',')}` : '',
+    ].filter(Boolean).join('&');
+    const ackUrl = `${baseUrl}/api/mikrotik/sync/ack?${qs}`;
     rscCommands += `\n:do { /tool fetch url="${ackUrl}" check-certificate=no output=none } on-error={}\n`;
   }
 

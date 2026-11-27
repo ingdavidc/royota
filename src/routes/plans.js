@@ -6,6 +6,7 @@
 const { Router } = require('express');
 const { getDb }  = require('../database');
 const { authRequired } = require('../middleware/auth');
+const { getPlansLive, invalidatePlansCache } = require('../services/firestore-store');
 
 const router = Router();
 
@@ -39,20 +40,24 @@ function validatePlan(body) {
   return null;
 }
 
-// GET /api/plans — Planes activos (público: para portal y dropdowns)
-router.get('/', (req, res) => {
-  const db = getDb();
-  res.json(db.prepare(
-    'SELECT * FROM plans WHERE is_active = 1 ORDER BY sort_order ASC, price ASC'
-  ).all());
+// GET /api/plans — Planes activos (SSOT Firestore -> SQLite fallback)
+router.get('/', async (req, res) => {
+  try {
+    const plans = await getPlansLive({ db: getDb() });
+    res.json(plans);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/plans/all — Todos los planes (admin)
-router.get('/all', authRequired, (req, res) => {
-  const db = getDb();
-  res.json(db.prepare(
-    'SELECT * FROM plans ORDER BY sort_order ASC, price ASC'
-  ).all());
+router.get('/all', authRequired, async (req, res) => {
+  try {
+    const plans = await getPlansLive({ includeInactive: true, db: getDb() });
+    res.json(plans);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET /api/plans/:id — Un plan específico
@@ -86,6 +91,7 @@ router.post('/', authRequired, (req, res) => {
     parseInt(sort_order, 10) || 0
   );
 
+  invalidatePlansCache();
   res.status(201).json({ id: result.lastInsertRowid, message: 'Plan creado' });
 });
 
@@ -118,6 +124,7 @@ router.put('/:id', authRequired, (req, res) => {
   ).changes;
 
   if (!changes) return res.status(404).json({ error: 'Plan no encontrado' });
+  invalidatePlansCache();
   res.json({ message: 'Plan actualizado' });
 });
 
@@ -128,6 +135,7 @@ router.delete('/:id', authRequired, (req, res) => {
   ).run(req.params.id).changes;
 
   if (!changes) return res.status(404).json({ error: 'Plan no encontrado' });
+  invalidatePlansCache();
   res.json({ message: 'Plan desactivado' });
 });
 

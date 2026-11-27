@@ -261,8 +261,8 @@
       measurementId: "G-WSXG9T6NRM"
     };
   </script>
-  <script src="./js/config.js?v=7"></script>
-  <script src="./js/firebase-db.js?v=7"></script>
+  <script src="./js/config.js?v=8"></script>
+  <script src="./js/firebase-db.js?v=8"></script>
   <!-- Favicon SVG ecológico y acuático -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
 </head>
@@ -301,6 +301,32 @@
         <p class="portal-slogan" id="businessSlogan">Un para&iacute;so natural junto al r&iacute;o &bull; Conexi&oacute;n WiFi</p>
       </div>
     </header>
+
+    <!-- ══ BANNER ASISTENTE DE PAGO EXTERNO (?modo=pagando) ══ -->
+    <section id="pagandoBanner" class="card" hidden style="border:1.5px solid rgba(37,211,102,0.55); background:linear-gradient(155deg, rgba(6,44,48,0.96), rgba(4,24,33,0.98)); margin-bottom:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="pulse-dot"></span>
+          <strong style="font-size:15px; color:#69f0ae;">⏳ ¡3 Minutos Libres Activos para Pagar!</strong>
+        </div>
+        <span id="pagandoTimer" class="timer-badge" style="font-size:14px; padding:4px 10px;">03:00</span>
+      </div>
+      <p style="font-size:13px; color:#d7f7f4; line-height:1.45; margin:0 0 12px 0;">
+        1️⃣ Transfiere por <strong>Daviplata</strong> o <strong>Llave Bre-B</strong> al número autorizado:<br>
+        <strong id="pagandoPayPhone" style="font-size:16px; color:#80e5ff; letter-spacing:0.6px;">317 425 1419</strong>
+        <button type="button" id="btnPagandoCopyPay" class="btn-copy-num" style="margin-left:8px;">📋 Copiar</button>
+      </p>
+      <a id="btnPagandoWaLink" href="https://wa.me/573203778210" target="_blank" rel="noopener noreferrer" style="display:flex; align-items:center; justify-content:center; gap:8px; width:100%; padding:13px 16px; background:linear-gradient(135deg, #25d366 0%, #128c7e 100%); color:#ffffff; text-decoration:none; font-weight:800; font-size:14px; border-radius:12px; box-shadow:0 4px 14px rgba(37,211,102,0.35); box-sizing:border-box; margin-bottom:10px;">
+        💬 2️⃣ Abrir WhatsApp y Enviar Comprobante
+      </a>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; font-size:12px; color:#80cbc4; margin-bottom:10px;">
+        <span>Bot WhatsApp: <strong id="pagandoBotDisplay" style="color:#ffffff;">+57 320 377 8210</strong></span>
+        <button type="button" id="btnPagandoCopyBot" class="btn-copy-num">📋 Copiar WhatsApp</button>
+      </div>
+      <button type="button" id="btnPagandoHavePin" style="width:100%; padding:10px 12px; background:rgba(0,229,255,0.12); border:1px solid rgba(0,229,255,0.35); color:#b2ebf2; border-radius:10px; font-weight:700; font-size:13px; cursor:pointer;">
+        🎫 Ya recibí mi PIN → Ingresarlo abajo
+      </button>
+    </section>
 
     <!-- ══ TARJETA 1: Ingreso y Activación de Ficha ═════════════ -->
     <section class="card" aria-labelledby="cardTitleActivation">
@@ -446,17 +472,17 @@
         <!-- Vista Activa (2 Botones ordenados y secuenciales) -->
         <div id="waActiveWrap">
           <div class="action-buttons-grid">
-            <!-- BOTÓN 1: Realizar Pago (Minimiza y da 2 min) -->
+            <!-- BOTÓN 1: Realizar Pago (Minimiza y da 3 min) -->
             <button type="button" id="btnActivarCortesia" class="btn-action-pay" style="display:flex; align-items:center; gap:12px; width:100%; padding:12px 14px; background:linear-gradient(135deg, #0077b6 0%, #0096c7 100%); color:#ffffff; border:none; border-radius:12px; cursor:pointer; text-align:left; box-shadow:0 4px 14px rgba(0,150,199,0.35); box-sizing:border-box;">
               <span class="btn-step-badge" style="background:rgba(0,0,0,0.3); color:#ffffff; font-size:11px; font-weight:800; text-transform:uppercase; padding:5px 8px; border-radius:6px; white-space:nowrap;">Paso 1</span>
               <div class="btn-action-text" style="display:flex; flex-direction:column; flex:1; min-width:0;">
-                <strong style="font-size:14px; color:#ffffff; line-height:1.25;">1. Realizar Pago (2 min libres)</strong>
-                <small style="font-size:11px; color:rgba(255,255,255,0.88); line-height:1.2; margin-top:2px;">Minimiza el portal y te da 2 min de internet para transferir</small>
+                <strong style="font-size:14px; color:#ffffff; line-height:1.25;">1. Realizar Pago (3 min libres)</strong>
+                <small style="font-size:11px; color:rgba(255,255,255,0.88); line-height:1.2; margin-top:2px;">Habilita 3 min de internet y abre navegador para transferir</small>
               </div>
             </button>
 
             <!-- BOTÓN 2: Enviar Comprobante por WhatsApp -->
-            <a href="javascript:void(0)" id="btnEnviarSoporteWa" class="btn-action-wa" role="button" style="display:flex; align-items:center; gap:12px; width:100%; padding:12px 14px; background:linear-gradient(135deg, #25d366 0%, #128c7e 100%); color:#ffffff !important; text-decoration:none !important; border:none; border-radius:12px; cursor:pointer; text-align:left; box-shadow:0 4px 14px rgba(37,211,102,0.35); box-sizing:border-box;">
+            <a href="https://wa.me/573203778210" target="_blank" rel="noopener noreferrer" id="btnEnviarSoporteWa" class="btn-action-wa" role="button" style="display:flex; align-items:center; gap:12px; width:100%; padding:12px 14px; background:linear-gradient(135deg, #25d366 0%, #128c7e 100%); color:#ffffff !important; text-decoration:none !important; border:none; border-radius:12px; cursor:pointer; text-align:left; box-shadow:0 4px 14px rgba(37,211,102,0.35); box-sizing:border-box;">
               <span class="btn-step-badge wa" style="background:rgba(0,0,0,0.3); color:#ffffff; font-size:11px; font-weight:800; text-transform:uppercase; padding:5px 8px; border-radius:6px; white-space:nowrap;">Paso 2</span>
               <div class="btn-action-text" style="display:flex; flex-direction:column; flex:1; min-width:0;">
                 <strong style="font-size:14px; color:#ffffff; line-height:1.25;">2. Enviar Comprobante WhatsApp</strong>
@@ -472,14 +498,14 @@
           <div id="waCountdownBox" class="wa-active-banner" hidden>
             <div class="active-banner-top">
               <span class="pulse-dot"></span>
-              <strong>⚡ ¡2 minutos de internet activos!</strong>
-              <span class="timer-badge" id="waCountdownTimer">02:00</span>
+              <strong>⚡ ¡3 minutos de internet activos!</strong>
+              <span class="timer-badge" id="waCountdownTimer">03:00</span>
             </div>
             <p class="active-banner-hint" id="waCountdownMsg">
               Abre tu <strong>Daviplata</strong> o app bancaria y transfiere. Luego toca el <strong>Paso 2</strong> para enviar el comprobante.
             </p>
             <button type="button" id="btnMinimizarPortal" class="btn-exit-portal">
-              📱 Salir a mi app de pago (Toca "Listo" en iPhone)
+              📱 Continuar en navegador / Salir del portal
             </button>
           </div>
         </div>
@@ -488,13 +514,13 @@
         <div id="waBlockedWrap" hidden>
           <div class="wa-blocked-title">
             <span>🚫</span>
-            <span>Intentos de cortesía agotados (2 de 2)</span>
+            <span>Pases temporales de pago agotados hoy (2 de 2)</span>
           </div>
           <p class="wa-blocked-desc">
-            Has utilizado tus 2 turnos de cortesía de hoy. Si ya transferiste, envía tu comprobante por WhatsApp al bot para recibir tu ficha o adquiérela en efectivo en casetas.
+            Has utilizado tus 2 pases temporales de hoy. Si ya transferiste, envía tu comprobante por WhatsApp al bot para recibir tu ficha o adquiérela en efectivo en casetas.
           </p>
           <div style="display:flex; gap:8px; margin-top:8px;">
-            <a href="javascript:void(0)" id="btnWaBlocked" class="btn-wa-blocked" style="flex:1; display:inline-flex; align-items:center; justify-content:center; padding:10px 12px; background:#25d366; color:#ffffff !important; text-decoration:none !important; font-weight:700; font-size:12px; border-radius:8px; text-align:center;">
+            <a href="https://wa.me/573203778210" target="_blank" rel="noopener noreferrer" id="btnWaBlocked" class="btn-wa-blocked" style="flex:1; display:inline-flex; align-items:center; justify-content:center; padding:10px 12px; background:#25d366; color:#ffffff !important; text-decoration:none !important; font-weight:700; font-size:12px; border-radius:8px; text-align:center;">
               💬 Enviar Comprobante WhatsApp
             </a>
             <button type="button" id="btnIrCasetas" class="wa-btn-casetas" style="flex:1;">
@@ -571,7 +597,7 @@
     var DEFAULT_SETTINGS = {
       business_name:          'R\u00edo Royota',
       business_slogan:        'Un para\u00edso natural junto al r\u00edo \u2022 Conexi\u00f3n WiFi',
-      whatsapp_number:        '573174251419',
+      whatsapp_number:        '573203778210',
       payment_phone:          '3174251419',
       online_purchase_active: true,
       whatsapp_message:       '\u00a1Hola! Estoy en R\u00edo Royota y deseo comprar una ficha de internet WiFi.',
@@ -611,27 +637,28 @@
       }
     } catch (_) {}
 
-    /* ── Helper de apertura directa a la App de WhatsApp (iOS / Android / Desktop) ── */
+    /* ── Helper de apertura universal HTTPS a WhatsApp (evita fallos de esquema whatsapp:// en iOS CNA) ── */
     var _defaultWaMsg = '¡Hola! Estoy en Río Royota y deseo comprar una ficha de internet WiFi.';
     var _pendingWaMsg = null;
 
-    function openWhatsAppDirect(rawNum, msgText) {
+    function buildWhatsAppHttpsUrl(rawNum, msgText) {
       var num = String(rawNum || '').replace(/[^\d]/g, '');
-      if (!num) num = '573174251419';
+      if (!num) num = '573203778210';
       if (num.length === 10 && num.startsWith('3')) {
         num = '57' + num;
       }
       var encoded = encodeURIComponent(msgText || _defaultWaMsg);
+      return 'https://wa.me/' + num + '?text=' + encoded;
+    }
 
-      // Nota: no iniciar cortesía ilimitada en cada click; el usuario dispone de Paso 1 (2 intentos/día)
-      var isMobile = /iPhone|iPad|iPod|Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
-
-      if (isMobile) {
-        // En móviles (iOS / Android), whatsapp:// abre la app directamente sin redirigir la página del portal
-        window.location.href = 'whatsapp://send?phone=' + num + '&text=' + encoded;
-      } else {
-        // En navegadores de escritorio (PC/Mac), WhatsApp Web
-        window.open('https://api.whatsapp.com/send?phone=' + num + '&text=' + encoded, '_blank', 'noopener,noreferrer');
+    function openWhatsAppDirect(rawNum, msgText) {
+      var targetUrl = buildWhatsAppHttpsUrl(rawNum, msgText);
+      var opened = null;
+      try {
+        opened = window.open(targetUrl, '_blank', 'noopener,noreferrer');
+      } catch (_) {}
+      if (!opened) {
+        window.location.href = targetUrl;
       }
     }
 
@@ -652,6 +679,12 @@
       }
       var biz = _settings && _settings.business_name ? _settings.business_name : 'Río Royota';
       var planMsg = '¡Hola! Deseo comprar la ficha de internet de ' + planName + ' (' + formattedPrice + ') en ' + biz + '. Adjunto mi comprobante de pago:';
+      _pendingWaMsg = planMsg;
+      if (hasRouterMac && qsModo !== 'pagando') {
+        if (waSec) waSec.open = true;
+        triggerPaymentTrialFlow(planMsg);
+        return;
+      }
       openWhatsAppSupport(planMsg);
     };
 
@@ -696,6 +729,13 @@
           payPhoneDisplay.textContent = '317 425 1419';
         }
       }
+
+      var waNumNow = (_settings && _settings.whatsapp_number) ? _settings.whatsapp_number : '573203778210';
+      var waHrefNow = buildWhatsAppHttpsUrl(waNumNow, _defaultWaMsg);
+      if (btnEnviarSoporteWa) btnEnviarSoporteWa.setAttribute('href', waHrefNow);
+      if (btnWaBlocked) btnWaBlocked.setAttribute('href', waHrefNow);
+      var pWaLink = document.getElementById('btnPagandoWaLink');
+      if (pWaLink) pWaLink.setAttribute('href', waHrefNow);
 
       var isOnlineActive = isOnlinePurchaseActive();
       if (isOnlineActive) {
@@ -905,9 +945,16 @@
     var qsLinkLogin = getQueryParam('link-login') || window.MIKROTIK_LOGIN_URL || 'http://192.168.20.1/login';
     var qsLinkOrig  = getQueryParam('link-orig')  || 'https://www.google.com';
     var qsError     = getQueryParam('error');
+    var qsModo      = getQueryParam('modo');
+    var qsBotParam  = getQueryParam('wa');
+    var qsPayParam  = getQueryParam('pay');
+    var qsExpParam  = getQueryParam('exp');
+    var qsMsgParam  = getQueryParam('msg');
+    if (qsMsgParam) _pendingWaMsg = qsMsgParam;
 
-    // Identificador de cliente (MAC del router o UUID local persistente)
-    var clientMac = (qsMac || '').toUpperCase().trim();
+    var normRouterMac = String(qsMac || '').trim().toUpperCase().replace(/-/g, ':');
+    var hasRouterMac = /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(normRouterMac);
+    var clientMac = hasRouterMac ? normRouterMac : '';
     if (!clientMac) {
       try {
         clientMac = localStorage.getItem('royota_client_mac') || '';
@@ -918,7 +965,92 @@
       } catch (_) { clientMac = 'DEVICE-ROYOTA'; }
     }
 
-    /* ── 4. Estado y Restricción Diaria de Cortesía WhatsApp (1 min x 2 intentos) ── */
+    function formatDisplayPhone10(raw) {
+      var digits = String(raw || '').replace(/\D/g, '');
+      if (digits.startsWith('57') && digits.length === 12) digits = digits.substring(2);
+      if (digits.length === 10) {
+        return digits.substring(0, 3) + ' ' + digits.substring(3, 6) + ' ' + digits.substring(6);
+      }
+      return digits || '317 425 1419';
+    }
+
+    function initPagandoModeBanner() {
+      var pBanner = document.getElementById('pagandoBanner');
+      if (!pBanner || qsModo !== 'pagando') return;
+      pBanner.removeAttribute('hidden');
+
+      var botRaw = qsBotParam || (_settings && _settings.whatsapp_number) || '573203778210';
+      var payRaw = qsPayParam || (_settings && _settings.payment_phone) || '3174251419';
+
+      var botDigits = String(botRaw).replace(/\D/g, '');
+      if (botDigits.length === 10 && botDigits.startsWith('3')) botDigits = '57' + botDigits;
+
+      var pPayEl = document.getElementById('pagandoPayPhone');
+      var pBotEl = document.getElementById('pagandoBotDisplay');
+      var pWaLink = document.getElementById('btnPagandoWaLink');
+      var pTimerEl = document.getElementById('pagandoTimer');
+
+      if (pPayEl) pPayEl.textContent = formatDisplayPhone10(payRaw);
+      if (pBotEl) pBotEl.textContent = '+' + botDigits;
+      if (pWaLink) pWaLink.setAttribute('href', buildWhatsAppHttpsUrl(botDigits, _pendingWaMsg || _defaultWaMsg));
+
+      var btnCopyP = document.getElementById('btnPagandoCopyPay');
+      if (btnCopyP) {
+        btnCopyP.addEventListener('click', function() {
+          var cleanPay = String(payRaw).replace(/\D/g, '').replace(/^57/, '');
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(cleanPay).then(function() {
+              btnCopyP.textContent = '✅ ¡Copiado!';
+              setTimeout(function() { btnCopyP.textContent = '📋 Copiar'; }, 2000);
+            }).catch(function(){});
+          }
+        });
+      }
+
+      var btnCopyB = document.getElementById('btnPagandoCopyBot');
+      if (btnCopyB) {
+        btnCopyB.addEventListener('click', function() {
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText('+' + botDigits).then(function() {
+              btnCopyB.textContent = '✅ ¡Copiado!';
+              setTimeout(function() { btnCopyB.textContent = '📋 Copiar WhatsApp'; }, 2000);
+            }).catch(function(){});
+          }
+        });
+      }
+
+      var btnHavePin = document.getElementById('btnPagandoHavePin');
+      if (btnHavePin) {
+        btnHavePin.addEventListener('click', function() {
+          if (input) {
+            input.removeAttribute('readonly');
+            input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            input.focus();
+          }
+        });
+      }
+
+      if (pTimerEl) {
+        var expMs = qsExpParam ? new Date(qsExpParam).getTime() : (Date.now() + 180000);
+        if (isNaN(expMs) || expMs <= Date.now()) expMs = Date.now() + 180000;
+        var tick = function() {
+          var remSec = Math.max(0, Math.floor((expMs - Date.now()) / 1000));
+          var m = Math.floor(remSec / 60);
+          var s = remSec % 60;
+          pTimerEl.textContent = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+          if (remSec <= 0 && pagTimerInterval) {
+            clearInterval(pagTimerInterval);
+            pTimerEl.textContent = '00:00';
+          }
+        };
+        tick();
+        var pagTimerInterval = setInterval(tick, 1000);
+      }
+    }
+
+    initPagandoModeBanner();
+
+    /* ── 4. Estado y Restricción Diaria de Pase de Pago (3 min x 2 intentos) ── */
     var _waTrialState = {
       date: getTodayColombia(),
       attempts: 0,
@@ -935,7 +1067,6 @@
           if (parsed && parsed.date === today) {
             _waTrialState = parsed;
           } else {
-            // Reinicio automático a las 12 de la noche de cada día
             _waTrialState = { date: today, attempts: 0, blocked: false, unblocked: false };
             saveLocalTrialState();
           }
@@ -970,12 +1101,15 @@
         if (btnActivarCortesia) {
           var strongEl = btnActivarCortesia.querySelector('strong');
           var smallEl  = btnActivarCortesia.querySelector('small');
-          if (_waTrialState.attempts === 0) {
-            if (strongEl) strongEl.textContent = '1. Realizar Pago (2 min libres)';
-            if (smallEl)  smallEl.textContent  = 'Minimiza el portal y te da 2 min de internet para transferir';
+          if (!hasRouterMac) {
+            if (strongEl) strongEl.textContent = '1. Ir a WhatsApp para Pagar';
+            if (smallEl)  smallEl.textContent  = 'Ya estás conectado a Internet; realiza tu pago y envía el comprobante';
+          } else if (_waTrialState.attempts === 0) {
+            if (strongEl) strongEl.textContent = '1. Realizar Pago (3 min libres)';
+            if (smallEl)  smallEl.textContent  = 'Habilita 3 min de internet y abre navegador para transferir';
           } else if (_waTrialState.attempts === 1) {
-            if (strongEl) strongEl.textContent = '⚠️ 1. Último intento (2 min libres)';
-            if (smallEl)  smallEl.textContent  = 'Última oportunidad de 2 min para completar tu pago';
+            if (strongEl) strongEl.textContent = '⚠️ 1. Último pase hoy (3 min libres)';
+            if (smallEl)  smallEl.textContent  = 'Última oportunidad de 3 min para completar tu pago hoy';
           }
         }
       }
@@ -985,44 +1119,29 @@
       loadLocalTrialState();
       renderWaTrialUI();
 
-      if (window.firebaseDb && window.firebaseDb.getWaTrialStatus) {
-        window.firebaseDb.getWaTrialStatus(clientMac).then(function(res) {
-          if (res) {
-            _waTrialState.attempts  = res.attempts;
-            _waTrialState.blocked   = res.blocked;
-            _waTrialState.unblocked = res.unblocked;
-            _waTrialState.date      = getTodayColombia();
-            saveLocalTrialState();
-            renderWaTrialUI();
-          }
-        }).catch(function() {});
-      } else {
-        ajaxGet('/api/vouchers/trial/status?mac=' + encodeURIComponent(clientMac), function(status, data) {
-          if (status === 200 && data) {
-            _waTrialState.attempts  = data.attempts;
-            _waTrialState.blocked   = data.blocked;
-            _waTrialState.unblocked = data.unblocked;
-            _waTrialState.date      = getTodayColombia();
-            saveLocalTrialState();
-            renderWaTrialUI();
-          }
-        });
-      }
+      if (!hasRouterMac) return;
+
+      ajaxGet('/api/vouchers/trial/status?mac=' + encodeURIComponent(clientMac), function(status, data) {
+        if (status === 200 && data) {
+          _waTrialState.attempts  = data.attempts || 0;
+          _waTrialState.blocked   = Boolean(data.blocked);
+          _waTrialState.unblocked = Boolean(data.unblocked);
+          _waTrialState.date      = getTodayColombia();
+          saveLocalTrialState();
+          renderWaTrialUI();
+        }
+      });
     }
 
     syncWaTrialState();
 
-    // Desbloquear dispositivo si compra e ingresa una ficha física
+    // Desbloquear UI local si compra e ingresa una ficha física
     function unblockClientFromTrial() {
       _waTrialState.blocked   = false;
       _waTrialState.unblocked = true;
       _waTrialState.attempts  = 0;
       saveLocalTrialState();
       renderWaTrialUI();
-
-      if (window.firebaseDb && window.firebaseDb.unblockWaTrial) {
-        window.firebaseDb.unblockWaTrial(clientMac).catch(function(){});
-      }
     }
 
     // Botón para desplegar casetas físicas si está bloqueado
@@ -1036,20 +1155,13 @@
       });
     }
 
-    /* ── PASO 1: Activar 2 minutos de cortesía y minimizar portal ── */
+    /* ── PASO 1: Solicitar pase temporal SSOT (PAYPOOL 3m) y abrir navegador fuera de CNA ── */
     var _countdownTimerId = null;
+    var _trialInFlight = false;
 
-    function triggerPaymentTrialFlow() {
-      loadLocalTrialState();
-      var today = getTodayColombia();
-      if (_waTrialState.date !== today) {
-        _waTrialState = { date: today, attempts: 0, blocked: false, unblocked: false };
-        saveLocalTrialState();
-      }
-
-      var isBlocked = (_waTrialState.blocked === true || _waTrialState.attempts >= 2) && !_waTrialState.unblocked;
-      if (isBlocked) {
-        renderWaTrialUI();
+    function triggerPaymentTrialFlow(customWaMsg) {
+      if (customWaMsg) _pendingWaMsg = customWaMsg;
+      if (!isOnlinePurchaseActive()) {
         if (kiosksSec) {
           kiosksSec.open = true;
           kiosksSec.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1057,64 +1169,109 @@
         return;
       }
 
-      var currentAttempts = _waTrialState.attempts || 0;
-      var newAttempts = currentAttempts + 1;
-      _waTrialState.attempts = newAttempts;
-      _waTrialState.date = today;
-      if (newAttempts >= 2) {
-        _waTrialState.blocked = true;
-      }
-      saveLocalTrialState();
-      renderWaTrialUI();
-
-      // Notificar al backend / Firestore
-      if (window.firebaseDb && window.firebaseDb.recordWaTrial) {
-        window.firebaseDb.recordWaTrial(clientMac).catch(function(){});
-      } else {
-        var xhrT = new XMLHttpRequest();
-        xhrT.open('POST', (window.API_BASE || '') + '/api/vouchers/trial/request', true);
-        xhrT.setRequestHeader('Content-Type', 'application/json');
-        xhrT.send(JSON.stringify({ mac: clientMac, ip: qsIp }));
+      // Si está fuera del portal cautivo (sin MAC de router), abre WhatsApp directamente
+      if (!hasRouterMac) {
+        if (waSec) waSec.open = true;
+        openWhatsAppSupport(_pendingWaMsg);
+        return;
       }
 
-      // Enviar autenticación silenciosa a MikroTik Hotspot
-      submitMikrotikTrialLogin();
+      if (_trialInFlight) return;
+      _trialInFlight = true;
 
-      // Mostrar banner con cuenta regresiva de 2 minutos
-      if (waCountdownBox) {
-        waCountdownBox.removeAttribute('hidden');
-        var secondsLeft = 120;
-        if (_countdownTimerId) clearInterval(_countdownTimerId);
+      var strongEl = btnActivarCortesia ? btnActivarCortesia.querySelector('strong') : null;
+      var smallEl  = btnActivarCortesia ? btnActivarCortesia.querySelector('small') : null;
+      if (btnActivarCortesia) btnActivarCortesia.disabled = true;
+      if (strongEl) strongEl.textContent = '⏳ Solicitando pase de pago (3 min)...';
+      if (smallEl)  smallEl.textContent  = 'Validando con el servidor seguro...';
 
-        waCountdownTimer.textContent = '02:00';
-        waCountdownMsg.innerHTML = '⚡ <strong>¡2 minutos de navegación activa!</strong> Abre tu <strong>Daviplata</strong> o app bancaria y transfiere. Luego toca el <strong>Paso 2</strong> para enviar tu soporte.';
+      var xhrT = new XMLHttpRequest();
+      xhrT.open('POST', (window.API_BASE || '') + '/api/vouchers/trial/request', true);
+      xhrT.setRequestHeader('Content-Type', 'application/json');
+      xhrT.timeout = 9000;
 
-        _countdownTimerId = setInterval(function() {
-          secondsLeft--;
-          if (secondsLeft <= 0) {
-            clearInterval(_countdownTimerId);
-            waCountdownTimer.textContent = '00:00';
-            waCountdownBox.setAttribute('hidden', '');
-            if (newAttempts >= 2) {
-              _waTrialState.blocked = true;
-              saveLocalTrialState();
-              renderWaTrialUI();
-            }
-          } else {
-            var m = Math.floor(secondsLeft / 60);
-            var s = secondsLeft % 60;
-            waCountdownTimer.textContent = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+      function restoreBtn() {
+        _trialInFlight = false;
+        if (btnActivarCortesia) btnActivarCortesia.disabled = false;
+        renderWaTrialUI();
+      }
+
+      xhrT.onerror = function() {
+        restoreBtn();
+        showStatus('⚠️ Sin conexión con el servidor para otorgar el pase. Intenta de nuevo en unos segundos.', 'warn');
+      };
+      xhrT.ontimeout = function() {
+        restoreBtn();
+        showStatus('⚠️ Tiempo de espera agotado. Intenta tocar el Paso 1 nuevamente.', 'warn');
+      };
+
+      xhrT.onreadystatechange = function() {
+        if (xhrT.readyState !== 4) return;
+        var data = {};
+        try { data = JSON.parse(xhrT.responseText); } catch (_) {}
+
+        if (xhrT.status === 200 && data && data.ok && data.code) {
+          _waTrialState.date      = getTodayColombia();
+          _waTrialState.attempts  = data.attempt || 1;
+          _waTrialState.blocked   = Boolean(data.blocked);
+          _waTrialState.unblocked = false;
+          saveLocalTrialState();
+          renderWaTrialUI();
+
+          var botNum = (_settings && _settings.whatsapp_number) ? _settings.whatsapp_number : '573203778210';
+          var payNum = (_settings && _settings.payment_phone) ? _settings.payment_phone : '3174251419';
+          var dstPagoUrl = 'https://royota.dctelematica.com/?modo=pagando' +
+            '&wa=' + encodeURIComponent(botNum) +
+            '&pay=' + encodeURIComponent(payNum) +
+            '&exp=' + encodeURIComponent(data.expiresAt || '') +
+            (_pendingWaMsg ? ('&msg=' + encodeURIComponent(_pendingWaMsg)) : '');
+
+          if (waCountdownBox) {
+            waCountdownBox.removeAttribute('hidden');
+            var secondsLeft = 180;
+            if (_countdownTimerId) clearInterval(_countdownTimerId);
+            waCountdownTimer.textContent = '03:00';
+            waCountdownMsg.innerHTML = '⚡ <strong>¡3 minutos libres activándose!</strong> Te redirigiremos automáticamente para que pagues y envíes el comprobante por WhatsApp.';
+            _countdownTimerId = setInterval(function() {
+              secondsLeft--;
+              if (secondsLeft <= 0) {
+                clearInterval(_countdownTimerId);
+                waCountdownTimer.textContent = '00:00';
+                waCountdownBox.setAttribute('hidden', '');
+              } else {
+                var m = Math.floor(secondsLeft / 60);
+                var s = secondsLeft % 60;
+                waCountdownTimer.textContent = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+              }
+            }, 1000);
           }
-        }, 1000);
-      }
 
-      // En Android, intentar redirigir a navegación libre
-      var isApple = /iPhone|iPad|iPod|Macintosh/i.test(navigator.userAgent || '');
-      if (!isApple) {
-        setTimeout(function() {
-          try { window.location.href = qsLinkOrig || 'https://www.google.com'; } catch (_) {}
-        }, 800);
-      }
+          var waitBeforeSubmit = (!data.ready && data.retryWaitMs) ? Number(data.retryWaitMs) : 0;
+          if (waitBeforeSubmit > 0) {
+            if (strongEl) strongEl.textContent = '⏳ Sincronizando router (3s)...';
+          }
+          setTimeout(function() {
+            restoreBtn();
+            submitMikrotikPayPassLogin(data.code, data.password || data.code, dstPagoUrl);
+          }, waitBeforeSubmit);
+        } else if (xhrT.status === 403) {
+          _waTrialState.date      = getTodayColombia();
+          _waTrialState.attempts  = (data && data.attempts) ? data.attempts : 2;
+          _waTrialState.blocked   = true;
+          saveLocalTrialState();
+          restoreBtn();
+          showStatus((data && data.error) ? data.error : 'Pases temporales agotados hoy.', 'warn');
+          if (kiosksSec) {
+            kiosksSec.open = true;
+            kiosksSec.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        } else {
+          restoreBtn();
+          showStatus((data && data.error) ? data.error : 'No se pudo habilitar el pase temporal.', 'error');
+        }
+      };
+
+      xhrT.send(JSON.stringify({ mac: clientMac, ip: qsIp }));
     }
 
     if (btnActivarCortesia) {
@@ -1126,9 +1283,9 @@
 
     /* ── PASO 2: Enviar soporte por WhatsApp al bot oficial ── */
     function openWhatsAppSupport(customMsg) {
-      var num = _settings && _settings.whatsapp_number ? _settings.whatsapp_number : '573174251419';
+      var num = _settings && _settings.whatsapp_number ? _settings.whatsapp_number : '573203778210';
       var biz = _settings && _settings.business_name ? _settings.business_name : 'Río Royota';
-      var msg = customMsg || ('¡Hola! Adjunto mi comprobante de pago para recibir mi ficha de internet WiFi en ' + biz + '.');
+      var msg = customMsg || _pendingWaMsg || ('¡Hola! Adjunto mi comprobante de pago para recibir mi ficha de internet WiFi en ' + biz + '.');
       openWhatsAppDirect(num, msg);
     }
 
@@ -1248,41 +1405,31 @@
       );
     }
 
-    /* ── Autologin de Cortesía (MikroTik Hotspot Trial) vía iframe ── */
-    function submitMikrotikTrialLogin() {
-      // Autenticación silenciosa en MikroTik sin ensuciar la tarjeta superior
+    /* ── Autologin de Pase de Pago Controlado (PAYPOOL en ventana principal -> Safari/Chrome) ── */
+    function submitMikrotikPayPassLogin(username, password, dstOverride) {
       try {
         var postForm = document.createElement('form');
         postForm.method = 'POST';
         postForm.action = qsLinkLogin;
-        postForm.target = 'login_target';
         postForm.style.display = 'none';
 
-        var trialInput = document.createElement('input');
-        trialInput.type = 'hidden';
-        trialInput.name = 'trial';
-        trialInput.value = 'yes';
-        postForm.appendChild(trialInput);
+        var u = document.createElement('input');
+        u.type = 'hidden'; u.name = 'username'; u.value = username;
+        postForm.appendChild(u);
 
-        var dstUrl = qsLinkOrig;
-        if (!dstUrl || isProbeUrl(dstUrl)) {
-          dstUrl = (window.MIKROTIK_LOGIN_URL ? window.MIKROTIK_LOGIN_URL.replace('/login', '/status') : 'http://192.168.20.1/status');
-        }
+        var p = document.createElement('input');
+        p.type = 'hidden'; p.name = 'password'; p.value = password || username;
+        postForm.appendChild(p);
 
+        var dstUrl = dstOverride || 'https://royota.dctelematica.com/?modo=pagando';
         var dst = document.createElement('input');
-        dst.type = 'hidden';
-        dst.name = 'dst';
-        dst.value = dstUrl;
+        dst.type = 'hidden'; dst.name = 'dst'; dst.value = dstUrl;
         postForm.appendChild(dst);
 
         document.body.appendChild(postForm);
         postForm.submit();
-
-        setTimeout(function() {
-          if (postForm.parentNode) postForm.parentNode.removeChild(postForm);
-        }, 1500);
       } catch (err) {
-        console.warn('Error enviando trial login:', err);
+        console.warn('Error enviando pase temporal a MikroTik:', err);
       }
     }
 
@@ -1321,7 +1468,7 @@
       }, redirectMain ? 1000 : 300);
     }
 
-    /* ── 7. Activación de Ficha Física (Desbloquea restricciones previas) ── */
+    /* ── 7. Activación de Ficha (SSOT Backend Render -> Firestore; sin falsos logins) ── */
     form.addEventListener('submit', function (e) {
       e.preventDefault();
 
@@ -1333,7 +1480,7 @@
       }
 
       btn.disabled    = true;
-      btn.textContent = '🌊 Conectando al Internet…';
+      btn.textContent = '🌊 Validando código…';
       info.setAttribute('hidden', '');
       hideStatus();
 
@@ -1341,45 +1488,16 @@
       var xhr = new XMLHttpRequest();
       xhr.open('POST', fullUrl, true);
       xhr.setRequestHeader('Content-Type', 'application/json');
-      xhr.timeout = 7000;
+      xhr.timeout = 9000;
 
-      function fallbackFirestore() {
-        if (window.firebaseDb && window.firebaseDb.activateVoucher) {
-          window.firebaseDb.activateVoucher(code, clientMac).then(function(res) {
-            unblockClientFromTrial();
-            btn.disabled    = false;
-            btn.textContent = '⚡ Conectar al Internet';
-            input.value     = '';
-            showStatus(res.message || '¡Ficha activada con éxito!', 'ok');
-            setText('cPlan',     res.plan);
-            setText('cDuration', res.duration);
-            setText('cSpeed',    res.speed);
-            setText('cExpires',  res.expires_at ? fmtDate(res.expires_at) : '—');
-            info.removeAttribute('hidden');
-            submitMikrotikLogin(code, null, true);
-          }).catch(function(err) {
-            console.warn('[Portal] Error en Firestore, conectando directamente al router:', err);
-            // Si la ficha ya existe en MikroTik (o si hubo fallo de red en la nube), conectar directamente al router
-            showStatus('Conectando directamente a la red WiFi…', 'ok');
-            submitMikrotikLogin(code, null, true);
-            setTimeout(function() {
-              btn.disabled    = false;
-              btn.textContent = '⚡ Conectar al Internet';
-            }, 3000);
-          });
-        } else {
-          showStatus('Conectando directamente a la red WiFi…', 'ok');
-          submitMikrotikLogin(code, null, true);
-        }
+      function handleTransientFailure() {
+        btn.disabled    = false;
+        btn.textContent = '⚡ Conectar al Internet';
+        showStatus('⚠️ Error temporal de comunicación con el servidor. Verifica tu conexión Wi-Fi e intenta nuevamente.', 'warn');
       }
 
-      xhr.ontimeout = function () {
-        fallbackFirestore();
-      };
-
-      xhr.onerror = function () {
-        fallbackFirestore();
-      };
+      xhr.ontimeout = handleTransientFailure;
+      xhr.onerror   = handleTransientFailure;
 
       xhr.onreadystatechange = function () {
         if (xhr.readyState !== 4) return;
@@ -1400,17 +1518,17 @@
           setText('cExpires',  data.expires_at ? fmtDate(data.expires_at) : '—');
           info.removeAttribute('hidden');
 
-          submitMikrotikLogin(code, null, true);
-        } else if (xhr.status === 404 || xhr.status === 400 || xhr.status === 409) {
+          submitMikrotikLogin(code, data.message || null, true);
+        } else if (xhr.status >= 400 && xhr.status < 500) {
           btn.disabled    = false;
           btn.textContent = '⚡ Conectar al Internet';
-          showStatus((data && data.error) ? data.error : 'Código no válido o ya utilizado.', 'error');
+          showStatus((data && data.error) ? data.error : 'Código no válido, expirado o ya utilizado.', 'error');
         } else {
-          fallbackFirestore();
+          handleTransientFailure();
         }
       };
 
-      xhr.send(JSON.stringify({ code: code, mac: clientMac, ip: qsIp }));
+      xhr.send(JSON.stringify({ code: code, mac: hasRouterMac ? clientMac : undefined, ip: qsIp }));
     });
 
     function setText(id, val) {

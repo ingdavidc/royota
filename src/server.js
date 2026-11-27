@@ -10,7 +10,7 @@ const express   = require('express');
 const helmet    = require('helmet');
 const cors      = require('cors');
 const path      = require('path');
-const rateLimit = require('express-rate-limit');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 
 const config    = require('./config');
 const { getDb, getSettings } = require('./database');
@@ -85,9 +85,16 @@ app.use((req, res, next) => {
 });
 
 // ── Rate Limiting (Protección contra fuerza bruta y DoS) ──────
+const getClientMacOrIpKey = (req) => {
+  const ipKey = ipKeyGenerator(req.ip || '0.0.0.0');
+  const mac = String(req.body?.mac || req.query?.mac || '').trim().toUpperCase().replace(/-/g, ':');
+  return /^([0-9A-F]{2}:){5}[0-9A-F]{2}$/.test(mac) ? `${ipKey}:${mac}` : ipKey;
+};
+
 const voucherLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 10,
+  max: 45,
+  keyGenerator: getClientMacOrIpKey,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiadas solicitudes. Por favor espera un momento antes de intentar de nuevo.' },
@@ -95,7 +102,8 @@ const voucherLimiter = rateLimit({
 
 const trialLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
-  max: 6,
+  max: 20,
+  keyGenerator: getClientMacOrIpKey,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiadas solicitudes de cortesía. Espera unos minutos.' },
@@ -242,7 +250,23 @@ process.on('unhandledRejection', (reason) => {
   console.error('[UNHANDLED REJECTION]', reason);
 });
 
-process.on('SIGTERM', () => { console.log('[Server] SIGTERM recibido, cerrando...'); process.exit(0); });
-process.on('SIGINT',  () => { console.log('[Server] SIGINT recibido, cerrando...');  process.exit(0); });
+async function gracefulShutdown(signal) {
+  console.log(`[Server] ${signal} recibido, guardando sesión WhatsApp y cerrando...`);
+  const timeout = setTimeout(() => process.exit(0), 3500);
+  try {
+    const waBot = require('./services/whatsapp-bot');
+    if (typeof waBot.shutdownWhatsAppBot === 'function') {
+      await waBot.shutdownWhatsAppBot();
+    }
+  } catch (err) {
+    console.error('[Server] Error en shutdown WhatsApp:', err.message);
+  } finally {
+    clearTimeout(timeout);
+    process.exit(0);
+  }
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 
 start();

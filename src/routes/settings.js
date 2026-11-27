@@ -6,16 +6,16 @@
 'use strict';
 
 const { Router } = require('express');
-const { getSettings, setSettings } = require('../database');
+const { getDb } = require('../database');
 const { authRequired } = require('../middleware/auth');
-const { firestoreFetch, toFirestoreFields } = require('../services/firestore-client');
+const { getSettingsLive, updateSettingsLive } = require('../services/firestore-store');
 const config = require('../config');
 
 const router = Router();
 
-// GET /api/settings/public — Datos para el portal cautivo
-router.get('/public', (req, res) => {
-  const s = getSettings();
+// GET /api/settings/public — Datos para el portal cautivo (SSOT Firestore)
+router.get('/public', async (req, res) => {
+  const s = await getSettingsLive({ db: getDb() });
   res.json({
     business_name:          s.business_name || config.business.name,
     business_slogan:        s.business_slogan || 'El paraíso natural junto al río',
@@ -33,8 +33,8 @@ router.get('/public', (req, res) => {
 });
 
 // GET /api/settings — Panel de administración (auth)
-router.get('/', authRequired, (req, res) => {
-  const s = getSettings();
+router.get('/', authRequired, async (req, res) => {
+  const s = await getSettingsLive({ db: getDb() });
   res.json({
     ...s,
     currency:       config.business.currency,
@@ -71,7 +71,7 @@ async function syncSettingsToFirestore(settings) {
 }
 
 // PUT /api/settings — Actualizar ajustes (auth)
-router.put('/', authRequired, (req, res) => {
+router.put('/', authRequired, async (req, res) => {
   const {
     business_name,
     business_slogan,
@@ -97,8 +97,7 @@ router.put('/', authRequired, (req, res) => {
   if (info_title !== undefined)             toUpdate.info_title             = String(info_title).trim();
   if (info_content !== undefined)           toUpdate.info_content           = String(info_content);
 
-  const updated = setSettings(toUpdate);
-  syncSettingsToFirestore(toUpdate);
+  const updated = await updateSettingsLive(toUpdate, getDb());
 
   res.json({ message: 'Configuración guardada con éxito', settings: updated });
 });

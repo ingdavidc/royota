@@ -41,15 +41,14 @@ async function _runCleanup() {
     const db = getDb();
     const startTime = Date.now();
 
+    const { isVoucherExpiredSSOT, expireStaleVouchersSSOT } = require('./firestore-store');
+    await expireStaleVouchersSSOT(db);
+
     const expired = db.prepare(`
-      SELECT id, code, mikrotik_synced
+      SELECT id, code, activated_at, expires_at, status, mikrotik_synced
       FROM   vouchers
       WHERE  status = 'active'
-        AND  (
-          (expires_at IS NOT NULL AND expires_at <= datetime('now'))
-          OR (activated_at IS NOT NULL AND date(activated_at) < date('now'))
-        )
-    `).all();
+    `).all().filter((v) => isVoucherExpiredSSOT(v));
 
     if (!expired.length) return;
 

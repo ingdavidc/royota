@@ -14,3 +14,5 @@ functions/.env
 *.pem
 *.ppk
 id_rsa*
+*firebase-adminsdk*.json
+service-account*.json
