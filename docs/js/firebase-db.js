@@ -55,10 +55,83 @@
     }
   }
 
+  function getBogotaDateStr(d) {
+    try {
+      return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(d || new Date());
+    } catch (_) {
+      var dt = d || new Date();
+      return dt.toISOString().slice(0, 10);
+    }
+  }
+
   function getBogotaMidnight() {
-    var now = new Date();
-    var bogotaDateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(now);
+    var bogotaDateStr = getBogotaDateStr(new Date());
     return new Date(bogotaDateStr + 'T23:59:59.999-05:00');
+  }
+
+  function getEffectiveVoucherStatus(v, nowMs, todayBogotaStr) {
+    if (!v) return 'expired';
+    if (v.status === 'active') {
+      if (v.expires_at) {
+        var expMs = new Date(v.expires_at).getTime();
+        if (!isNaN(expMs) && expMs <= nowMs) return 'expired';
+      }
+      if (v.activated_at) {
+        var actDate = getBogotaDateStr(new Date(v.activated_at));
+        if (actDate && actDate < todayBogotaStr) return 'expired';
+      }
+    }
+    return v.status || 'available';
+  }
+
+  function normalizeVoucherForDisplay(docData, docId, nowMs, todayBogotaStr) {
+    var v = Object.assign({}, docData || {});
+    v.id = docId;
+    if (!v.code) v.code = docId;
+    v.status = getEffectiveVoucherStatus(v, nowMs, todayBogotaStr);
+    return v;
+  }
+
+  var VOUCHER_STATUS_RANK = { active: 0, sold: 1, expired: 2, revoked: 3, available: 4 };
+
+  function sortVouchersForDisplay(list) {
+    return list.sort(function(a, b) {
+      var ra = VOUCHER_STATUS_RANK[a.status] !== undefined ? VOUCHER_STATUS_RANK[a.status] : 9;
+      var rb = VOUCHER_STATUS_RANK[b.status] !== undefined ? VOUCHER_STATUS_RANK[b.status] : 9;
+      if (ra !== rb) return ra - rb;
+      var ta = a.activated_at || a.sold_at || a.expired_at || a.created_at || '';
+      var tb = b.activated_at || b.sold_at || b.expired_at || b.created_at || '';
+      return tb.localeCompare(ta);
+    });
+  }
+
+  function computeSalesMetrics(salesList) {
+    var todayRev = 0;
+    var monthRev = 0;
+    var todayStr = getBogotaDateStr(new Date());
+    var monthStr = todayStr.slice(0, 7);
+    var buckets = {};
+
+    (salesList || []).forEach(function(s) {
+      var amt = Number(s.amount || 0);
+      var saleDate = s.date || (s.created_at ? getBogotaDateStr(new Date(s.created_at)) : '');
+      if (saleDate === todayStr) todayRev += amt;
+      if (saleDate && saleDate.slice(0, 7) === monthStr) {
+        monthRev += amt;
+        var pName = s.plan_name || 'Plan';
+        if (!buckets[pName]) buckets[pName] = { name: pName, sales_count: 0, revenue: 0 };
+        buckets[pName].sales_count++;
+        buckets[pName].revenue += amt;
+      }
+    });
+
+    var topPlans = Object.keys(buckets).map(function(k) { return buckets[k]; });
+    topPlans.sort(function(a, b) { return b.revenue - a.revenue || b.sales_count - a.sales_count; });
+
+    return {
+      revenue:   { today: todayRev, month: monthRev },
+      top_plans: topPlans.slice(0, 5),
+    };
   }
 
   function generateCode(length, charsetType, prefix) {
@@ -668,22 +741,98 @@
     // ── Listar Fichas (Admin) ─────────────────────────────────
     getVouchers: function(filter) {
       filter = filter || {};
-      var query = db.collection('vouchers');
-      if (filter.status)  query = query.where('status', '==', filter.status);
-      if (filter.plan_id) query = query.where('plan_id', '==', filter.plan_id);
+      var pageLimit = Math.max(1, parseInt(filter.limit, 10) || 30);
+      var pageNum   = Math.max(1, parseInt(filter.page, 10) || 1);
+      var query     = db.collection('vouchers');
 
-      return query.limit(filter.limit || 150).get().then(function(snap) {
+      if (filter.status === 'used_group') {
+        query = query.where('status', 'in', ['active', 'sold', 'expired']);
+      } else if (filter.status) {
+        query = query.where('status', '==', filter.status);
+      } else {
+        query = query.limit(350);
+      }
+
+      return query.get().then(function(snap) {
+        var nowMs = Date.now();
+        var todayBogotaStr = getBogotaDateStr(new Date(nowMs));
         var list = [];
         snap.forEach(function(d) {
-          var v = d.data();
-          v.id = d.id;
-          list.push(v);
+          list.push(normalizeVoucherForDisplay(d.data(), d.id, nowMs, todayBogotaStr));
         });
-        if (filter.search) {
-          var s = filter.search.toUpperCase();
-          list = list.filter(function(v) { return v.code && v.code.includes(s); });
+
+        if (filter.status === 'used_group') {
+          list = list.filter(function(v) {
+            return v.status === 'active' || v.status === 'sold' || v.status === 'expired';
+          });
+        } else if (filter.status) {
+          list = list.filter(function(v) { return v.status === filter.status; });
         }
-        return { vouchers: list, total: list.length };
+
+        if (filter.plan_id) {
+          var targetPlan = String(filter.plan_id);
+          list = list.filter(function(v) { return String(v.plan_id) === targetPlan; });
+        }
+
+        var searchQ = filter.search || filter.q || '';
+        if (searchQ) {
+          var s = String(searchQ).toUpperCase().trim();
+          list = list.filter(function(v) {
+            return (v.code && v.code.indexOf(s) !== -1) ||
+                   (v.plan_name && v.plan_name.toUpperCase().indexOf(s) !== -1) ||
+                   (v.buyer_note && v.buyer_note.toUpperCase().indexOf(s) !== -1) ||
+                   (v.customer_phone && String(v.customer_phone).indexOf(s) !== -1);
+          });
+        }
+
+        sortVouchersForDisplay(list);
+
+        var total = list.length;
+        var pages = Math.max(1, Math.ceil(total / pageLimit));
+        if (pageNum > pages) pageNum = pages;
+        var start = (pageNum - 1) * pageLimit;
+        var sliced = list.slice(start, start + pageLimit);
+
+        return { vouchers: sliced, total: total, pages: pages, page: pageNum };
+      });
+    },
+
+    // ── Monitor en Tiempo Real: Vendidas, En uso y Expiradas ──
+    onUsedVouchersChange: function(cb) {
+      if (!db || typeof cb !== 'function') return function() {};
+      var self = this;
+      if (typeof self.cleanupMidnightVouchers === 'function') {
+        self.cleanupMidnightVouchers().catch(function() {});
+      }
+      return db.collection('vouchers')
+        .where('status', 'in', ['active', 'sold', 'expired'])
+        .onSnapshot(function(snap) {
+          var nowMs = Date.now();
+          var todayBogotaStr = getBogotaDateStr(new Date(nowMs));
+          var list = [];
+          var counts = { active: 0, sold: 0, expired: 0 };
+
+          snap.forEach(function(d) {
+            var v = normalizeVoucherForDisplay(d.data(), d.id, nowMs, todayBogotaStr);
+            if (counts[v.status] !== undefined) counts[v.status]++;
+            list.push(v);
+          });
+
+          sortVouchersForDisplay(list);
+          cb({ list: list, counts: counts });
+        }, function(err) {
+          console.warn('[FirebaseDb] onUsedVouchersChange:', err);
+        });
+    },
+
+    onSalesChange: function(cb) {
+      if (!db || typeof cb !== 'function') return function() {};
+      return db.collection('sales').onSnapshot(function(snap) {
+        var list = [];
+        snap.forEach(function(d) { list.push(d.data()); });
+        cb(computeSalesMetrics(list));
+      }, function(err) {
+        console.warn('[FirebaseDb] onSalesChange:', err);
       });
     },
 
@@ -735,28 +884,22 @@
           var vSnap = res[0];
           var sSnap = res[1];
 
+          var nowMs = Date.now();
+          var todayBogotaStr = getBogotaDateStr(new Date(nowMs));
           var stats = { available: 0, sold: 0, active: 0, expired: 0 };
           vSnap.forEach(function(d) {
-            var st = d.data().status;
+            var st = getEffectiveVoucherStatus(d.data(), nowMs, todayBogotaStr);
             if (stats[st] !== undefined) stats[st]++;
           });
 
-          var todayRev = 0, monthRev = 0;
-          var now = new Date();
-          var todayStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(now);
-          var monthStr = todayStr.slice(0, 7);
-
-          sSnap.forEach(function(d) {
-            var s = d.data();
-            var dt = (s.created_at || '').slice(0, 10);
-            if (dt === todayStr || (s.date && s.date === todayStr)) todayRev += (s.amount || 0);
-            if (dt.startsWith(monthStr)) monthRev += (s.amount || 0);
-          });
+          var salesList = [];
+          sSnap.forEach(function(d) { salesList.push(d.data()); });
+          var metrics = computeSalesMetrics(salesList);
 
           return {
-            vouchers: stats,
-            revenue:  { today: todayRev, month: monthRev },
-            top_plans: [],
+            vouchers:  stats,
+            revenue:   metrics.revenue,
+            top_plans: metrics.top_plans,
           };
         });
       });
@@ -767,14 +910,14 @@
       if (!db) return Promise.resolve();
       var now = new Date();
       var nowIso = now.toISOString();
-      var todayBogotaStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(now);
+      var todayBogotaStr = getBogotaDateStr(now);
       return db.collection('vouchers').where('status', '==', 'active').get().then(function(snap) {
         if (snap.empty) return;
         var batch = db.batch();
         var count = 0;
         snap.forEach(function(doc) {
           var v = doc.data();
-          var actDate = v.activated_at ? v.activated_at.slice(0, 10) : '';
+          var actDate = v.activated_at ? getBogotaDateStr(new Date(v.activated_at)) : '';
           if ((v.expires_at && v.expires_at <= nowIso) || (actDate && actDate < todayBogotaStr)) {
             batch.update(doc.ref, {
               status:        'expired',

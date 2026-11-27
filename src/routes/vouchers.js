@@ -113,7 +113,12 @@ router.get('/', authRequired, (req, res) => {
   const conditions = [];
   const params     = [];
 
-  if (status)   { conditions.push('v.status = ?');         params.push(status); }
+  if (status === 'used_group') {
+    conditions.push("v.status IN ('active', 'sold', 'expired')");
+  } else if (status) {
+    conditions.push('v.status = ?');
+    params.push(status);
+  }
   if (plan_id)  { conditions.push('v.plan_id = ?');        params.push(plan_id); }
   if (batch_id) { conditions.push('v.batch_id = ?');       params.push(batch_id); }
   if (q)        { conditions.push('v.code LIKE ?');        params.push(`%${String(q).toUpperCase()}%`); }

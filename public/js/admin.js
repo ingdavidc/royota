@@ -202,8 +202,11 @@ function apiFetch(method, url, body) {
       return window.firebaseDb.sellVoucher(body.voucher_id, body.payment_method, body.buyer_note);
     }
     if (url.startsWith('/api/vouchers/revoke/') && method === 'POST') {
-      var revCode = url.split('/api/vouchers/revoke/')[1];
-      return window.firebaseDb.revokeVoucher(revCode);
+      var revCode = decodeURIComponent(url.split('/api/vouchers/revoke/')[1]);
+      return window.firebaseDb.revokeVoucher(revCode).then(function(res) {
+        httpApiFetch('POST', '/api/vouchers/revoke/' + encodeURIComponent(revCode), {}).catch(function(){});
+        return res || { message: 'Ficha revocada' };
+      });
     }
   }
 
@@ -286,9 +289,239 @@ function activateSection(name) {
 }
 
 /* ══════════════════════════════════════════════════════════
-   DASHBOARD
+   DASHBOARD & MONITOR EN TIEMPO REAL
 ══════════════════════════════════════════════════════════ */
+var _liveUsedVouchers = null; // null = aún no ha llegado primer snapshot
+var _liveUsedCounts   = { active: 0, sold: 0, expired: 0 };
+var _liveVoucherFilter = 'used_group';
+var _realtimeStarted  = false;
+var _countdownTickId  = null;
+var _availRefreshTimer = null;
+
+var STATUS_LABELS_MAP = {
+  active:    '🟢 En uso',
+  sold:      '🟡 Vendida',
+  expired:   '⚫ Expirada',
+  available: 'Disponible',
+  revoked:   'Revocada',
+};
+
+function formatPaymentSource(v) {
+  var pm = String((v && v.payment_method) || '').toLowerCase();
+  if (pm.indexOf('wompi') === 0) {
+    if (pm.indexOf('qr') !== -1) return '💳 Wompi QR';
+    if (pm.indexOf('nequi') !== -1) return '💳 Wompi Nequi';
+    if (pm.indexOf('pse') !== -1) return '💳 Wompi PSE';
+    if (pm.indexOf('sandbox') !== -1) return '🧪 Wompi Pruebas';
+    return '💳 Wompi';
+  }
+  if (pm === 'whatsapp_bot' || pm === 'daviplata' || pm === 'breb') return '🤖 Bot WhatsApp';
+  if (pm === 'activacion_portal') return '🌐 Portal';
+  if (pm === 'efectivo' || pm === 'cash') return '💵 Efectivo';
+  if (v && (v.pool_type === 'bot_pool' || String(v.code || '').indexOf('WSP-') === 0)) return '🤖 Bot / En línea';
+  return '💵 Caseta / Lote';
+}
+
+function formatRemainingText(expiresIso) {
+  if (!expiresIso) return '—';
+  var diffSec = Math.floor((new Date(expiresIso).getTime() - Date.now()) / 1000);
+  if (isNaN(diffSec)) return '—';
+  if (diffSec <= 0) return 'Expirando…';
+  var h = Math.floor(diffSec / 3600);
+  var m = Math.floor((diffSec % 3600) / 60);
+  var s = diffSec % 60;
+  if (h > 0) return '⏱ ' + h + 'h ' + ('0' + m).slice(-2) + 'm ' + ('0' + s).slice(-2) + 's';
+  return '⏱ ' + m + 'm ' + ('0' + s).slice(-2) + 's';
+}
+
+function updateLiveCountdowns() {
+  var els = document.querySelectorAll('.live-countdown[data-expires-at]');
+  for (var i = 0; i < els.length; i++) {
+    var sec = els[i].closest('.sec');
+    if (sec && sec.hidden) continue;
+    var iso = els[i].getAttribute('data-expires-at');
+    els[i].textContent = formatRemainingText(iso);
+  }
+}
+
+function renderVoucherRowsInto(tbody, list, emptyMsg) {
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  if (!list || !list.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="color:var(--muted);text-align:center;padding:18px;">' + escapeHtml(emptyMsg || 'Sin códigos vendidos, en uso o expirados') + '</td></tr>';
+    return;
+  }
+
+  list.forEach(function(v) {
+    var tr = tbody.insertRow();
+
+    var cTd = tr.insertCell();
+    cTd.className = 'code-mono';
+    var codeStrong = document.createElement('strong');
+    codeStrong.textContent = v.code || '';
+    cTd.appendChild(codeStrong);
+    var macAddr = v.active_mac || v.mac_address || '';
+    if (macAddr) {
+      var macSub = document.createElement('div');
+      macSub.style.cssText = 'font-size:10.5px; color:#8ba3b8; font-weight:normal; margin-top:2px;';
+      macSub.textContent = macAddr;
+      cTd.appendChild(macSub);
+    }
+
+    td(tr, v.plan_name || '—');
+
+    var sTd = tr.insertCell();
+    var stText = STATUS_LABELS_MAP[v.status] || v.status;
+    sTd.appendChild(el('span', { className: 'badge badge-' + v.status }, stText));
+
+    var pTd = tr.insertCell();
+    pTd.style.fontSize = '12.5px';
+    pTd.textContent = formatPaymentSource(v);
+    if (v.customer_phone) {
+      var phSub = document.createElement('div');
+      phSub.style.cssText = 'font-size:10.5px; color:#8ba3b8; margin-top:2px;';
+      phSub.textContent = String(v.customer_phone);
+      pTd.appendChild(phSub);
+    }
+
+    td(tr, fmtDate(v.activated_at || v.sold_at || v.created_at));
+
+    var expTd = tr.insertCell();
+    if (v.status === 'active' && v.expires_at) {
+      var spanCd = document.createElement('span');
+      spanCd.className = 'live-countdown';
+      spanCd.setAttribute('data-expires-at', v.expires_at);
+      spanCd.style.cssText = 'color:#00e676; font-weight:700; font-family:monospace; font-size:12.5px;';
+      spanCd.textContent = formatRemainingText(v.expires_at);
+      expTd.appendChild(spanCd);
+      var expSub = document.createElement('div');
+      expSub.style.cssText = 'font-size:10.5px; color:#8ba3b8;';
+      expSub.textContent = 'Hasta ' + fmtDate(v.expires_at);
+      expTd.appendChild(expSub);
+    } else if (v.expires_at || v.expired_at) {
+      expTd.textContent = fmtDate(v.expires_at || v.expired_at);
+    } else {
+      expTd.textContent = 'Sin activar';
+    }
+
+    var acts = tr.insertCell();
+    if (v.status === 'available') {
+      var bSell = el('button', { className: 'btn btn-sm btn-success' }, 'Vender');
+      bSell.addEventListener('click', function() { sellVoucher(v.id || v.code, v.code); });
+      acts.appendChild(bSell);
+    }
+    if (v.status === 'active' || v.status === 'sold') {
+      var bRev = el('button', { className: 'btn btn-sm btn-danger', style: 'margin-left:4px' }, 'Revocar');
+      bRev.addEventListener('click', function() { revokeVoucher(v.id || v.code, v.code); });
+      acts.appendChild(bRev);
+    }
+    if (v.status === 'expired' || v.status === 'revoked') {
+      acts.textContent = '—';
+    }
+  });
+}
+
+function renderTopPlansTable(topPlans) {
+  var tb = document.getElementById('topPlansBody');
+  if (!tb) return;
+  tb.innerHTML = '';
+  if (!topPlans || !topPlans.length) {
+    tb.innerHTML = '<tr><td colspan="3" style="color:var(--muted);text-align:center">Sin ventas este mes</td></tr>';
+    return;
+  }
+  topPlans.forEach(function(p) {
+    var tr = tb.insertRow();
+    tr.insertCell().textContent = p.name;
+    tr.insertCell().textContent = p.sales_count;
+    tr.insertCell().textContent = fmtMoney(p.revenue);
+  });
+}
+
+window.setLiveVoucherFilter = function(filterVal) {
+  _liveVoucherFilter = filterVal || 'used_group';
+  document.querySelectorAll('.live-tab-btn').forEach(function(b) {
+    var active = b.getAttribute('data-live-filter') === _liveVoucherFilter;
+    b.classList.toggle('btn-primary', active);
+    b.classList.toggle('btn-ghost', !active);
+  });
+  renderLiveVouchersMonitor();
+};
+
+function renderLiveVouchersMonitor() {
+  var tbody = document.getElementById('liveVouchersBody');
+  if (!tbody || _liveUsedVouchers === null) return;
+
+  var filtered = _liveUsedVouchers;
+  if (_liveVoucherFilter !== 'used_group') {
+    filtered = _liveUsedVouchers.filter(function(v) { return v.status === _liveVoucherFilter; });
+  }
+
+  var emptyMap = {
+    used_group: 'Aún no hay códigos vendidos, en uso o expirados',
+    active:     'No hay códigos utilizándose en este momento',
+    sold:       'No hay códigos vendidos pendientes por activar',
+    expired:    'No hay códigos expirados registrados',
+  };
+  renderVoucherRowsInto(tbody, filtered.slice(0, 60), emptyMap[_liveVoucherFilter]);
+}
+
+function startAdminRealtimeListeners() {
+  if (_realtimeStarted || !window.firebaseDb) return;
+  _realtimeStarted = true;
+
+  if (!_countdownTickId) {
+    _countdownTickId = setInterval(updateLiveCountdowns, 1000);
+  }
+
+  if (window.firebaseDb.onUsedVouchersChange) {
+    window.firebaseDb.onUsedVouchersChange(function(payload) {
+      var hadPrevious = (_liveUsedVouchers !== null);
+      _liveUsedVouchers = payload.list || [];
+      _liveUsedCounts   = payload.counts || { active: 0, sold: 0, expired: 0 };
+
+      setText('st-sold',    _liveUsedCounts.sold);
+      setText('st-active',  _liveUsedCounts.active);
+      setText('st-expired', _liveUsedCounts.expired);
+
+      var totalUsed = _liveUsedCounts.active + _liveUsedCounts.sold + _liveUsedCounts.expired;
+      setText('lt-all',     totalUsed);
+      setText('lt-active',  _liveUsedCounts.active);
+      setText('lt-sold',    _liveUsedCounts.sold);
+      setText('lt-expired', _liveUsedCounts.expired);
+
+      renderLiveVouchersMonitor();
+
+      // Actualizar también pestaña Fichas si está abierta con filtro en tiempo real
+      var secV = document.getElementById('sec-vouchers');
+      var stSel = document.getElementById('fStatus');
+      if (secV && !secV.hidden && stSel && ['used_group', 'active', 'sold', 'expired'].indexOf(stSel.value) !== -1) {
+        loadVouchers(_vPage);
+      }
+
+      // Refrescar disponibles sin saturar lecturas si hubo cambio posterior al arranque
+      if (hadPrevious) {
+        clearTimeout(_availRefreshTimer);
+        _availRefreshTimer = setTimeout(function() {
+          apiFetch('GET', '/api/vouchers/stats').then(function(s) {
+            if (s && s.vouchers) setText('st-available', s.vouchers.available);
+          }).catch(function(){});
+        }, 3000);
+      }
+    });
+  }
+
+  if (window.firebaseDb.onSalesChange) {
+    window.firebaseDb.onSalesChange(function(metrics) {
+      if (!metrics) return;
+      setText('st-today', fmtMoney(metrics.revenue && metrics.revenue.today));
+      setText('st-month', fmtMoney(metrics.revenue && metrics.revenue.month));
+      renderTopPlansTable(metrics.top_plans || []);
+    });
+  }
+}
+
 function loadDashboard() {
+  startAdminRealtimeListeners();
   apiFetch('GET', '/api/vouchers/stats').then(function(s) {
     setText('st-available', s.vouchers.available);
     setText('st-sold',      s.vouchers.sold);
@@ -296,19 +529,7 @@ function loadDashboard() {
     setText('st-expired',   s.vouchers.expired);
     setText('st-today',     fmtMoney(s.revenue.today));
     setText('st-month',     fmtMoney(s.revenue.month));
-
-    var tb = document.getElementById('topPlansBody');
-    tb.innerHTML = '';
-    if (!s.top_plans || !s.top_plans.length) {
-      tb.innerHTML = '<tr><td colspan="3" style="color:var(--muted);text-align:center">Sin ventas este mes</td></tr>';
-      return;
-    }
-    s.top_plans.forEach(function(p) {
-      var tr = tb.insertRow();
-      tr.insertCell().textContent = p.name;
-      tr.insertCell().textContent = p.sales_count;
-      tr.insertCell().textContent = fmtMoney(p.revenue);
-    });
+    renderTopPlansTable(s.top_plans);
   }).catch(function(e) { toast(e.error || 'Error cargando stats', 'error'); });
 }
 
@@ -611,59 +832,63 @@ function loadBatches() {
 var _vPage = 1;
 var _searchTimer;
 
+function renderVoucherListResult(r) {
+  var tbody = document.getElementById('vouchersBody');
+  renderVoucherRowsInto(tbody, (r && r.vouchers) || [], 'Sin fichas para los filtros seleccionados');
+
+  var pager = document.getElementById('voucherPager');
+  if (!pager) return;
+  pager.innerHTML = '';
+  var totalPages = Math.max(1, (r && r.pages) ? r.pages : 1);
+  if (totalPages <= 1) return;
+  for (var i = 1; i <= Math.min(totalPages, 10); i++) {
+    var pb = el('button', { className:'pager-btn' + (i===_vPage?' current':'') }, i);
+    (function(pg) {
+      pb.addEventListener('click', function() { loadVouchers(pg); });
+    }(i));
+    pager.appendChild(pb);
+  }
+}
+
 function loadVouchers(page) {
+  startAdminRealtimeListeners();
   _vPage = page || 1;
   var status  = document.getElementById('fStatus').value;
   var planId  = document.getElementById('fPlan').value;
   var q       = document.getElementById('fSearch').value.trim().toUpperCase();
+
+  // Usar caché en tiempo real cuando filtramos Vendidas/En uso/Expiradas (0 lecturas extra)
+  if (_liveUsedVouchers !== null && ['used_group', 'active', 'sold', 'expired'].indexOf(status) !== -1) {
+    var filtered = _liveUsedVouchers.filter(function(v) {
+      if (status !== 'used_group' && v.status !== status) return false;
+      if (planId && String(v.plan_id) !== String(planId)) return false;
+      if (q) {
+        var inCode = v.code && v.code.indexOf(q) !== -1;
+        var inPlan = v.plan_name && v.plan_name.toUpperCase().indexOf(q) !== -1;
+        var inPhone = v.customer_phone && String(v.customer_phone).indexOf(q) !== -1;
+        if (!inCode && !inPlan && !inPhone) return false;
+      }
+      return true;
+    });
+    var limit = 30;
+    var pages = Math.max(1, Math.ceil(filtered.length / limit));
+    if (_vPage > pages) _vPage = pages;
+    var start = (_vPage - 1) * limit;
+    renderVoucherListResult({
+      vouchers: filtered.slice(start, start + limit),
+      total:    filtered.length,
+      pages:    pages,
+      page:     _vPage,
+    });
+    return;
+  }
+
   var url     = '/api/vouchers?page=' + _vPage + '&limit=30';
-  if (status) url += '&status=' + status;
-  if (planId) url += '&plan_id=' + planId;
+  if (status) url += '&status=' + encodeURIComponent(status);
+  if (planId) url += '&plan_id=' + encodeURIComponent(planId);
   if (q)      url += '&q=' + encodeURIComponent(q);
 
-  apiFetch('GET', url).then(function(r) {
-    var tbody = document.getElementById('vouchersBody');
-    tbody.innerHTML = '';
-
-    if (!r.vouchers.length) {
-      tbody.innerHTML = '<tr><td colspan="6" style="color:var(--muted);text-align:center">Sin resultados</td></tr>';
-    } else {
-      r.vouchers.forEach(function(v) {
-        var tr = tbody.insertRow();
-        var cTd = tr.insertCell();
-        cTd.className   = 'code-mono';
-        cTd.textContent = v.code;
-        td(tr, v.plan_name);
-        var sTd = tr.insertCell();
-        var badge = el('span', { className: 'badge badge-' + v.status }, v.status);
-        sTd.appendChild(badge);
-        td(tr, fmtDate(v.created_at));
-        td(tr, v.expires_at ? fmtDate(v.expires_at) : '—');
-        var acts = tr.insertCell();
-        if (v.status === 'available') {
-          var bSell = el('button', { className:'btn btn-sm btn-success' }, 'Vender');
-          bSell.addEventListener('click', function() { sellVoucher(v.id, v.code); });
-          acts.appendChild(bSell);
-        }
-        if (v.status === 'active' || v.status === 'sold') {
-          var bRev = el('button', { className:'btn btn-sm btn-danger', style:'margin-left:6px' }, 'Revocar');
-          bRev.addEventListener('click', function() { revokeVoucher(v.id, v.code); });
-          acts.appendChild(bRev);
-        }
-      });
-    }
-
-    /* Paginador */
-    var pager = document.getElementById('voucherPager');
-    pager.innerHTML = '';
-    for (var i = 1; i <= Math.min(r.pages, 10); i++) {
-      var pb = el('button', { className:'pager-btn' + (i===_vPage?' current':'') }, i);
-      (function(pg) {
-        pb.addEventListener('click', function() { loadVouchers(pg); });
-      }(i));
-      pager.appendChild(pb);
-    }
-  }).catch(function(e) { toast(e.error || 'Error', 'error'); });
+  apiFetch('GET', url).then(renderVoucherListResult).catch(function(e) { toast(e.error || 'Error', 'error'); });
 }
 
 function debounceSearch() {
