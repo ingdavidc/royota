@@ -411,6 +411,7 @@ router.post('/sync/plan-sync', authRequired, async (req, res) => {
 const AUDIT_FILE_SPEC = [
   { key: 'bridge_export', file: 'raud_bridge.rsc',  cmd: '/interface bridge export file="raud_bridge"' },
   { key: 'bridge_ports',  file: 'raud_bport.txt',   cmd: '/interface bridge port print detail without-paging file="raud_bport"' },
+  { key: 'if_list',       file: 'raud_iflist.txt',  cmd: '/interface list member print without-paging file="raud_iflist"' },
   { key: 'ip_address',    file: 'raud_addr.rsc',    cmd: '/ip address export file="raud_addr"' },
   { key: 'ip_dhcp',       file: 'raud_dhcp.rsc',    cmd: '/ip dhcp-server export file="raud_dhcp"' },
   { key: 'hotspot_srv',   file: 'raud_hs.txt',      cmd: '/ip hotspot print detail without-paging file="raud_hs"' },
@@ -418,8 +419,6 @@ const AUDIT_FILE_SPEC = [
   { key: 'hs_user_prof',  file: 'raud_hsuprof.txt', cmd: '/ip hotspot user profile print without-paging file="raud_hsuprof"' },
   { key: 'hs_active',     file: 'raud_hsact.txt',   cmd: '/ip hotspot active print detail without-paging file="raud_hsact"' },
   { key: 'hs_hosts',      file: 'raud_hshost.txt',  cmd: '/ip hotspot host print without-paging file="raud_hshost"' },
-  { key: 'hs_users',      file: 'raud_hsu.txt',     cmd: '/ip hotspot user print terse without-paging file="raud_hsu"' },
-  { key: 'hs_user_bk',    file: 'raud_hsubk.txt',   cmd: '/ip hotspot user print detail without-paging where name="BK535P" file="raud_hsubk"' },
   { key: 'ip_bindings',   file: 'raud_bind.txt',    cmd: '/ip hotspot ip-binding print detail without-paging file="raud_bind"' },
   { key: 'walled_garden', file: 'raud_wg.txt',      cmd: '/ip hotspot walled-garden print without-paging file="raud_wg"' },
   { key: 'walled_ip',     file: 'raud_wgip.txt',    cmd: '/ip hotspot walled-garden ip print without-paging file="raud_wgip"' },
@@ -431,7 +430,6 @@ const AUDIT_FILE_SPEC = [
   { key: 'ip_pool',       file: 'raud_pool.txt',    cmd: '/ip pool print detail without-paging file="raud_pool"' },
   { key: 'ipv6_settings', file: 'raud_ipv6.txt',    cmd: '/ipv6 settings print file="raud_ipv6"' },
   { key: 'scheduler',     file: 'raud_sched.txt',   cmd: '/system scheduler print detail without-paging file="raud_sched"' },
-  { key: 'router_log',    file: 'raud_log.txt',     cmd: '/log print without-paging where topics~"hotspot|error" file="raud_log"' },
 ];
 
 function buildOneShotAuditRsc(token) {
@@ -455,6 +453,114 @@ function buildOneShotAuditRsc(token) {
   lines.push('      :do { /file remove $f } on-error={}');
   lines.push('    }');
   lines.push('  }');
+  // Consultas compactas (< 3.5 KB) enviadas directo sin pasar por /file get contents
+  lines.push('  :do {');
+  lines.push('    :local bkid [/ip hotspot user find name="BK535P"]');
+  lines.push('    :local bkn [:len $bkid]');
+  lines.push('    :local tot [:len [/ip hotspot user find]]');
+  lines.push('    :local cas [:len [/ip hotspot user find comment~"Caseta"]]');
+  lines.push('    :local p5b [:len [/ip hotspot user find profile="5 Horas Basico"]]');
+  lines.push('    :local cks [/ip hotspot cookie find]');
+  lines.push('    :local dhl [:len [/ip dhcp-server lease find]]');
+  lines.push('    :local out ("USERS_TOTAL=" . $tot . " CASETA_CMT=" . $cas . " PROF_5HB=" . $p5b . " BK535P_MATCHES=" . $bkn . " COOKIES=" . [:len $cks] . " DHCP_LEASES=" . $dhl . "\\n")');
+  lines.push('    :if ($bkn > 0) do={');
+  lines.push('      :local bid ($bkid->0)');
+  lines.push('      :local bp ""; :do { :set bp [/ip hotspot user get $bid profile] } on-error={}');
+  lines.push('      :local bu ""; :do { :set bu [/ip hotspot user get $bid uptime] } on-error={}');
+  lines.push('      :local bl ""; :do { :set bl [/ip hotspot user get $bid limit-uptime] } on-error={}');
+  lines.push('      :local bd ""; :do { :set bd [/ip hotspot user get $bid disabled] } on-error={}');
+  lines.push('      :local bc ""; :do { :set bc [/ip hotspot user get $bid comment] } on-error={}');
+  lines.push('      :local pw ""; :do { :set pw [/ip hotspot user get $bid password] } on-error={}');
+  lines.push('      :local bi ""; :do { :set bi [/ip hotspot user get $bid bytes-in] } on-error={}');
+  lines.push('      :local bo ""; :do { :set bo [/ip hotspot user get $bid bytes-out] } on-error={}');
+  lines.push('      :set out ($out . "BK535P: profile=" . $bp . " uptime=" . $bu . " limit=" . $bl . " in=" . $bi . " out=" . $bo . " disabled=" . $bd . " pwdMatch=" . ($pw = "BK535P") . " comment=" . $bc . "\\n")');
+  lines.push('    }');
+  lines.push('    :if ([:len $cks] > 0) do={');
+  lines.push('      :local ckmax ([:len $cks] - 1)');
+  lines.push('      :if ($ckmax > 19) do={ :set ckmax 19 }');
+  lines.push('      :for i from=0 to=$ckmax do={');
+  lines.push('        :local cid ($cks->$i)');
+  lines.push('        :local cu ""; :do { :set cu [/ip hotspot cookie get $cid user] } on-error={}');
+  lines.push('        :local cm ""; :do { :set cm [/ip hotspot cookie get $cid mac-address] } on-error={}');
+  lines.push('        :local ce ""; :do { :set ce [/ip hotspot cookie get $cid expires-in] } on-error={}');
+  lines.push('        :set out ($out . "COOKIE[" . $i . "]: user=" . $cu . " mac=" . $cm . " exp=" . $ce . "\\n")');
+  lines.push('      }');
+  lines.push('    }');
+  lines.push(`    /tool fetch url="${baseUrl}/api/mikrotik/audit-upload?token=${token}&part=raud_hsubk.txt" http-method=post http-header-field="Content-Type: text/plain" http-data=$out check-certificate=no output=none`);
+  lines.push('  } on-error={}');
+
+  lines.push('  :do {');
+  lines.push('    :local allu [/ip hotspot user find]');
+  lines.push('    :local nu [:len $allu]');
+  lines.push('    :local nup [:len [/ip hotspot user find uptime>0s]]');
+  lines.push('    :local ndis [:len [/ip hotspot user find disabled=yes]]');
+  lines.push('    :local uout ("TOTAL=" . $nu . " USED=" . $nup . " DISABLED=" . $ndis . "\\n")');
+  lines.push('    :if ($nu > 0) do={');
+  lines.push('      :local limit $nu');
+  lines.push('      :if ($limit > 25) do={ :set limit 25 }');
+  lines.push('      :for i from=0 to=($limit - 1) do={');
+  lines.push('        :local uid ($allu->$i)');
+  lines.push('        :local un ""; :do { :set un [/ip hotspot user get $uid name] } on-error={}');
+  lines.push('        :local up ""; :do { :set up [/ip hotspot user get $uid profile] } on-error={}');
+  lines.push('        :local uu ""; :do { :set uu [/ip hotspot user get $uid uptime] } on-error={}');
+  lines.push('        :local ul ""; :do { :set ul [/ip hotspot user get $uid limit-uptime] } on-error={}');
+  lines.push('        :local ud ""; :do { :set ud [/ip hotspot user get $uid disabled] } on-error={}');
+  lines.push('        :local uc ""; :do { :set uc [/ip hotspot user get $uid comment] } on-error={}');
+  lines.push('        :local row ($i . ": " . $un . " [" . $up . "] up=" . $uu . " lim=" . $ul . " dis=" . $ud . " " . $uc . "\\n")');
+  lines.push('        :if (([:len $uout] + [:len $row]) < 3300) do={ :set uout ($uout . $row) }');
+  lines.push('      }');
+  lines.push('      :if ($nu > 25) do={');
+  lines.push('        :local tstart ($nu - 10)');
+  lines.push('        :if ($tstart < 25) do={ :set tstart 25 }');
+  lines.push('        :set uout ($uout . "--- TAIL ---\\n")');
+  lines.push('        :for i from=$tstart to=($nu - 1) do={');
+  lines.push('          :local uid ($allu->$i)');
+  lines.push('          :local un ""; :do { :set un [/ip hotspot user get $uid name] } on-error={}');
+  lines.push('          :local up ""; :do { :set up [/ip hotspot user get $uid profile] } on-error={}');
+  lines.push('          :local uu ""; :do { :set uu [/ip hotspot user get $uid uptime] } on-error={}');
+  lines.push('          :local ul ""; :do { :set ul [/ip hotspot user get $uid limit-uptime] } on-error={}');
+  lines.push('          :local uc ""; :do { :set uc [/ip hotspot user get $uid comment] } on-error={}');
+  lines.push('          :local row ($i . ": " . $un . " [" . $up . "] up=" . $uu . " lim=" . $ul . " " . $uc . "\\n")');
+  lines.push('          :if (([:len $uout] + [:len $row]) < 3600) do={ :set uout ($uout . $row) }');
+  lines.push('        }');
+  lines.push('      }');
+  lines.push('    }');
+  lines.push(`    /tool fetch url="${baseUrl}/api/mikrotik/audit-upload?token=${token}&part=raud_hsu.txt" http-method=post http-header-field="Content-Type: text/plain" http-data=$uout check-certificate=no output=none`);
+  lines.push('  } on-error={}');
+
+  lines.push('  :do {');
+  lines.push('    :local hslogs [/log find topics~"hotspot"]');
+  lines.push('    :local erlogs [/log find topics~"error"]');
+  lines.push('    :local nh [:len $hslogs]');
+  lines.push('    :local ne [:len $erlogs]');
+  lines.push('    :local lout ("LOG_TOTAL=" . [:len [/log find]] . " HS_LOGS=" . $nh . " ERR_LOGS=" . $ne . "\\n")');
+  lines.push('    :if ($nh > 0) do={');
+  lines.push('      :local start ($nh - 25)');
+  lines.push('      :if ($start < 0) do={ :set start 0 }');
+  lines.push('      :for i from=$start to=($nh - 1) do={');
+  lines.push('        :local lid ($hslogs->$i)');
+  lines.push('        :local lt ""; :do { :set lt [/log get $lid time] } on-error={}');
+  lines.push('        :local ltp ""; :do { :set ltp [:tostr [/log get $lid topics]] } on-error={}');
+  lines.push('        :local lm ""; :do { :set lm [/log get $lid message] } on-error={}');
+  lines.push('        :local row ($lt . " [" . $ltp . "] " . $lm . "\\n")');
+  lines.push('        :if (([:len $lout] + [:len $row]) < 2600) do={ :set lout ($lout . $row) }');
+  lines.push('      }');
+  lines.push('    }');
+  lines.push('    :if ($ne > 0) do={');
+  lines.push('      :set lout ($lout . "--- ERRORS ---\\n")');
+  lines.push('      :local start ($ne - 12)');
+  lines.push('      :if ($start < 0) do={ :set start 0 }');
+  lines.push('      :for i from=$start to=($ne - 1) do={');
+  lines.push('        :local lid ($erlogs->$i)');
+  lines.push('        :local lt ""; :do { :set lt [/log get $lid time] } on-error={}');
+  lines.push('        :local lm ""; :do { :set lm [/log get $lid message] } on-error={}');
+  lines.push('        :local row ($lt . " [ERR] " . $lm . "\\n")');
+  lines.push('        :if (([:len $lout] + [:len $row]) < 3600) do={ :set lout ($lout . $row) }');
+  lines.push('      }');
+  lines.push('    }');
+  lines.push(`    /tool fetch url="${baseUrl}/api/mikrotik/audit-upload?token=${token}&part=raud_log.txt" http-method=post http-header-field="Content-Type: text/plain" http-data=$lout check-certificate=no output=none`);
+  lines.push('  } on-error={}');
+
   lines.push('} on-error={}');
   return lines.join('\n') + '\n';
 }
