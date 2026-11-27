@@ -711,10 +711,12 @@ function buildOneShotRouterAlignRsc(token) {
     '# ROYOTA One-Shot Safe Router Alignment',
     ':do {',
     '  /ip hotspot user profile',
-    '  :if ([:len [find name="royota-pay"]] = 0) do={ add name="royota-pay" rate-limit="1M/1M" shared-users=1 keepalive-timeout=2m status-autorefresh=1m transparent-proxy=no } else={ set [find name="royota-pay"] rate-limit="1M/1M" shared-users=1 }',
-    '  :do { /ip hotspot profile set [find name="hsprof-royota"] login-by=cookie,http-chap,http-pap } on-error={}',
+    '  :if ([:len [find name="royota-pay"]] = 0) do={ add name="royota-pay" rate-limit="1M/1M" shared-users=1 keepalive-timeout=2m status-autorefresh=1m transparent-proxy=no } else={ set [find name="royota-pay"] rate-limit="1M/1M" shared-users=1 keepalive-timeout=2m }',
+    '  :do { /ip hotspot set [find name="hotspot1"] keepalive-timeout=none addresses-per-mac=2 } on-error={}',
+    '  :do { /ip hotspot profile set [find name="hsprof-royota"] login-by=cookie,http-chap,http-pap http-cookie-lifetime=1d } on-error={}',
+    '  :do { /ip dhcp-server set [find name="dhcp-hotspot"] lease-time=12h } on-error={}',
     '  :do { /system scheduler set [find name="cloud-sync-scheduler"] interval=5s } on-error={}',
-    '  :do { /system scheduler set [find name="reset-midnight-royota"] on-event=":do { /ip hotspot active remove [find] } on-error={}; :do { /ip hotspot user remove [find uptime>0s] } on-error={}; :do { /ip hotspot user remove [find comment~\\"Cortesia\\"] } on-error={}; :do { /ip hotspot user remove [find comment~\\"WA-\\"] } on-error={}; :do { /ip hotspot user remove [find comment~\\"PAYPOOL\\" and uptime>0s] } on-error={}; :log info \\"ROYOTA: Limpieza de medianoche completada.\\"" } on-error={}',
+    '  :do { /system scheduler set [find name="reset-midnight-royota"] on-event=":do { /ip hotspot active remove [find] } on-error={}; :do { /ip hotspot cookie remove [find] } on-error={}; :do { /ip hotspot user remove [find uptime>0s] } on-error={}; :do { /ip hotspot user remove [find comment~\\"Cortesia\\"] } on-error={}; :do { /ip hotspot user remove [find comment~\\"WA-\\"] } on-error={}; :do { /ip hotspot user remove [find comment~\\"PAYPOOL\\" and uptime>0s] } on-error={}; :log info \\"ROYOTA: Limpieza de medianoche completada.\\"" } on-error={}',
     '  :do { /ip hotspot walled-garden remove [find comment="Servidor en la Nube Render"] } on-error={}',
     '  :do { /ip hotspot walled-garden remove [find comment="Backend Render"] } on-error={}',
     '  :do { /ip hotspot walled-garden remove [find comment="Portal Web Oficial"] } on-error={}',
@@ -728,6 +730,21 @@ function buildOneShotRouterAlignRsc(token) {
   for (const w of wgHosts) {
     lines.push(`  :if ([:len [find dst-host="${w.host}"]] = 0) do={ add dst-host="${w.host}" action=allow comment="${w.comment}" }`);
   }
+
+  // Asegurar que las URLs de chequeo cautivo (Android/iOS/Windows) NO queden permitidas por *.gstatic.com/*.googleapis.com
+  // para que si una sesión cae, el teléfono dispare auto-login por MAC cookie automáticamente al reconectar.
+  lines.push('  :local wgProbes {"connectivitycheck.gstatic.com";"connectivitycheck.android.com";"clients3.google.com";"captive.apple.com";"www.msftconnecttest.com"}');
+  lines.push('  :foreach ph in=$wgProbes do={ :do { remove [find dst-host=$ph] } on-error={} }');
+  lines.push('  :local wgStatic [find dynamic=no disabled=no]');
+  lines.push('  :local wgAnchor ""');
+  lines.push('  :if ([:len $wgStatic] > 0) do={ :set wgAnchor ($wgStatic->0) }');
+  lines.push('  :foreach ph in=$wgProbes do={');
+  lines.push('    :if ($wgAnchor != "") do={');
+  lines.push('      :do { add dst-host=$ph action=deny comment="Captive probe para auto-cookie y portal" place-before=$wgAnchor } on-error={}');
+  lines.push('    } else={');
+  lines.push('      :do { add dst-host=$ph action=deny comment="Captive probe para auto-cookie y portal" } on-error={}');
+  lines.push('    }');
+  lines.push('  }');
 
   lines.push(`  :do { /tool fetch url="${baseUrl}/api/mikrotik/sync/ack?token=${token}&align=1" check-certificate=no output=none } on-error={}`);
   lines.push('} on-error={}');
@@ -808,6 +825,13 @@ router.get('/sync/ack', async (req, res) => {
     if (opIds.length || voucherCodes.length || payPassCodes.length) {
       opIds.forEach((id) => _inFlightSync.queue.delete(id));
       await ackMikrotikOps({ opIds, voucherCodes, payPassCodes, db });
+    }
+    if (req.query.align === '1') {
+      db.prepare(`
+        INSERT INTO sync_log (action, voucher_code, status, response, duration_ms)
+        VALUES ('align', 'ROUTER', 'success', 'Alineación Hotspot/DHCP/WalledGarden aplicada', 0)
+      `).run();
+      console.log('[Cloud-Sync ACK] ✅ Router alineado (align=1).');
     }
   } catch (err) {
     console.error('[Cloud-Sync ACK] Error:', err.message);
@@ -903,7 +927,7 @@ router.get('/sync/vouchers.rsc', async (req, res) => {
         if (!effName || seenProfiles.has(effName) || !REGEX_PROFILE.test(effName) || !REGEX_SPEED.test(speed)) continue;
         seenProfiles.add(effName);
         const shared = Math.min(20, Math.max(1, parseInt(p.shared_users, 10) || 1));
-        rscCommands += `:if ([:len [find name="${effName}"]] = 0) do={ add name="${effName}" rate-limit="${speed}" shared-users=${shared} keepalive-timeout=2m status-autorefresh=1m transparent-proxy=no } else={ set [find name="${effName}"] rate-limit="${speed}" shared-users=${shared} }\n`;
+        rscCommands += `:if ([:len [find name="${effName}"]] = 0) do={ add name="${effName}" rate-limit="${speed}" shared-users=${shared} idle-timeout=none keepalive-timeout=none status-autorefresh=1m add-mac-cookie=yes mac-cookie-timeout=3d transparent-proxy=no } else={ set [find name="${effName}"] rate-limit="${speed}" shared-users=${shared} idle-timeout=none keepalive-timeout=none status-autorefresh=1m add-mac-cookie=yes mac-cookie-timeout=3d transparent-proxy=no }\n`;
       }
       _profilesNeedSync = false;
     } catch (pErr) {
@@ -947,6 +971,7 @@ router.get('/sync/vouchers.rsc', async (req, res) => {
         const clean = String(op.code || '').trim().toUpperCase();
         if (!REGEX_CODE.test(clean)) continue;
         userRemoveLines.push(`:do { /ip hotspot active remove [find user="${clean}"] } on-error={}`);
+        userRemoveLines.push(`:do { /ip hotspot cookie remove [find user="${clean}"] } on-error={}`);
         userRemoveLines.push(`:do { /ip hotspot user remove [find name="${clean}"] } on-error={}`);
         ackQueueIds.push(op.op_id);
         markInFlight(_inFlightSync.queue, op.op_id);
