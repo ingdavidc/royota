@@ -186,8 +186,12 @@ router.get('/wompi/status/:reference', async (req, res) => {
       status: order.status, // PENDING | APPROVED | DECLINED | VOIDED | ERROR
       voucher_code: order.voucher_code || null,
       instant_ready: Boolean(order.instant_ready),
+      plan_id: order.plan_id || null,
       amount: order.amount,
       plan_name: order.plan_name,
+      payment_url: order.payment_url || null,
+      qr_data_url: order.qr_data_url || null,
+      mode: order.wompi_mode || 'production',
       paid_at: order.paid_at || null,
     });
   } catch (err) {

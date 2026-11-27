@@ -798,6 +798,12 @@
             <button type="button" id="btnWompiCortesia" style="width:100%; padding:9px 12px; background:rgba(0,229,255,0.1); border:1px solid rgba(0,229,255,0.3); color:#80e5ff; border-radius:9px; font-size:12px; font-weight:700; cursor:pointer;">
               ⏳ ¿Sin datos móviles? Activar 3 min gratis para pagar
             </button>
+
+            <!-- Aviso de estado para pase de 3 min (Wompi directo, sin redirigir a WhatsApp) -->
+            <div id="wompiCortesiaNotice" hidden style="padding:9px 11px; background:rgba(105,240,174,0.12); border:1px solid rgba(105,240,174,0.4); border-radius:9px; font-size:12px; color:#b9f6ca; line-height:1.4; text-align:left;">
+              <strong id="wompiCortesiaNoticeTitle">⚡ ¡3 minutos gratis activos!</strong>
+              <span id="wompiCortesiaNoticeText"> Ya tienes conexión para pagar con Nequi, Bancolombia o PSE arriba.</span>
+            </div>
           </div>
 
           <!-- Indicador de Espera en Vivo -->
@@ -952,6 +958,7 @@
        INTEGRACIÓN OFICIAL WOMPI — QR DINÁMICO & NEQUI
        ══════════════════════════════════════════════════════════════ */
     var _wompiPollTimer = null;
+    var _wompiCortesiaTimer = null;
     var _currentOrderRef = null;
     var _selectedWompiPlan = null;
     var _wompiOrderReqId = 0;
@@ -966,8 +973,131 @@
     function closeWompiModal() {
       _wompiOrderReqId++;
       stopWompiPolling();
+      if (_wompiCortesiaTimer) {
+        clearInterval(_wompiCortesiaTimer);
+        _wompiCortesiaTimer = null;
+      }
       var m = document.getElementById('wompiModal');
       if (m) m.setAttribute('hidden', '');
+    }
+
+    function startWompiCortesiaCountdown(expiresAtIso) {
+      var notice = document.getElementById('wompiCortesiaNotice');
+      var titleEl = document.getElementById('wompiCortesiaNoticeTitle');
+      var textEl = document.getElementById('wompiCortesiaNoticeText');
+      var btnC = document.getElementById('btnWompiCortesia');
+      if (btnC) btnC.setAttribute('hidden', '');
+      if (!notice) return;
+      notice.removeAttribute('hidden');
+
+      var expMs = expiresAtIso ? new Date(expiresAtIso).getTime() : (Date.now() + 180000);
+      if (isNaN(expMs) || expMs <= Date.now()) expMs = Date.now() + 180000;
+
+      if (_wompiCortesiaTimer) clearInterval(_wompiCortesiaTimer);
+      function tick() {
+        var remSec = Math.max(0, Math.floor((expMs - Date.now()) / 1000));
+        var m = Math.floor(remSec / 60);
+        var s = remSec % 60;
+        var fmt = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+        if (titleEl) titleEl.textContent = '⚡ ¡Internet gratis activo (' + fmt + ')!';
+        if (textEl) textEl.textContent = ' Ya puedes tocar el botón azul de arriba para pagar con Nequi / Bancolombia / PSE.';
+        if (remSec <= 0) {
+          clearInterval(_wompiCortesiaTimer);
+          _wompiCortesiaTimer = null;
+          if (titleEl) titleEl.textContent = '⌛ Tiempo de cortesía finalizado.';
+          if (textEl) textEl.textContent = ' Si ya pagaste espera un instante o reintenta.';
+        }
+      }
+      tick();
+      _wompiCortesiaTimer = setInterval(tick, 1000);
+    }
+
+    function activateWompiCortesia3Min() {
+      var notice = document.getElementById('wompiCortesiaNotice');
+      var titleEl = document.getElementById('wompiCortesiaNoticeTitle');
+      var textEl = document.getElementById('wompiCortesiaNoticeText');
+      var btnC = document.getElementById('btnWompiCortesia');
+
+      // Si ya está fuera del hotspot (ya conectado a internet), NUNCA abrir WhatsApp ni simular cortesía
+      if (!hasRouterMac) {
+        if (notice) {
+          if (titleEl) titleEl.textContent = '✅ Ya cuentas con conexión a Internet activa.';
+          if (textEl) textEl.textContent = ' No necesitas pase temporal; toca el botón azul de arriba o escanea el QR para pagar.';
+          notice.removeAttribute('hidden');
+        }
+        return;
+      }
+
+      if (_trialInFlight) return;
+      _trialInFlight = true;
+      if (btnC) {
+        btnC.disabled = true;
+        btnC.textContent = '⏳ Habilitando 3 min gratis en el router...';
+      }
+
+      var xhrT = new XMLHttpRequest();
+      xhrT.open('POST', (window.API_BASE || '') + '/api/vouchers/trial/request', true);
+      xhrT.setRequestHeader('Content-Type', 'application/json');
+      xhrT.timeout = 9000;
+
+      function restoreWompiCortBtn(msgErr) {
+        _trialInFlight = false;
+        if (btnC) {
+          btnC.disabled = false;
+          btnC.textContent = '⏳ ¿Sin datos móviles? Activar 3 min gratis para pagar';
+        }
+        if (msgErr && notice) {
+          if (titleEl) titleEl.textContent = '⚠️ Aviso:';
+          if (textEl) textEl.textContent = ' ' + msgErr;
+          notice.removeAttribute('hidden');
+        }
+      }
+
+      xhrT.onerror = function() { restoreWompiCortBtn('Sin conexión con el servidor. Intenta nuevamente.'); };
+      xhrT.ontimeout = function() { restoreWompiCortBtn('Tiempo de espera agotado. Intenta nuevamente.'); };
+      xhrT.onreadystatechange = function() {
+        if (xhrT.readyState !== 4) return;
+        var data = {};
+        try { data = JSON.parse(xhrT.responseText); } catch (_) {}
+
+        if (xhrT.status === 200 && data && data.ok && data.code) {
+          _waTrialState.date      = getTodayColombia();
+          _waTrialState.attempts  = data.attempt || 1;
+          _waTrialState.blocked   = Boolean(data.blocked);
+          _waTrialState.unblocked = false;
+          saveLocalTrialState();
+          renderWaTrialUI();
+
+          // Redirigir al navegador externo regresando a ESTA MISMA orden Wompi
+          var refToKeep = _currentOrderRef || '';
+          var dstWompiUrl = 'https://royota.dctelematica.com/?modo=wompi_retorno' +
+            '&ref=' + encodeURIComponent(refToKeep) +
+            '&cortesia=1' +
+            '&exp=' + encodeURIComponent(data.expiresAt || '');
+
+          if (notice) {
+            if (titleEl) titleEl.textContent = '⚡ ¡3 minutos activándose!';
+            if (textEl) textEl.textContent = ' Conectando el WiFi para continuar tu pago en Wompi...';
+            notice.removeAttribute('hidden');
+          }
+
+          var waitBeforeSubmit = (!data.ready && data.retryWaitMs) ? Number(data.retryWaitMs) : 0;
+          setTimeout(function() {
+            restoreWompiCortBtn();
+            submitMikrotikPayPassLogin(data.code, data.password || data.code, dstWompiUrl);
+          }, waitBeforeSubmit);
+        } else if (xhrT.status === 403) {
+          _waTrialState.date      = getTodayColombia();
+          _waTrialState.attempts  = (data && data.attempts) ? data.attempts : 2;
+          _waTrialState.blocked   = true;
+          saveLocalTrialState();
+          renderWaTrialUI();
+          restoreWompiCortBtn((data && data.error) ? data.error : 'Pases temporales de 3 min agotados por hoy. Puedes pagar en casetas.');
+        } else {
+          restoreWompiCortBtn((data && data.error) ? data.error : 'No se pudo habilitar el pase temporal.');
+        }
+      };
+      xhrT.send(JSON.stringify({ mac: clientMac, ip: qsIp }));
     }
 
     function hideAllWompiViews() {
@@ -1127,6 +1257,10 @@
       if (priceElPlan) priceElPlan.textContent = priceStr;
 
       hideAllWompiViews();
+      var cortNotice = document.getElementById('wompiCortesiaNotice');
+      var cortBtn    = document.getElementById('btnWompiCortesia');
+      if (cortNotice) cortNotice.setAttribute('hidden', '');
+      if (cortBtn) cortBtn.removeAttribute('hidden');
       if (summaryEl) summaryEl.removeAttribute('hidden');
       if (loadingWrap) loadingWrap.removeAttribute('hidden');
       modal.removeAttribute('hidden');
@@ -1185,9 +1319,10 @@
       }));
     };
 
-    function startWompiStatusPolling(reference, txIdHint) {
+    function startWompiStatusPolling(reference, txIdHint, isReturnMode) {
       stopWompiPolling();
       var apiBase = window.API_BASE || 'https://royota-bot.onrender.com';
+      var restoredReturnView = false;
 
       function pollOnce() {
         var url = apiBase + '/api/payments/wompi/status/' + encodeURIComponent(reference);
@@ -1216,6 +1351,49 @@
                   errM.textContent = 'El pago fue rechazado o cancelado (' + data.status + '). Puedes reintentar, cambiar de plan o elegir otro medio de pago.';
                 }
                 if (errW) errW.removeAttribute('hidden');
+              } else if (isReturnMode && !restoredReturnView && data.status === 'PENDING' && data.payment_url) {
+                restoredReturnView = true;
+                _currentOrderRef = reference;
+                var sym = (_settings && _settings.currencySymbol) || '$';
+                var sumEl = document.getElementById('wompiPlanSummary');
+                var nEl = document.getElementById('wompiPlanName');
+                var mEl = document.getElementById('wompiPlanMeta');
+                var pEl = document.getElementById('wompiPlanPrice');
+                var ldEl = document.getElementById('wompiLoadingWrap');
+                var qWrap = document.getElementById('wompiQrWrap');
+                var qImg = document.getElementById('wompiQrImg');
+                var pMob = document.getElementById('btnWompiPayMobile');
+                var sBox = document.getElementById('wompiSandboxBox');
+
+                if (nEl) nEl.textContent = data.plan_name || 'Plan de Internet';
+                if (pEl) pEl.textContent = sym + Number(data.amount || 0).toLocaleString();
+                // Buscar duración/velocidad del plan en _cachedPlans si está disponible
+                var foundPlan = null;
+                for (var idx = 0; idx < _cachedPlans.length; idx++) {
+                  if (String(_cachedPlans[idx].id) === String(data.plan_id) || _cachedPlans[idx].name === data.plan_name) {
+                    foundPlan = _cachedPlans[idx];
+                    break;
+                  }
+                }
+                if (foundPlan) _selectedWompiPlan = foundPlan;
+                if (mEl) {
+                  mEl.textContent = foundPlan
+                    ? ('⏱ ' + (foundPlan.duration || '') + ' · ⚡ ' + (foundPlan.speed_limit || 'Alta velocidad'))
+                    : 'Pago en línea Wompi';
+                }
+                if (qImg && data.qr_data_url) qImg.src = data.qr_data_url;
+                if (pMob) pMob.href = data.payment_url;
+                if (sBox) {
+                  if (data.mode === 'sandbox') sBox.removeAttribute('hidden');
+                  else sBox.setAttribute('hidden', '');
+                }
+                if (ldEl) ldEl.setAttribute('hidden', '');
+                if (sumEl) sumEl.removeAttribute('hidden');
+                if (qWrap) qWrap.removeAttribute('hidden');
+
+                if (typeof getQueryParam === 'function' && getQueryParam('cortesia') === '1') {
+                  startWompiCortesiaCountdown(getQueryParam('exp'));
+                }
               }
             } catch (_) {}
           }
@@ -1223,7 +1401,7 @@
         xhr.send();
       }
 
-      if (txIdHint) {
+      if (txIdHint || isReturnMode) {
         pollOnce();
       }
       _wompiPollTimer = setInterval(pollOnce, 2500);
@@ -1728,7 +1906,7 @@
     var btnWCort = document.getElementById('btnWompiCortesia');
     if (btnWCort) {
       btnWCort.addEventListener('click', function() {
-        triggerPaymentTrialFlow('Activación cortesía para pago Wompi');
+        activateWompiCortesia3Min();
       });
     }
 
@@ -1753,7 +1931,7 @@
         hideAllWompiViews();
         if (wLoading) wLoading.removeAttribute('hidden');
         wModal.removeAttribute('hidden');
-        startWompiStatusPolling(qsRef, qsWompiTxId);
+        startWompiStatusPolling(qsRef, qsWompiTxId, true);
       }
     }
 
