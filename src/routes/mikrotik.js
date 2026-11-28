@@ -409,6 +409,14 @@ router.post('/sync/plan-sync', authRequired, async (req, res) => {
 
 // ── OPCIÓN A: COLECTOR AUTOMÁTICO DE AUDITORÍA MIKROTIK (SOLO LECTURA) ──
 const AUDIT_FILE_SPEC = [
+  { key: 'diag_01_resource',   file: 'raud_d01.txt',     cmd: '/system resource print file="raud_d01"' },
+  { key: 'diag_02_clock',      file: 'raud_d02.txt',     cmd: '/system clock print file="raud_d02"' },
+  { key: 'diag_03_hs_detail',  file: 'raud_d03.txt',     cmd: '/ip hotspot print detail without-paging file="raud_d03"' },
+  { key: 'diag_04_hs_prof',    file: 'raud_d04.txt',     cmd: '/ip hotspot profile print without-paging proplist=name,login-by,http-cookie-lifetime,ssl-certificate file="raud_d04"' },
+  { key: 'diag_05_uprof_det',  file: 'raud_d05.txt',     cmd: '/ip hotspot user profile print detail without-paging file="raud_d05"' },
+  { key: 'diag_06_scripts',    file: 'raud_d06.txt',     cmd: '/system script print without-paging proplist=name,policy,run-count file="raud_d06"' },
+  { key: 'diag_09_sched_full', file: 'raud_d09.txt',     cmd: '/system scheduler print without-paging proplist=name,interval,start-date,start-time,next-run,run-count,disabled,policy file="raud_d09"' },
+  { key: 'diag_17_ntp',        file: 'raud_d17.txt',     cmd: '/system ntp client print file="raud_d17"' },
   { key: 'cmd_1_hotspot',      file: 'raud_cmd1.txt',    cmd: '/ip hotspot print without-paging proplist=name,profile,keepalive-timeout,addresses-per-mac file="raud_cmd1"' },
   { key: 'cmd_2_hs_profile',   file: 'raud_cmd2.txt',    cmd: '/ip hotspot profile print without-paging proplist=name,login-by,http-cookie-lifetime file="raud_cmd2"' },
   { key: 'cmd_3_hs_uprofile',  file: 'raud_cmd3.txt',    cmd: '/ip hotspot user profile print without-paging proplist=name,shared-users,idle-timeout,keepalive-timeout,session-timeout,add-mac-cookie,mac-cookie-timeout file="raud_cmd3"' },
@@ -585,6 +593,85 @@ function buildOneShotAuditRsc(token) {
   lines.push('      :if ([:len $s2out] = 0) do={ :set s2out "(empty)" }');
   lines.push('    }');
   lines.push(`    /tool fetch url="${baseUrl}/api/mikrotik/audit-upload?token=${token}&part=raud_cmd6.txt" http-method=post http-header-field="Content-Type: text/plain" http-data=$s2out check-certificate=no output=none`);
+  lines.push('  } on-error={}');
+
+  lines.push('  :do {');
+  lines.push('    :local scids [/system script find where name="sync-cloud-vouchers"]');
+  lines.push('    :local scout "NOT_FOUND"');
+  lines.push('    :if ([:len $scids] > 0) do={');
+  lines.push('      :set scout [:tostr [/system script get ($scids->0) source]]');
+  lines.push('      :if ([:len $scout] = 0) do={ :set scout "(empty)" }');
+  lines.push('    }');
+  lines.push(`    /tool fetch url="${baseUrl}/api/mikrotik/audit-upload?token=${token}&part=raud_d07.txt" http-method=post http-header-field="Content-Type: text/plain" http-data=$scout check-certificate=no output=none`);
+  lines.push('  } on-error={}');
+
+  lines.push('  :do {');
+  lines.push('    :local rbids [/system script find where name="royota-hardening-rollback"]');
+  lines.push('    :local rbout "NOT_FOUND"');
+  lines.push('    :if ([:len $rbids] > 0) do={');
+  lines.push('      :set rbout [:tostr [/system script get ($rbids->0) source]]');
+  lines.push('      :if ([:len $rbout] = 0) do={ :set rbout "(empty)" }');
+  lines.push('    }');
+  lines.push(`    /tool fetch url="${baseUrl}/api/mikrotik/audit-upload?token=${token}&part=raud_d08.txt" http-method=post http-header-field="Content-Type: text/plain" http-data=$rbout check-certificate=no output=none`);
+  lines.push('  } on-error={}');
+
+  lines.push('  :do {');
+  lines.push('    :local c12 [:len [/ip hotspot user find]]');
+  lines.push('    :local c13 [:len [/ip hotspot user find where uptime>0s]]');
+  lines.push('    :local c14 [:len [/ip hotspot user find where uptime=0s]]');
+  lines.push('    :local c15 [:len [/ip hotspot active find]]');
+  lines.push('    :local c16 [:len [/ip hotspot cookie find]]');
+  lines.push('    :local cntOut ("12_TOTAL_FICHAS=" . $c12 . "\\n13_FICHAS_INICIADAS=" . $c13 . "\\n14_FICHAS_SIN_CONSUMO=" . $c14 . "\\n15_CLIENTES_ACTIVOS=" . $c15 . "\\n16_COOKIES=" . $c16 . "\\n")');
+  lines.push(`    /tool fetch url="${baseUrl}/api/mikrotik/audit-upload?token=${token}&part=raud_d12_16.txt" http-method=post http-header-field="Content-Type: text/plain" http-data=$cntOut check-certificate=no output=none`);
+  lines.push('  } on-error={}');
+
+  lines.push('  :do {');
+  lines.push('    :local pids [/ip hotspot user profile find]');
+  lines.push('    :local np [:len $pids]');
+  lines.push('    :local p1 ""');
+  lines.push('    :local p2 ""');
+  lines.push('    :if ($np > 0) do={');
+  lines.push('      :for i from=0 to=($np - 1) do={');
+  lines.push('        :local pid ($pids->$i)');
+  lines.push('        :local pnm ""; :do { :set pnm [:tostr [/ip hotspot user profile get $pid name]] } on-error={}');
+  lines.push('        :local pidl ""; :do { :set pidl [:tostr [/ip hotspot user profile get $pid idle-timeout]] } on-error={}');
+  lines.push('        :local pka ""; :do { :set pka [:tostr [/ip hotspot user profile get $pid keepalive-timeout]] } on-error={}');
+  lines.push('        :local pses ""; :do { :set pses [:tostr [/ip hotspot user profile get $pid session-timeout]] } on-error={}');
+  lines.push('        :local psar ""; :do { :set psar [:tostr [/ip hotspot user profile get $pid status-autorefresh]] } on-error={}');
+  lines.push('        :local psh ""; :do { :set psh [:tostr [/ip hotspot user profile get $pid shared-users]] } on-error={}');
+  lines.push('        :local pmc ""; :do { :set pmc [:tostr [/ip hotspot user profile get $pid add-mac-cookie]] } on-error={}');
+  lines.push('        :local pmct ""; :do { :set pmct [:tostr [/ip hotspot user profile get $pid mac-cookie-timeout]] } on-error={}');
+  lines.push('        :local prl ""; :do { :set prl [:tostr [/ip hotspot user profile get $pid rate-limit]] } on-error={}');
+  lines.push('        :local ptp ""; :do { :set ptp [:tostr [/ip hotspot user profile get $pid transparent-proxy]] } on-error={}');
+  lines.push('        :local pol ""; :do { :set pol [:tostr [/ip hotspot user profile get $pid on-login]] } on-error={}');
+  lines.push('        :local poo ""; :do { :set poo [:tostr [/ip hotspot user profile get $pid on-logout]] } on-error={}');
+  lines.push('        :local row ($i . " name=\\"" . $pnm . "\\" shared-users=" . $psh . " idle-timeout=" . $pidl . " keepalive-timeout=" . $pka . " session-timeout=" . $pses . " status-autorefresh=" . $psar . " add-mac-cookie=" . $pmc . " mac-cookie-timeout=" . $pmct . " rate-limit=\\"" . $prl . "\\" transparent-proxy=" . $ptp . " on-login=[" . $pol . "] on-logout=[" . $poo . "]\\n")');
+  lines.push('        :if ($i < 5) do={ :set p1 ($p1 . $row) } else={ :set p2 ($p2 . $row) }');
+  lines.push('      }');
+  lines.push('    }');
+  lines.push(`    :if ([:len $p1] > 0) do={ /tool fetch url="${baseUrl}/api/mikrotik/audit-upload?token=${token}&part=raud_d05a.txt" http-method=post http-header-field="Content-Type: text/plain" http-data=$p1 check-certificate=no output=none }`);
+  lines.push(`    :if ([:len $p2] > 0) do={ /tool fetch url="${baseUrl}/api/mikrotik/audit-upload?token=${token}&part=raud_d05b.txt" http-method=post http-header-field="Content-Type: text/plain" http-data=$p2 check-certificate=no output=none }`);
+  lines.push('  } on-error={}');
+
+  lines.push('  :do {');
+  lines.push('    :local erlogs [/log find where topics~"error"]');
+  lines.push('    :local ne [:len $erlogs]');
+  lines.push('    :local eout ("ERR_COUNT=" . $ne . "\\n")');
+  lines.push('    :if ($ne > 0) do={');
+  lines.push('      :local start ($ne - 35)');
+  lines.push('      :if ($start < 0) do={ :set start 0 }');
+  lines.push('      :for i from=$start to=($ne - 1) do={');
+  lines.push('        :local lid ($erlogs->$i)');
+  lines.push('        :local lt ""; :do { :set lt [/log get $lid time] } on-error={}');
+  lines.push('        :local ltp ""; :do { :set ltp [:tostr [/log get $lid topics]] } on-error={}');
+  lines.push('        :local lm ""; :do { :set lm [/log get $lid message] } on-error={}');
+  lines.push('        :local row ($lt . " [" . $ltp . "] " . $lm . "\\n")');
+  lines.push('        :if (([:len $eout] + [:len $row]) < 3500) do={ :set eout ($eout . $row) }');
+  lines.push('      }');
+  lines.push('    } else={');
+  lines.push('      :set eout "ERR_COUNT=0\\n"');
+  lines.push('    }');
+  lines.push(`    /tool fetch url="${baseUrl}/api/mikrotik/audit-upload?token=${token}&part=raud_d18.txt" http-method=post http-header-field="Content-Type: text/plain" http-data=$eout check-certificate=no output=none`);
   lines.push('  } on-error={}');
 
   lines.push('} on-error={}');
