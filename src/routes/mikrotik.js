@@ -674,6 +674,23 @@ function buildOneShotAuditRsc(token) {
   lines.push(`    /tool fetch url="${baseUrl}/api/mikrotik/audit-upload?token=${token}&part=raud_d18.txt" http-method=post http-header-field="Content-Type: text/plain" http-data=$eout check-certificate=no output=none`);
   lines.push('  } on-error={}');
 
+  lines.push('  :do {');
+  lines.push('    :local royTLS 0');
+  lines.push('    :local royStatus ""');
+  lines.push('    :local royData ""');
+  lines.push('    :do {');
+  lines.push('      :local royResult [/tool fetch url="https://royota-bot.onrender.com/api/health" check-certificate=yes output=user as-value]');
+  lines.push('      :set royStatus [:tostr ($royResult->"status")]');
+  lines.push('      :set royData [:tostr ($royResult->"data")]');
+  lines.push('      :if (($royResult->"status") = "finished") do={ :set royTLS 1 }');
+  lines.push('    } on-error={ :set royTLS 0 }');
+  lines.push('    :local royTLSNone 0');
+  lines.push('    :do { /tool fetch url="https://royota-bot.onrender.com/api/health" check-certificate=yes output=none; :set royTLSNone 1 } on-error={ :set royTLSNone 0 }');
+  lines.push('    :local certCnt [:len [/certificate find]]');
+  lines.push('    :local tlsOut ("TLS_OK=" . $royTLS . "\\nTLS_NONE_OK=" . $royTLSNone . "\\nSTATUS=" . $royStatus . "\\nCERTS_COUNT=" . $certCnt . "\\nDATA=" . $royData . "\\n")');
+  lines.push(`    /tool fetch url="${baseUrl}/api/mikrotik/audit-upload?token=${token}&part=raud_tls.txt" http-method=post http-header-field="Content-Type: text/plain" http-data=$tlsOut check-certificate=no output=none`);
+  lines.push('  } on-error={}');
+
   lines.push('} on-error={}');
   return lines.join('\n') + '\n';
 }
