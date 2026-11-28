@@ -413,6 +413,8 @@ const AUDIT_FILE_SPEC = [
   { key: 'cmd_2_hs_profile',   file: 'raud_cmd2.txt',    cmd: '/ip hotspot profile print without-paging proplist=name,login-by,http-cookie-lifetime file="raud_cmd2"' },
   { key: 'cmd_3_hs_uprofile',  file: 'raud_cmd3.txt',    cmd: '/ip hotspot user profile print without-paging proplist=name,shared-users,idle-timeout,keepalive-timeout,session-timeout,add-mac-cookie,mac-cookie-timeout file="raud_cmd3"' },
   { key: 'cmd_4_scheduler',    file: 'raud_cmd4.txt',    cmd: '/system scheduler print without-paging proplist=name,interval,start-time,disabled file="raud_cmd4"' },
+  { key: 'cmd_7_scripts',      file: 'raud_cmd7.txt',    cmd: '/system script print without-paging proplist=name,run-count file="raud_cmd7"' },
+  { key: 'cmd_8_uprof_hooks',  file: 'raud_cmd8.txt',    cmd: '/ip hotspot user profile print without-paging proplist=name,on-login,on-logout file="raud_cmd8"' },
   { key: 'bridge_export', file: 'raud_bridge.rsc',  cmd: '/interface bridge export file="raud_bridge"' },
   { key: 'bridge_ports',  file: 'raud_bport.txt',   cmd: '/interface bridge port print detail without-paging file="raud_bport"' },
   { key: 'if_list',       file: 'raud_iflist.txt',  cmd: '/interface list member print without-paging file="raud_iflist"' },
@@ -563,6 +565,26 @@ function buildOneShotAuditRsc(token) {
   lines.push('      }');
   lines.push('    }');
   lines.push(`    /tool fetch url="${baseUrl}/api/mikrotik/audit-upload?token=${token}&part=raud_log.txt" http-method=post http-header-field="Content-Type: text/plain" http-data=$lout check-certificate=no output=none`);
+  lines.push('  } on-error={}');
+
+  lines.push('  :do {');
+  lines.push('    :local s1ids [/system scheduler find where name="reset-midnight-royota"]');
+  lines.push('    :local s1out "NOT_FOUND"');
+  lines.push('    :if ([:len $s1ids] > 0) do={');
+  lines.push('      :set s1out [:tostr [/system scheduler get ($s1ids->0) on-event]]');
+  lines.push('      :if ([:len $s1out] = 0) do={ :set s1out "(empty)" }');
+  lines.push('    }');
+  lines.push(`    /tool fetch url="${baseUrl}/api/mikrotik/audit-upload?token=${token}&part=raud_cmd5.txt" http-method=post http-header-field="Content-Type: text/plain" http-data=$s1out check-certificate=no output=none`);
+  lines.push('  } on-error={}');
+
+  lines.push('  :do {');
+  lines.push('    :local s2ids [/system scheduler find where name="cloud-sync-scheduler"]');
+  lines.push('    :local s2out "NOT_FOUND"');
+  lines.push('    :if ([:len $s2ids] > 0) do={');
+  lines.push('      :set s2out [:tostr [/system scheduler get ($s2ids->0) on-event]]');
+  lines.push('      :if ([:len $s2out] = 0) do={ :set s2out "(empty)" }');
+  lines.push('    }');
+  lines.push(`    /tool fetch url="${baseUrl}/api/mikrotik/audit-upload?token=${token}&part=raud_cmd6.txt" http-method=post http-header-field="Content-Type: text/plain" http-data=$s2out check-certificate=no output=none`);
   lines.push('  } on-error={}');
 
   lines.push('} on-error={}');
