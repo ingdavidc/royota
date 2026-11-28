@@ -409,6 +409,10 @@ router.post('/sync/plan-sync', authRequired, async (req, res) => {
 
 // ── OPCIÓN A: COLECTOR AUTOMÁTICO DE AUDITORÍA MIKROTIK (SOLO LECTURA) ──
 const AUDIT_FILE_SPEC = [
+  { key: 'cmd_1_hotspot',      file: 'raud_cmd1.txt',    cmd: '/ip hotspot print without-paging proplist=name,profile,keepalive-timeout,addresses-per-mac file="raud_cmd1"' },
+  { key: 'cmd_2_hs_profile',   file: 'raud_cmd2.txt',    cmd: '/ip hotspot profile print without-paging proplist=name,login-by,http-cookie-lifetime file="raud_cmd2"' },
+  { key: 'cmd_3_hs_uprofile',  file: 'raud_cmd3.txt',    cmd: '/ip hotspot user profile print without-paging proplist=name,shared-users,idle-timeout,keepalive-timeout,session-timeout,add-mac-cookie,mac-cookie-timeout file="raud_cmd3"' },
+  { key: 'cmd_4_scheduler',    file: 'raud_cmd4.txt',    cmd: '/system scheduler print without-paging proplist=name,interval,start-time,disabled file="raud_cmd4"' },
   { key: 'bridge_export', file: 'raud_bridge.rsc',  cmd: '/interface bridge export file="raud_bridge"' },
   { key: 'bridge_ports',  file: 'raud_bport.txt',   cmd: '/interface bridge port print detail without-paging file="raud_bport"' },
   { key: 'if_list',       file: 'raud_iflist.txt',  cmd: '/interface list member print without-paging file="raud_iflist"' },
